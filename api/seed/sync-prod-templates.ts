@@ -82,7 +82,7 @@ function loadIntoLocal(sqlPath: string, source: string): void {
     db.exec("PRAGMA foreign_keys = OFF");
     db.exec("BEGIN");
     db.exec("DELETE FROM templates");
-    db.exec(readFileSync(sqlPath, "utf8"));
+    if (sqlPath.includes("..") || path.isAbsolute(sqlPath)) { throw new Error("Invalid file path"); } db.exec(readFileSync(sqlPath, "utf8"));
     db.exec("COMMIT");
     db.exec("PRAGMA foreign_keys = ON");
     const after = (db.prepare("SELECT COUNT(*) AS n FROM templates").get() as { n: number }).n;
