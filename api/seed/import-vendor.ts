@@ -202,7 +202,7 @@ fresh.forEach(({ id, input }, i) => {
       `is_venue_provided, height_mm, width_mm, depth_mm, weight_kg, auxiliary_data, sort_order, ` +
       `approved_at, approved_schema_version, needs_review` +
     `) VALUES (` +
-      `'${id}', 1, ${sqlStr(input.deviceType)}, ${sqlStr(input.category)}, ${sqlStr(input.label)}, ${sqlStr(input.shortName)}, ` +
+      `${sqlStr(id)}, 1, ${sqlStr(input.deviceType)}, ${sqlStr(input.category)}, ${sqlStr(input.label)}, ${sqlStr(input.shortName)}, ` +
       `${sqlStr(input.manufacturer)}, ${sqlStr(input.modelNumber)}, ${sqlStr(input.color)}, ${sqlStr(input.imageUrl)}, ${sqlStr(input.referenceUrl)}, ` +
       `${searchTerms}, ${ports}, ${slots}, ${sqlStr(input.slotFamily)}, ${sqlNum(input.powerDrawW)}, ${sqlNum(input.powerCapacityW)}, ${sqlStr(input.voltage)}, ${sqlNum(input.thermalBtuh)}, ${sqlNum(input.poeBudgetW)}, ${sqlNum(input.poeDrawW)}, ${sqlNum(input.unitCost)}, ` +
       `${input.isVenueProvided ? "1" : "NULL"}, ${sqlNum(input.heightMm)}, ${sqlNum(input.widthMm)}, ${sqlNum(input.depthMm)}, ${sqlNum(input.weightKg)}, ${auxData}, ${i}, ` +
@@ -230,7 +230,7 @@ updates.forEach(({ id, input }) => {
       `height_mm=${sqlNum(input.heightMm)}, width_mm=${sqlNum(input.widthMm)}, depth_mm=${sqlNum(input.depthMm)}, weight_kg=${sqlNum(input.weightKg)}, ` +
       `auxiliary_data=${auxData}, ` +
       `approved_at=datetime('now'), approved_schema_version='${currentSchemaVersion}', needs_review=0 ` +
-    `WHERE id='${id}';`
+    `WHERE id=${sqlStr(id)};`
   );
 });
 
