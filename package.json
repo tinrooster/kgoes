@@ -38,7 +38,8 @@
     "test:watch": "vitest"
   },
   "overrides": {
-    "serialize-javascript": "^7.0.5"
+    "serialize-javascript": "^7.0.5",
+    "dompurify@<=3.4.2": "3.4.2"
   },
   "dependencies": {
     "@xyflow/react": "12.10.1",
