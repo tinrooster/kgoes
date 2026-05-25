@@ -26,6 +26,8 @@ import PrintViewBar from "./components/PrintViewBar";
 import DeviceLibrary from "./components/DeviceLibrary";
 import DeviceEditor from "./components/DeviceEditor";
 import SignalColorPanel from "./components/SignalColorPanel";
+import TrackItNumberingPanel from "./components/TrackItNumberingPanel";
+import TrackItLinkedBanner from "./components/TrackItLinkedBanner";
 import ShowInfoPanel from "./components/ShowInfoPanel";
 import ViewOptionsPanel from "./components/ViewOptionsPanel";
 import MenuBar from "./components/MenuBar";
@@ -1716,6 +1718,9 @@ export default function App() {
       } else if ((e.ctrlKey || e.metaKey) && e.key === "o") {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent("easyschematic:open"));
+      } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "N" || e.key === "n")) {
+        e.preventDefault();
+        useSchematicStore.getState().assignNextTrackItNumbersToSelection();
       } else if (e.key === "F9") {
         e.preventDefault();
         const s = useSchematicStore.getState();
@@ -1731,6 +1736,7 @@ export default function App() {
       <div data-print-hide>
         <MenuBar />
       </div>
+      <TrackItLinkedBanner />
       <BetaBanner />
       <DemoBanner />
       <PendingSubmissionBanner />
@@ -1748,6 +1754,7 @@ export default function App() {
           <div data-print-hide className="hidden md:flex">
             <ViewOptionsPanel />
             <ShowInfoPanel />
+            <TrackItNumberingPanel />
             <SignalColorPanel />
           </div>
         </div>

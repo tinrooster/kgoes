@@ -23,6 +23,7 @@ import ShowInfoPanel from "./ShowInfoPanel";
 import CsvImportWizard from "./CsvImportWizard";
 import SignalColorPanel from "./SignalColorPanel";
 import { useTheme } from "../hooks/useTheme";
+import { isTrackItLinked, saveToTrackItParent } from "../trackitIntegration";
 
 // ─── Menu data types ─────────────────────────────────────────────
 
@@ -238,9 +239,25 @@ export default function MenuBar() {
     }
   }, []);
 
+  const trackItLinked = isTrackItLinked();
+
   // Save: reuse existing handle/cloud, or prompt for first save
   const handleSave = useCallback(async () => {
     const store = useSchematicStore.getState();
+
+    // trackIT popup: push JSON to parent drawing (primary save — no local file picker)
+    if (isTrackItLinked()) {
+      saveToTrackItParent();
+      if (store.fileHandle) {
+        try {
+          await writeToFileHandle(store.fileHandle);
+          store.addToast("Also saved local copy", "info", 2000);
+        } catch {
+          store.setFileHandle(null);
+        }
+      }
+      return;
+    }
 
     // Cloud-backed schematic: update cloud (local file handle still used if present)
     if (store.cloudSchematicId && store.isOnline) {
@@ -248,7 +265,9 @@ export default function MenuBar() {
         if (!session) return;
         const data = store.exportToJSON();
         updateSchematicInCloud(store.cloudSchematicId!, data)
-          .then((result) => store.setCloudSavedAt(result.updated_at))
+          .then((result) => {
+            store.setCloudSavedAt(result.updated_at);
+          })
           .catch((e: unknown) => {
             store.addToast(e instanceof Error ? e.message : "Cloud save failed", "error");
           });
@@ -531,7 +550,15 @@ export default function MenuBar() {
     File: [
       { type: "item", label: "New", onClick: handleNew },
       { type: "separator" },
-      { type: "item", label: "Save", shortcut: "Ctrl+S", onClick: handleSave },
+      {
+        type: "item",
+        label: trackItLinked ? "Save to trackIT" : "Save",
+        shortcut: "Ctrl+S",
+        onClick: handleSave,
+      },
+      ...(trackItLinked
+        ? [{ type: "item" as const, label: "Save copy to disk...", onClick: handleSaveAs }]
+        : []),
       { type: "item", label: "Save As...", shortcut: "Ctrl+Shift+S", onClick: handleSaveAs },
       { type: "item", label: "Open...", shortcut: "Ctrl+O", onClick: handleOpen },
       { type: "separator" },

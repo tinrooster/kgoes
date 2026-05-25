@@ -5,6 +5,7 @@ import { resolvePort } from "../packList";
 import { LINE_STYLE_LABELS, LINE_STYLE_DASHARRAY, type DeviceData, type LineStyle } from "../types";
 import { useContextMenuPosition } from "../hooks/useContextMenuPosition";
 import MenuSubmenu from "./MenuSubmenu";
+import { activeReservedBlocks } from "../trackitNumberingUtils";
 
 /** Project a point onto the nearest segment and return the projected point. */
 function projectOntoSegments(
@@ -223,6 +224,26 @@ export default function EdgeContextMenu() {
 
   const [editingLabel, setEditingLabel] = useState<false | "label" | "multicable" | "source" | "target">(false);
   const [labelValue, setLabelValue] = useState("");
+
+  const trackItReservedCount = useSchematicStore((s) =>
+    activeReservedBlocks(s.trackItNumbering?.blocks ?? []).length,
+  );
+  const assignTrackItNext = useCallback(() => {
+    useSchematicStore.getState().assignNextTrackItNumbersToSelection();
+    useSchematicStore.setState({ edgeContextMenu: null });
+  }, []);
+  const clearTrackItCableId = useCallback(() => {
+    useSchematicStore.getState().clearCableIdsOnSelection();
+    useSchematicStore.setState({ edgeContextMenu: null });
+  }, []);
+  const setTrackItCableIdManual = useCallback(() => {
+    const raw = window.prompt("Cable number (digits only):", "");
+    if (raw == null) return;
+    const n = Number.parseInt(raw.replace(/\D/g, ""), 10);
+    if (!Number.isFinite(n)) return;
+    useSchematicStore.getState().assignManualCableNumberToSelection(n, { allowOutsideBlock: true });
+    useSchematicStore.setState({ edgeContextMenu: null });
+  }, []);
 
   const setEdgeColor = useCallback((hex: string) => {
     if (!menu) return;
@@ -488,6 +509,13 @@ export default function EdgeContextMenu() {
         <>
           <div className="h-px bg-gray-200 my-1" />
           <MenuItem label="Reset Route" onClick={resetRoute} />
+        </>
+      )}
+      {trackItReservedCount > 0 && (
+        <>
+          <MenuItem label="Assign next trackIT cable #" onClick={assignTrackItNext} />
+          <MenuItem label="Set trackIT cable #…" onClick={setTrackItCableIdManual} />
+          <MenuItem label="Clear trackIT cable ID" onClick={clearTrackItCableId} />
         </>
       )}
       <div className="h-px bg-gray-200 my-1" />

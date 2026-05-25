@@ -55,6 +55,15 @@ import { chooseNewHandleSuffix, type SwapPlan, type NewPortRef } from "./deviceS
 import { getSignalColorOverrides, applySignalColors, loadSignalColors, saveSignalColors } from "./signalColors";
 import { computeCableSchedule } from "./cableSchedule";
 import { autoFillSheetForRack } from "./printSheetAutoFill";
+import type { TrackItLinkContext, TrackItNumberBlock, TrackItNumberingState } from "./types";
+import { scheduleTrackItAutosave } from "./trackitIntegration";
+import {
+  blockSlotNumbers,
+  formatCableNumber,
+  freeSlotsForBlock,
+  parseCableNumberFromId,
+  pickDefaultActiveBlock,
+} from "./trackitNumberingUtils";
 
 /** Fix UTF-8 → Windows-1252 double-encoding in string values (e.g. → becomes â†').
  *  Applied on import so old/corrupted saves display correctly. */
@@ -626,6 +635,23 @@ interface SchematicState {
   importCsvData: (newNodes: SchematicNode[], newEdges: ConnectionEdge[]) => void;
   newSchematic: (templateData?: SchematicFile) => void;
   setSchematicName: (name: string) => void;
+
+  /** trackIT numbering write-back (reserved / allocated blocks). */
+  trackItNumbering: TrackItNumberingState | null;
+  setTrackItNumbering: (state: TrackItNumberingState) => void;
+  /** Plant drawing link when opened from trackIT (enables Save to trackIT). */
+  trackItLink: TrackItLinkContext | null;
+  setTrackItLink: (link: TrackItLinkContext | null) => void;
+  trackItLastPushedAt: string | null;
+  /** Active reservation for "assign next" (reservationId). */
+  activeTrackItReservationId: string | null;
+  setActiveTrackItReservationId: (id: string | null) => void;
+  /** Assign next free slot(s) from active block to selected non–direct-attach edges. */
+  assignNextTrackItNumbersToSelection: () => number;
+  assignTrackItNumberToEdge: (edgeId: string, cableNumber: number) => void;
+  assignManualCableNumberToSelection: (cableNumber: number, opts?: { allowOutsideBlock?: boolean }) => number;
+  assignSlotFromActiveBlockToSelection: (slot: number) => number;
+  clearCableIdsOnSelection: () => number;
 }
 
 let nodeIdCounter = 0;
@@ -1056,10 +1082,27 @@ function saveCategoryOrder(order: string[] | null) {
 const _initCustomTemplates = loadCustomTemplates();
 const _initCustomMeta = loadCustomTemplateMeta(_initCustomTemplates);
 
+function resolveActiveReservedBlock(
+  state: Pick<SchematicState, "trackItNumbering" | "activeTrackItReservationId">,
+): TrackItNumberBlock | undefined {
+  const blocks = state.trackItNumbering?.blocks ?? [];
+  if (state.activeTrackItReservationId) {
+    const found = blocks.find(
+      (b) => b.reservationId === state.activeTrackItReservationId && b.status === "reserved",
+    );
+    if (found) return found;
+  }
+  return pickDefaultActiveBlock(blocks) ?? undefined;
+}
+
 export const useSchematicStore = create<SchematicState>((set, get) => ({
   nodes: [],
   edges: [],
   schematicName: "Untitled Schematic",
+  trackItNumbering: null,
+  activeTrackItReservationId: null,
+  trackItLink: null,
+  trackItLastPushedAt: null,
   loadSeq: 0,
   editingNodeId: null,
   creatingNodeId: null,
@@ -4294,6 +4337,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     } catch {
       // Storage full or unavailable — silently fail
     }
+    scheduleTrackItAutosave();
   },
 
   loadFromLocalStorage: () => {
@@ -4373,6 +4417,9 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
             cableCosts: data.cableCosts ?? undefined,
             roomDistances: data.roomDistances ?? undefined,
             distanceSettings: data.distanceSettings ?? undefined,
+      trackItNumbering: data.trackItNumbering ?? null,
+      activeTrackItReservationId:
+        pickDefaultActiveBlock(data.trackItNumbering?.blocks ?? [])?.reservationId ?? null,
             loadSeq: get().loadSeq + 1,
           });
           if (data.pages?.length) syncRackCounters(data.pages);
@@ -4450,6 +4497,9 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         cableCosts: data.cableCosts ?? undefined,
         roomDistances: data.roomDistances ?? undefined,
         distanceSettings: data.distanceSettings ?? undefined,
+      trackItNumbering: data.trackItNumbering ?? null,
+      activeTrackItReservationId:
+        pickDefaultActiveBlock(data.trackItNumbering?.blocks ?? [])?.reservationId ?? null,
         // Restore cloud identity from autosave (not part of SchematicFile)
         cloudSchematicId: parsed.cloudSchematicId ?? null,
         cloudSavedAt: parsed.cloudSavedAt ?? null,
@@ -4526,7 +4576,153 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       cableCosts: state.cableCosts && Object.keys(state.cableCosts).length > 0 ? state.cableCosts : undefined,
       roomDistances: state.roomDistances && Object.keys(state.roomDistances).length > 0 ? state.roomDistances : undefined,
       distanceSettings: state.distanceSettings,
+      trackItNumbering:
+        state.trackItNumbering && state.trackItNumbering.blocks.length > 0
+          ? state.trackItNumbering
+          : undefined,
+      trackItLink: state.trackItLink ?? undefined,
     };
+  },
+
+  setTrackItLink: (trackItLink) => {
+    set({ trackItLink });
+    get().saveToLocalStorage();
+  },
+
+  setTrackItNumbering: (trackItNumbering) => {
+    set({ trackItNumbering });
+    get().saveToLocalStorage();
+  },
+
+  setActiveTrackItReservationId: (id) => set({ activeTrackItReservationId: id }),
+
+  assignTrackItNumberToEdge: (edgeId, cableNumber) => {
+    const label = String(cableNumber);
+    get().patchEdgeData(edgeId, { cableId: label, hideCableId: false });
+  },
+
+  assignNextTrackItNumbersToSelection: () => {
+    const state = get();
+    const block = resolveActiveReservedBlock(state);
+    if (!block || block.status !== "reserved") {
+      get().addToast("No active trackIT reservation — reserve a block in trackIT Numbering", "info");
+      return 0;
+    }
+
+    const selected = state.edges.filter(
+      (e) => e.selected && !e.data?.directAttach && e.data?.signalType,
+    );
+    if (selected.length === 0) {
+      get().addToast("Select one or more connections first", "info");
+      return 0;
+    }
+
+    const free = freeSlotsForBlock(block, state.edges);
+    if (free.length === 0) {
+      get().addToast("No free numbers left in this reserved block", "info");
+      return 0;
+    }
+
+    const assignCount = Math.min(selected.length, free.length);
+    state.pushSnapshot();
+    for (let i = 0; i < assignCount; i++) {
+      get().assignTrackItNumberToEdge(selected[i].id, free[i]);
+    }
+    if (selected.length > assignCount) {
+      get().addToast(
+        `Assigned ${assignCount} number(s); ${selected.length - assignCount} connection(s) skipped (block full)`,
+        "info",
+      );
+    } else {
+      get().addToast(
+        `Assigned ${free.slice(0, assignCount).map(formatCableNumber).join(", ")} to ${assignCount} connection(s)`,
+        "success",
+      );
+    }
+    return assignCount;
+  },
+
+  assignManualCableNumberToSelection: (cableNumber, opts) => {
+    const n = Math.floor(cableNumber);
+    if (!Number.isFinite(n) || n < 1 || n > 99_999_999) {
+      get().addToast("Enter a valid cable number (1–99999999)", "info");
+      return 0;
+    }
+    const state = get();
+    const selected = state.edges.filter(
+      (e) => e.selected && !e.data?.directAttach && e.data?.signalType,
+    );
+    if (selected.length === 0) {
+      get().addToast("Select one or more connections first", "info");
+      return 0;
+    }
+
+    const block = resolveActiveReservedBlock(state);
+    if (block && !opts?.allowOutsideBlock) {
+      const slots = new Set(blockSlotNumbers(block.start, block.blockSize, block.offset));
+      if (!slots.has(n)) {
+        get().addToast(
+          `${formatCableNumber(n)} is outside active block ${formatCableNumber(block.start)}–${formatCableNumber(block.end)} — use “Any number” or pick another block`,
+          "info",
+          5000,
+        );
+        return 0;
+      }
+    }
+
+    state.pushSnapshot();
+    for (const edge of selected) {
+      get().assignTrackItNumberToEdge(edge.id, n);
+    }
+    get().addToast(
+      `Set cable #${formatCableNumber(n)} on ${selected.length} connection(s)`,
+      "success",
+    );
+    return selected.length;
+  },
+
+  assignSlotFromActiveBlockToSelection: (slot) => {
+    const state = get();
+    const block = resolveActiveReservedBlock(state);
+    if (!block) {
+      get().addToast("Select an active reserved block first", "info");
+      return 0;
+    }
+    const selected = state.edges.filter(
+      (e) => e.selected && !e.data?.directAttach && e.data?.signalType,
+    );
+    if (selected.length === 0) {
+      get().addToast("Select connection(s) first", "info");
+      return 0;
+    }
+    state.pushSnapshot();
+    for (const edge of selected) {
+      get().assignTrackItNumberToEdge(edge.id, slot);
+    }
+    get().addToast(`Assigned ${formatCableNumber(slot)} to ${selected.length} connection(s)`, "success");
+    return selected.length;
+  },
+
+  clearCableIdsOnSelection: () => {
+    const state = get();
+    const selected = state.edges.filter(
+      (e) => e.selected && !e.data?.directAttach && e.data?.signalType,
+    );
+    if (selected.length === 0) {
+      get().addToast("Select connection(s) to clear cable ID", "info");
+      return 0;
+    }
+    const withId = selected.filter((e) => parseCableNumberFromId(e.data?.cableId as string | undefined) != null);
+    if (withId.length === 0) {
+      get().addToast("Selected connections have no cable ID", "info");
+      return 0;
+    }
+    state.pushSnapshot();
+    for (const edge of withId) {
+      get().patchEdgeData(edge.id, { cableId: undefined });
+    }
+    get().addToast(`Cleared cable ID on ${withId.length} connection(s)`, "success");
+    return withId.length;
   },
 
   importFromJSON: (rawData) => {
@@ -4619,6 +4815,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       cableCosts: data.cableCosts ?? undefined,
       roomDistances: data.roomDistances ?? undefined,
       distanceSettings: data.distanceSettings ?? undefined,
+      trackItNumbering: data.trackItNumbering ?? null,
+      trackItLink: data.trackItLink ?? null,
+      activeTrackItReservationId:
+        pickDefaultActiveBlock(data.trackItNumbering?.blocks ?? [])?.reservationId ?? null,
       // File imports and shared schematics always start as local-only
       cloudSchematicId: null,
       cloudSavedAt: null,

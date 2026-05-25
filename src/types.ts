@@ -770,7 +770,42 @@ export interface SchematicFile {
   /** Wrap long device labels across two lines instead of truncating with ellipsis.
    *  New files default true; undefined on loaded files = legacy single-line truncate. */
   wrapDeviceLabels?: boolean;
+  /** Cable number blocks synced from trackIT numbering suggester (write-back). */
+  trackItNumbering?: TrackItNumberingState;
+  /** When opened from trackIT Plant → Drawings, links save target to plant_drawings row. */
+  trackItLink?: TrackItLinkContext;
 }
+
+/** trackIT plant drawing this schematic belongs to (popup / embed integration). */
+export type TrackItLinkContext = {
+  drawingId: string;
+  organizationId: string | null;
+  dwgNumber: string;
+  drawingName?: string;
+};
+
+/** Persisted trackIT numbering sync (see trackitBridge.ts). */
+export type TrackItNumberBlock = {
+  reservationId: string | null;
+  start: number;
+  end: number;
+  blockSize: number;
+  offset: number;
+  project: string;
+  projectCls: string;
+  flag?: string;
+  status: "reserved" | "allocated" | "released";
+  usedNumbers?: number[];
+  releasedNumbers?: number[];
+  updatedAt: string;
+};
+
+export type TrackItNumberingState = {
+  organizationId?: string;
+  blocks: TrackItNumberBlock[];
+  lastEventId?: string;
+  lastEventAt?: string;
+};
 
 export type LabelCaseMode = "as-typed" | "uppercase" | "lowercase" | "capitalize";
 export const DEFAULT_LABEL_CASE: LabelCaseMode = "as-typed";

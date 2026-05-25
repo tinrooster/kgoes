@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { ReactFlowProvider } from "@xyflow/react";
 import "./index.css";
 import ErrorBoundary from "./components/ErrorBoundary.tsx";
+import { startTrackItBridge } from "./trackitBridge";
 
 const App = lazy(() => import("./App.tsx"));
 const LandingPage = lazy(() => import("./components/LandingPage.tsx"));
@@ -16,6 +17,8 @@ function shouldShowLanding(): boolean {
   if (localStorage.getItem("easyschematic-skip-landing")) return false;
   return true;
 }
+
+startTrackItBridge();
 
 function Root() {
   if (shouldShowLanding()) {
