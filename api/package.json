@@ -13,7 +13,7 @@
     "generate-fallback": "npx tsx seed/generate-fallback.ts"
   },
   "dependencies": {
-    "hono": "^4.7.0",
+    "hono": "^4.12.23",
     "postal-mime": "^2.7.4"
   },
   "devDependencies": {
