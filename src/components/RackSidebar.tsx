@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSchematicStore } from "../store";
 import type { DeviceData, RackElevationPage, RackType, RackData, RoomData } from "../types";
 import { RACK_TYPE_LABELS } from "../types";
@@ -35,6 +35,35 @@ export default function RackSidebar({ page }: RackSidebarProps) {
   const [editingRackId, setEditingRackId] = useState<string | null>(null);
   const [editingRackLabel, setEditingRackLabel] = useState("");
   const [moveMenuRackId, setMoveMenuRackId] = useState<string | null>(null);
+  const [deviceContextMenu, setDeviceContextMenu] = useState<{
+    screenX: number;
+    screenY: number;
+    nodeId: string;
+    deviceData: DeviceData;
+  } | null>(null);
+
+  const setEditingNodeId = useSchematicStore((s) => s.setEditingNodeId);
+  const setFacePlateEditNodeId = useSchematicStore((s) => s.setFacePlateEditNodeId);
+  const requestSchematicFocus = useSchematicStore((s) => s.requestSchematicFocus);
+
+  useEffect(() => {
+    if (!deviceContextMenu) return;
+    const close = () => setDeviceContextMenu(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    const timer = window.setTimeout(() => {
+      document.addEventListener("mousedown", close);
+      document.addEventListener("contextmenu", close);
+      document.addEventListener("keydown", onKey);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("contextmenu", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [deviceContextMenu]);
 
   // Find devices that haven't been placed in ANY rack on ANY page
   const allPages = useSchematicStore((s) => s.pages);
@@ -242,7 +271,17 @@ export default function RackSidebar({ page }: RackSidebarProps) {
                 draggable
                 onDragStart={(e) => handleDragStart(e, node.id, summary.heightU)}
                 onDragEnd={handleDragEnd}
-                title={shelfHint ? `Shelf / throwdown — auto-shelf on drop · ${data.label}` : data.label}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDeviceContextMenu({
+                    screenX: e.clientX,
+                    screenY: e.clientY,
+                    nodeId: node.id,
+                    deviceData: data,
+                  });
+                }}
+                title={shelfHint ? `Shelf / throwdown — auto-shelf on drop · ${data.label}` : `${data.label} — right-click for actions`}
               >
                 <span className="truncate">{resolved.text}</span>
                 <span className={`ml-1 shrink-0 text-[10px] ${summary.source === "estimated" ? "text-amber-600" : "text-neutral-400"}`}>
@@ -311,6 +350,48 @@ export default function RackSidebar({ page }: RackSidebarProps) {
           rack={editRack}
           onClose={() => setEditRack(null)}
         />
+      )}
+
+      {/* Unracked device context menu */}
+      {deviceContextMenu && (
+        <div
+          className="fixed z-50 bg-white rounded-lg shadow-xl border border-neutral-200 py-1 text-xs min-w-[180px]"
+          style={{ left: deviceContextMenu.screenX, top: deviceContextMenu.screenY }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="w-full text-left px-3 py-1.5 hover:bg-neutral-100"
+            onClick={() => {
+              setEditingNodeId(deviceContextMenu.nodeId);
+              setDeviceContextMenu(null);
+            }}
+          >
+            Edit device properties…
+          </button>
+          {(deviceContextMenu.deviceData.ports?.length ?? 0) > 0 && (
+            <button
+              type="button"
+              className="w-full text-left px-3 py-1.5 hover:bg-neutral-100"
+              onClick={() => {
+                setFacePlateEditNodeId(deviceContextMenu.nodeId);
+                setDeviceContextMenu(null);
+              }}
+            >
+              Edit face-plate layout
+            </button>
+          )}
+          <button
+            type="button"
+            className="w-full text-left px-3 py-1.5 hover:bg-neutral-100"
+            onClick={() => {
+              requestSchematicFocus(deviceContextMenu.nodeId);
+              setDeviceContextMenu(null);
+            }}
+          >
+            Show in Drawing
+          </button>
+        </div>
       )}
     </div>
   );

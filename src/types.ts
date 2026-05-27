@@ -323,6 +323,8 @@ export interface FacePlateLayout {
   labels?: FacePlateLabel[];
   /** Custom device label position and size (defaults to top-center) */
   deviceLabel?: { x: number; y: number; fontSize?: number };
+  /** Override which rack face (front/rear) a port is drawn on. Passthrough ports ignore this. */
+  panelAssignments?: Record<string, "front" | "rear">;
 }
 
 export interface FacePlateLabel {
@@ -330,6 +332,8 @@ export interface FacePlateLabel {
   text: string;
   x: number; // 0-100 percentage
   y: number; // 0-100 percentage
+  /** Optional label text size in editor face-plate units. */
+  fontSize?: number;
 }
 
 export type DeviceNode = Node<DeviceData, "device">;
@@ -783,6 +787,10 @@ export interface SchematicFile {
   colorKeyOverrides?: Partial<Record<SignalType, boolean>>;
   /** Rack elevation pages */
   pages?: SchematicPage[];
+  /** Saved face-plate layouts keyed by rackDeviceDefinitionKey (template or model). */
+  facePlateDefinitionLayouts?: Record<string, FacePlateLayout>;
+  /** Rack U / mounting defaults keyed by rackDeviceDefinitionKey. */
+  deviceDefinitionRackMetadata?: Record<string, import("./rackMount").RackMetadataPatch>;
   /** Show connector-level face-plate detail in rack views (default off; advanced) */
   showFacePlateDetail?: boolean;
   /** Cable unit costs keyed by "cableType|signalType|cableLength" */

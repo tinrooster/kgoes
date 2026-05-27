@@ -140,16 +140,20 @@ html, body, #root {
 }
 
 /* AutoCAD-style directional selection */
-/* Window (left→right): blue solid, selects fully-enclosed items */
+/* Window (left→right): blue with white halo — visible on blue device fills */
 .react-flow.selection-window .react-flow__selection {
   background: rgba(59, 130, 246, 0.08) !important;
-  border: 1.5px solid rgba(59, 130, 246, 0.6) !important;
+  border: 2px solid rgba(59, 130, 246, 0.8) !important;
+  outline: 1px solid rgba(255, 255, 255, 0.95) !important;
+  outline-offset: 0;
 }
 
 /* Crossing (right→left): green dashed, selects intersected items */
 .react-flow.selection-crossing .react-flow__selection {
   background: rgba(34, 197, 94, 0.08) !important;
-  border: 1.5px dashed rgba(34, 197, 94, 0.6) !important;
+  border: 2px dashed rgba(34, 197, 94, 0.75) !important;
+  outline: 1px solid rgba(255, 255, 255, 0.9) !important;
+  outline-offset: 0;
 }
 
 /* Edge labels must sit above edges regardless of React Flow's internal z-index

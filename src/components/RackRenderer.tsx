@@ -3,13 +3,13 @@ import { useSchematicStore } from "../store";
 import { computeFitViewport, rackPageContentBounds, type ContentBounds } from "../viewNavUtils";
 import ViewNavBar from "./ViewNavBar";
 import type { RackData, RackDevicePlacement, RackAccessory, RackDepthConflict, DeviceData, RackElevationPage, RackCrossLink } from "../types";
-import { getConnectedPortIds } from "../rackMount";
+import { getConnectedPortIds, isShelfThrowdownInSlot, resolveHalfRackSide } from "../rackMount";
 import { resolveDeviceLabel, type SchematicDisplayDefaults } from "../displayName";
 import { RACK_ACCESSORY_LABELS, RACK_TYPE_LABELS } from "../types";
+import { resolveFacePlatePorts } from "../facePlateUtils";
 import {
   inferRackHeightU,
   inferRackForm,
-  autoLayoutPorts,
   PX_PER_MM,
   getRackDepthConflicts,
   countUnknownDepthDevices,
@@ -27,8 +27,6 @@ import { computeRackStats, formatStatsLine } from "../rackStats";
 import { SIGNAL_COLORS } from "../types";
 import { ConnectorIcon, getConnectorSpec } from "./connectorIcons";
 import { draggedDeviceHeightU, draggedDeviceNodeId } from "./RackSidebar";
-import FacePlateEditor from "./FacePlateEditor";
-import type { FacePlateLayout } from "../types";
 import { getDevicesInRoom, proposeRackPlacements } from "../rackLink";
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -272,9 +270,11 @@ function RackLabel({ rack, width = RACK_WIDTH, onRename }: { rack: RackData; wid
 }
 
 interface DeviceBlockProps {
+  page: RackElevationPage;
   placement: RackDevicePlacement;
   rack: RackData;
   deviceData: DeviceData;
+  deviceDataMap: Map<string, DeviceData>;
   isSelected: boolean;
   isDragging: boolean;
   zoom: number;
@@ -289,24 +289,40 @@ interface DeviceBlockProps {
 }
 
 function DeviceBlock({
-  placement, rack, deviceData, isSelected, isDragging, zoom, showFacePlateDetail, schematicDefaults,
+  page, placement, rack, deviceData, deviceDataMap, isSelected, isDragging, zoom, showFacePlateDetail, schematicDefaults,
   connectedPortIds, selectedPortId, onSelect, onDragStart, onContextMenu, onPortClick,
 }: DeviceBlockProps) {
   const resolved = resolveDeviceLabel(deviceData, schematicDefaults);
   const label = resolved.text;
   const heightU = inferRackHeightU(deviceData);
   const color = deviceData.headerColor ?? deviceData.color;
-  const y = uToY(placement.uPosition + heightU - 1, rack.heightU);
-  const h = heightU * PX_PER_U - 1;
-  const isHalf = !!placement.halfRackSide;
-  const w = isHalf ? HALF_WIDTH : FULL_WIDTH;
-  const x = DEVICE_INSET + (isHalf && placement.halfRackSide === "right" ? HALF_WIDTH + 2 : 0);
+  const slotY = uToY(placement.uPosition + heightU - 1, rack.heightU);
+  const slotH = heightU * PX_PER_U - 1;
+  const halfSide = resolveHalfRackSide(placement, page, deviceData, deviceDataMap);
+  const isHalf = halfSide != null;
+  const isThrowdown = isShelfThrowdownInSlot(deviceData, placement);
 
-  // Connector rendering — need enough vertical space for label + icons
-  // 1U (23px) = label only, no connectors. 2U+ = connectors fit.
+  let w = isHalf ? HALF_WIDTH : FULL_WIDTH;
+  let x = DEVICE_INSET + (halfSide === "right" ? HALF_WIDTH + 2 : 0);
+  let y = slotY;
+  let h = slotH;
+
+  if (isThrowdown) {
+    const throwHm = deviceData.heightMm ?? 44;
+    const throwH = Math.min(slotH - 2, Math.max(8, throwHm * PX_PER_MM));
+    const throwW = Math.min(FULL_WIDTH, Math.max(28, (deviceData.widthMm ?? 120) * PX_PER_MM));
+    h = throwH;
+    w = throwW;
+    x = DEVICE_INSET + (FULL_WIDTH - throwW) / 2;
+    y = slotY + slotH - throwH;
+  }
+
+  // Connector rendering when face-plate mode is on (lower zoom threshold on rack pages).
   const labelHeight = 14;
   const availableHeight = h - labelHeight;
-  const showConnectors = showFacePlateDetail && zoom >= 0.8 && availableHeight >= 16;
+  const facePlateOn = showFacePlateDetail && zoom >= 0.35;
+  const showConnectors = facePlateOn && (availableHeight >= 10 || (deviceData.ports?.length ?? 0) > 0);
+  const portDotMode = facePlateOn && slotH < 22;
 
   // Connector detail level based on zoom
   // 0 = dots, 1 = silhouettes, 2 = detailed with pins
@@ -314,17 +330,10 @@ function DeviceBlock({
   // Show port labels once silhouettes are visible and there's enough space
   const showPortLabels = connectorDetail >= 1 && availableHeight >= 30;
 
-  // Layout ports — use custom face-plate positions if available, otherwise auto-layout
   const layoutPorts = useMemo(() => {
     if (!showConnectors) return [];
-    const auto = autoLayoutPorts(deviceData.ports ?? [], w, h);
-    const custom = deviceData.facePlateLayout?.positions;
-    if (!custom) return auto;
-    return auto.map((lp) => {
-      const pos = custom[lp.id];
-      return pos ? { ...lp, x: pos.x, y: pos.y } : lp;
-    });
-  }, [showConnectors, deviceData.ports, w, h, deviceData.facePlateLayout]);
+    return resolveFacePlatePorts(deviceData, placement.face);
+  }, [showConnectors, deviceData, placement.face]);
 
   return (
     <g
@@ -384,28 +393,62 @@ function DeviceBlock({
         );
       })()}
 
+      {/* Mounting badge */}
+      {isHalf && (
+        <text x={x + 4} y={y + 8} fontSize={6} fill="rgba(255,255,255,0.75)" fontWeight={700} style={{ pointerEvents: "none" }}>
+          {halfSide === "right" ? "R" : "L"}
+        </text>
+      )}
+      {isThrowdown && (
+        <text x={x + w / 2} y={y + 7} textAnchor="middle" fontSize={6} fill="rgba(255,255,255,0.75)" fontWeight={600} style={{ pointerEvents: "none" }}>
+          shelf
+        </text>
+      )}
+
       {/* U height indicator */}
       <text x={x + w - 4} y={y + 8} textAnchor="end" fontSize={7} fill="rgba(255,255,255,0.7)" style={{ pointerEvents: "none" }}>
         {heightU}U
       </text>
 
+      {/* 1U port dots (compact face-plate mode) */}
+      {portDotMode && showConnectors && layoutPorts.map((lp) => {
+        const cx = x + (lp.x / 100) * w;
+        const cy = y + (lp.y / 100) * h;
+        const isLinked = connectedPortIds.has(lp.portId);
+        const isPortSelected = selectedPortId === lp.portId;
+        return (
+          <g key={lp.key}>
+            <circle
+              cx={cx}
+              cy={cy}
+              r={4}
+              fill={isPortSelected ? "#fbbf24" : isLinked ? "#4ade80" : "rgba(255,255,255,0.5)"}
+              stroke={isPortSelected ? "#fff" : "none"}
+              strokeWidth={0.75}
+              className="cursor-pointer"
+              onClick={(e) => { e.stopPropagation(); onPortClick(lp.portId, e); }}
+            />
+          </g>
+        );
+      })}
+
       {/* Connector icons */}
-      {showConnectors && layoutPorts.map((lp) => {
+      {!portDotMode && showConnectors && layoutPorts.map((lp) => {
         const cx = x + (lp.x / 100) * w;
         const cy = y + (lp.y / 100) * h;
         const sigColor = SIGNAL_COLORS[lp.signalType as keyof typeof SIGNAL_COLORS] ?? "#fff";
-        const isLinked = connectedPortIds.has(lp.id);
-        const isPortSelected = selectedPortId === lp.id;
+        const isLinked = connectedPortIds.has(lp.portId);
+        const isPortSelected = selectedPortId === lp.portId;
         const hitR = Math.max(5, 4 * PX_PER_MM);
         return (
-          <g key={lp.id}>
+          <g key={lp.key}>
             <circle
               cx={cx}
               cy={cy}
               r={hitR}
               fill="transparent"
               className="cursor-pointer"
-              onClick={(e) => { e.stopPropagation(); onPortClick(lp.id, e); }}
+              onClick={(e) => { e.stopPropagation(); onPortClick(lp.portId, e); }}
             />
             {isLinked && (
               <circle cx={cx} cy={cy} r={hitR + 1.5} fill="none" stroke="#4ade80" strokeWidth={1.25} style={{ pointerEvents: "none" }} />
@@ -431,7 +474,7 @@ function DeviceBlock({
                 fontSize={4}
                 fill="rgba(255,255,255,0.8)"
               >
-                {lp.label.length > 8 ? lp.label.slice(0, 7) + "…" : lp.label}
+                {(lp.sideTag ? `${lp.sideTag} ` : "") + (lp.label.length > 8 ? lp.label.slice(0, 7) + "…" : lp.label)}
               </text>
             )}
             </g>
@@ -1374,7 +1417,8 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
   const edges = useSchematicStore((s) => s.edges);
   const selectedRackPort = useSchematicStore((s) => s.selectedRackPort);
   const setSelectedRackPort = useSchematicStore((s) => s.setSelectedRackPort);
-  const setActivePage = useSchematicStore((s) => s.setActivePage);
+  const requestSchematicFocus = useSchematicStore((s) => s.requestSchematicFocus);
+  const setFacePlateEditNodeId = useSchematicStore((s) => s.setFacePlateEditNodeId);
   const addRackPlacement = useSchematicStore((s) => s.addRackPlacement);
   const addPlacementSmart = useSchematicStore((s) => s.addPlacementSmart);
   const removeRackPlacement = useSchematicStore((s) => s.removeRackPlacement);
@@ -1382,7 +1426,6 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
   const updateRack = useSchematicStore((s) => s.updateRack);
   const isRackSlotAvailable = useSchematicStore((s) => s.isRackSlotAvailable);
   const addToast = useSchematicStore((s) => s.addToast);
-  const patchDeviceData = useSchematicStore((s) => s.patchDeviceData);
   const setEditingNodeId = useSchematicStore((s) => s.setEditingNodeId);
   const showFacePlateDetail = useSchematicStore((s) => s.showFacePlateDetail);
   const addShelfMountedDevice = useSchematicStore((s) => s.addShelfMountedDevice);
@@ -1417,11 +1460,6 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
   const [shelfOccupantMenu, setShelfOccupantMenu] = useState<{
     screenX: number; screenY: number; placement: RackDevicePlacement; deviceData: DeviceData;
   } | null>(null);
-  // Face-plate editor
-  const [facePlateTarget, setFacePlateTarget] = useState<{
-    nodeId: string; deviceData: DeviceData;
-  } | null>(null);
-
   const handleRenameRack = useCallback((rackId: string, label: string) => {
     updateRack(page.id, rackId, { label });
   }, [page.id, updateRack]);
@@ -2263,10 +2301,7 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
                         className="cursor-pointer"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setActivePage("schematic");
-                          useSchematicStore.setState((state) => ({
-                            nodes: state.nodes.map((n) => ({ ...n, selected: n.id === rack.linkedRoomId })),
-                          }));
+                          if (rack.linkedRoomId) requestSchematicFocus(rack.linkedRoomId);
                         }}
                       >
                         <rect x={RACK_WIDTH / 2 - 36} y={-36} width={72} height={13} rx={3} fill="#eff6ff" stroke="#3b82f6" strokeWidth={0.75} />
@@ -2347,9 +2382,11 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
                   return (
                     <DeviceBlock
                       key={pl.id}
+                      page={page}
                       placement={pl}
                       rack={rack}
                       deviceData={dd}
+                      deviceDataMap={deviceDataMap}
                       isSelected={selectedPlacementId === pl.id}
                       isDragging={inRackDrag?.kind === "device" && inRackDrag.id === pl.id}
                       zoom={zoom}
@@ -2426,24 +2463,26 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
             <button
               className="w-full text-left px-3 py-1.5 hover:bg-neutral-100"
               onClick={() => {
-                setFacePlateTarget({ nodeId: rackContextMenu.placement.deviceNodeId, deviceData: rackContextMenu.deviceData });
+                setFacePlateEditNodeId(rackContextMenu.placement.deviceNodeId);
                 setRackContextMenu(null);
               }}
             >
-              Edit Face-Plate Layout
+              Edit face-plate layout
             </button>
           )}
-          {selectedRackPort?.deviceNodeId === rackContextMenu.placement.deviceNodeId && selectedRackPort.portId && (
-            <button
-              className="w-full text-left px-3 py-1.5 hover:bg-neutral-100"
-              onClick={() => {
-                setActivePage("schematic");
-                setRackContextMenu(null);
-              }}
-            >
-              Show port on schematic
-            </button>
-          )}
+          <button
+            className="w-full text-left px-3 py-1.5 hover:bg-neutral-100"
+            onClick={() => {
+              const portId =
+                selectedRackPort?.deviceNodeId === rackContextMenu.placement.deviceNodeId
+                  ? selectedRackPort.portId
+                  : undefined;
+              requestSchematicFocus(rackContextMenu.placement.deviceNodeId, portId);
+              setRackContextMenu(null);
+            }}
+          >
+            Show in Drawing
+          </button>
           <button
             className="w-full text-left px-3 py-1.5 hover:bg-neutral-100"
             onClick={() => {
@@ -2586,6 +2625,15 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
           >
             Edit Device
           </button>
+          <button
+            className="w-full text-left px-3 py-1.5 hover:bg-neutral-100"
+            onClick={() => {
+              requestSchematicFocus(shelfOccupantMenu.placement.deviceNodeId);
+              setShelfOccupantMenu(null);
+            }}
+          >
+            Show in Drawing
+          </button>
           <div className="border-t border-neutral-100 my-0.5" />
           <button
             className="w-full text-left px-3 py-1.5 hover:bg-neutral-100 text-red-600"
@@ -2633,17 +2681,6 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
         </div>
       )}
 
-      {/* Face-plate editor modal */}
-      {facePlateTarget && (
-        <FacePlateEditor
-          deviceData={facePlateTarget.deviceData}
-          onSave={(layout: FacePlateLayout) => {
-            patchDeviceData(facePlateTarget.nodeId, { facePlateLayout: layout });
-            setFacePlateTarget(null);
-          }}
-          onClose={() => setFacePlateTarget(null)}
-        />
-      )}
     </div>
   );
 }

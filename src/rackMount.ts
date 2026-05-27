@@ -1,4 +1,4 @@
-import type { DeviceData } from "./types";
+import type { DeviceData, RackDevicePlacement, RackElevationPage } from "./types";
 import type { RackForm } from "./rackUtils";
 import { MM_PER_U, mmToU } from "./rackUtils";
 
@@ -20,7 +20,7 @@ export interface RackMountSummary {
   showInRackSidebar: boolean;
 }
 
-const MOUNTING_LABELS: Record<MountingClass, string> = {
+export const MOUNTING_LABELS: Record<MountingClass, string> = {
   "rack-full": "Full rack",
   "rack-half": "Half rack",
   shelf: "Shelf",
@@ -112,11 +112,73 @@ function inferHeightUHeuristic(device: DeviceData): number {
   return 4;
 }
 
+/** Snap rack U to nearest 0.5U (standard panels are whole U; some gear is 1.5U, etc.). */
+export function normalizeRackHeightU(u: number): number {
+  return Math.min(60, Math.max(0.5, Math.round(u * 2) / 2));
+}
+
+/** Legacy `rackForm` field kept in sync with `mountingClass` for older code paths. */
+export function mountingClassToDeviceRackForm(
+  mc: MountingClass,
+): NonNullable<DeviceData["rackForm"]> | undefined {
+  switch (mc) {
+    case "rack-full":
+      return "full";
+    case "rack-half":
+      return "half";
+    case "shelf":
+      return "shelf-only";
+    default:
+      return undefined;
+  }
+}
+
+export type RackMetadataPatch = Pick<
+  DeviceData,
+  "rackHeightU" | "mountingClass" | "rackMetadataSource" | "rackForm" | "heightMm"
+>;
+
+/** Build explicit rack metadata for persistence (editor save, batch apply). */
+export function buildExplicitRackMetadata(
+  rackHeightU: number | undefined,
+  mountingClass: MountingClass,
+  heightMm?: number,
+): RackMetadataPatch {
+  const patch: RackMetadataPatch = {
+    mountingClass,
+    rackMetadataSource: "explicit",
+  };
+  const rackForm = mountingClassToDeviceRackForm(mountingClass);
+  if (rackForm) patch.rackForm = rackForm;
+  if (rackHeightU != null && Number.isFinite(rackHeightU)) {
+    patch.rackHeightU = normalizeRackHeightU(rackHeightU);
+  }
+  if (heightMm != null) patch.heightMm = heightMm;
+  return patch;
+}
+
+/** Identity key for "same device definition" (template or model). */
+export function rackDeviceDefinitionKey(data: DeviceData): string | null {
+  if (data.templateId) return `tpl:${data.templateId}`;
+  const model = data.model ?? data.baseLabel;
+  if (model && data.deviceType) return `def:${data.deviceType}:${model}`;
+  return null;
+}
+
+export function rackMetadataChanged(
+  before: DeviceData | undefined,
+  rackHeightU: number | undefined,
+  mountingClass: MountingClass,
+): boolean {
+  const nextU = rackHeightU != null && Number.isFinite(rackHeightU) ? normalizeRackHeightU(rackHeightU) : undefined;
+  return before?.mountingClass !== mountingClass || before?.rackHeightU !== nextU;
+}
+
 /** Authoritative rack U for slot occupancy. */
 export function resolveRackHeightU(device: DeviceData): { heightU: number; source: RackMetadataSource } {
-  if (device.rackHeightU != null && device.rackHeightU >= 1) {
+  if (device.rackHeightU != null && device.rackHeightU >= 0.5) {
     return {
-      heightU: Math.min(60, Math.max(1, Math.round(device.rackHeightU))),
+      heightU: normalizeRackHeightU(device.rackHeightU),
       source: device.rackMetadataSource ?? "explicit",
     };
   }
@@ -167,6 +229,39 @@ export function validateRackDimensions(device: DeviceData): string[] {
 export function normalizePortHandleId(handle: string | null | undefined): string | null {
   if (!handle) return null;
   return handle.replace(/-(in|out|rear|front)$/, "");
+}
+
+/** Shelf / throwdown gear mounted in a U slot (not on a shelf accessory). */
+export function isShelfThrowdownInSlot(
+  device: DeviceData,
+  placement: RackDevicePlacement,
+): boolean {
+  return !placement.mountedOnShelfId && resolveMountingClass(device) === "shelf";
+}
+
+/** Half-rack side for elevation rendering (honors placement or auto-splits L/R at same U). */
+export function resolveHalfRackSide(
+  placement: RackDevicePlacement,
+  page: RackElevationPage,
+  device: DeviceData,
+  deviceDataMap: Map<string, DeviceData>,
+): "left" | "right" | undefined {
+  if (placement.mountedOnShelfId) return undefined;
+  if (placement.halfRackSide) return placement.halfRackSide;
+  if (resolveMountingClass(device) !== "rack-half") return undefined;
+
+  const halves = page.placements
+    .filter((p) => {
+      if (p.rackId !== placement.rackId || p.face !== placement.face || p.mountedOnShelfId) return false;
+      if (p.uPosition !== placement.uPosition) return false;
+      const dd = deviceDataMap.get(p.deviceNodeId);
+      return !!dd && resolveMountingClass(dd) === "rack-half";
+    })
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  const idx = halves.findIndex((p) => p.id === placement.id);
+  if (idx < 0) return "left";
+  return idx % 2 === 0 ? "left" : "right";
 }
 
 /** Port IDs on a device that have at least one schematic edge attached. */

@@ -79,6 +79,13 @@ export default function DeviceContextMenu() {
     >
       <MenuItem label="Edit Properties..." onClick={editProperties} />
       <MenuItem label="Swap Device..." onClick={swapDevice} />
+      <MenuItem
+        label="Show in Drawing"
+        onClick={() => {
+          useSchematicStore.getState().requestSchematicFocus(nodeId);
+          useSchematicStore.setState({ deviceContextMenu: null });
+        }}
+      />
 
       {deviceData && (
         <>

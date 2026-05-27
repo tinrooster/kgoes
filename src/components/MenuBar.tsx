@@ -9,6 +9,7 @@ import {
   KGO_ES_UPSTREAM_DEVICES_URL,
   KGO_ES_UPSTREAM_DOCS_URL,
 } from "../branding";
+import { printPageTabLabel } from "../printPageLabels";
 import { useSchematicStore } from "../store";
 import { exportImage } from "../exportUtils";
 import { exportDxf } from "../dxfExport";
@@ -597,7 +598,7 @@ export default function MenuBar() {
           { type: "separator" as const },
           ...pages.map((p): MenuEntry => ({
             type: "item",
-            label: p.type === "print-sheet" ? `📄 ${p.label}` : `🗄 ${p.label}`,
+            label: p.type === "print-sheet" ? `📄 ${printPageTabLabel(p.label)}` : `🗄 ${p.label}`,
             checked: activePage === p.id,
             onClick: () => setActivePage(p.id),
           })),
@@ -607,7 +608,10 @@ export default function MenuBar() {
     {
       type: "item",
       label: "New rack elevation page…",
-      onClick: () => addRackPage(`Rack Page ${rackPageCount + 1}`),
+      onClick: () =>
+        addRackPage(
+          rackPageCount === 0 ? "Rack Elevations" : `Rack Elevations ${rackPageCount + 1}`,
+        ),
     },
     {
       type: "item",

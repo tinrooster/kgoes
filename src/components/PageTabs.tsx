@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { KGO_ES_DRAWING_TAB_LABEL } from "../branding";
+import { printPageTabLabel } from "../printPageLabels";
 import { useSchematicStore } from "../store";
 import type { RackElevationPage } from "../types";
 
@@ -130,7 +131,7 @@ export default function PageTabs() {
   const pageTabTitle = (page: (typeof pages)[number]) => {
     if (page.type === "print-sheet") {
       const vpCount = page.viewports.length;
-      return `${page.label}${vpCount ? ` · ${vpCount} view${vpCount === 1 ? "" : "s"}` : ""}`;
+      return `${printPageTabLabel(page.label)}${vpCount ? ` · ${vpCount} view${vpCount === 1 ? "" : "s"}` : ""}`;
     }
     const elev = page as RackElevationPage;
     const rackN = elev.racks.length;
@@ -139,7 +140,9 @@ export default function PageTabs() {
   };
 
   const openRackPage = () => {
-    addRackPage(`Rack Page ${rackPageCount + 1}`);
+    const label =
+      rackPageCount === 0 ? "Rack Elevations" : `Rack Elevations ${rackPageCount + 1}`;
+    addRackPage(label);
     setAddMenuOpen(false);
   };
 
@@ -208,7 +211,7 @@ export default function PageTabs() {
 
         {printSheetCount > 0 && (
           <span className="text-[10px] text-neutral-400 pl-1 pr-1 shrink-0 hidden sm:inline self-center">
-            {printSheetCount} sheet{printSheetCount === 1 ? "" : "s"}
+            {printSheetCount} print view{printSheetCount === 1 ? "" : "s"}
           </span>
         )}
 

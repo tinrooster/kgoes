@@ -9,6 +9,13 @@ import { computeDragSnap, computeResizeSnap, type SheetGuide, type Rect } from "
 import RackFaceSVG from "./RackFaceSVG";
 import ViewNavBar from "./ViewNavBar";
 import { boundsFromSize, computeFitViewport, unionBounds, type ContentBounds } from "../viewNavUtils";
+import {
+  hitTestItemRect,
+  MARQUEE_BOX_STYLES,
+  marqueeModeFromDrag,
+  normalizeRect,
+  type NormalizedRect,
+} from "../selectionBoxUtils";
 
 const IN_TO_MM = 25.4;
 const SCREEN_PPI = 96;
@@ -148,9 +155,11 @@ function TitleBlockSVG({ tb, layout, pageNum, totalPages, widthPx, heightPx }: T
 
 interface Props {
   page: PrintSheetPage;
+  selectedVpIds: string[];
+  onSelectionChange: (ids: string[]) => void;
 }
 
-export default function PrintSheetRenderer({ page }: Props) {
+export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionChange }: Props) {
   const nodes = useSchematicStore((s) => s.nodes);
   const allPages = useSchematicStore((s) => s.pages);
   const addViewport = useSchematicStore((s) => s.addViewport);
@@ -323,9 +332,34 @@ export default function PrintSheetRenderer({ page }: Props) {
   }, [setViewport]);
 
   // ── Viewport interaction ─────────────────────────────────────────
-  const [selectedVpIds, setSelectedVpIds] = useState<string[]>([]);
-  const selectedVpIdsRef = useRef<string[]>([]);
+  const selectedVpIdsRef = useRef(selectedVpIds);
   useEffect(() => { selectedVpIdsRef.current = selectedVpIds; }, [selectedVpIds]);
+  const setSelectedVpIds = onSelectionChange;
+
+  const [marquee, setMarquee] = useState<{
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    clientX1: number;
+    clientX2: number;
+  } | null>(null);
+  const marqueeRef = useRef<{ x1: number; y1: number; clientX1: number } | null>(null);
+  const marqueeActiveRef = useRef(false);
+
+  /** Container-local px (inside the canvas div) → paper mm. */
+  const containerPxToPaperMm = useCallback(
+    (cx: number, cy: number) => {
+      const { zoom: z, pan: p } = vpRef.current;
+      const paperX = (cx - p.x) / z;
+      const paperY = (cy - p.y) / z;
+      return {
+        xMm: (paperX / pageWPx) * pageWIn * IN_TO_MM,
+        yMm: (paperY / pageHPx) * pageHIn * IN_TO_MM,
+      };
+    },
+    [pageWPx, pageHPx, pageWIn, pageHIn],
+  );
 
   const fitSelectionView = useCallback(() => {
     const el = containerRef.current;
@@ -398,13 +432,31 @@ export default function PrintSheetRenderer({ page }: Props) {
   }), []);
 
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
-    const willPan = e.button === 1 || spaceHeld || panMode === "pan-first";
+    const willPan = e.button === 1 || spaceHeldRef.current || spaceHeld || panMode === "pan-first";
     if (e.button === 1) e.preventDefault();
     didMoveRef.current = false;
     setDidMove(false);
-    setPanning({ startX: e.clientX, startY: e.clientY, startPan: { ...vpRef.current.pan } });
-    if (!willPan) return;
-  }, [spaceHeld, panMode]);
+    marqueeActiveRef.current = false;
+
+    if (willPan) {
+      setPanning({ startX: e.clientX, startY: e.clientY, startPan: { ...vpRef.current.pan } });
+      return;
+    }
+
+    if (e.button === 0) {
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      marqueeRef.current = { x1: x, y1: y, clientX1: e.clientX };
+      setMarquee({ x1: x, y1: y, x2: x, y2: y, clientX1: e.clientX, clientX2: e.clientX });
+      if (!e.shiftKey) {
+        setSelectedVpIds([]);
+        selectedVpIdsRef.current = [];
+      }
+    }
+  }, [spaceHeld, panMode, setSelectedVpIds]);
 
   const handleVpMouseDown = useCallback((e: React.MouseEvent, vp: PrintViewport) => {
     e.stopPropagation();
@@ -578,6 +630,20 @@ export default function PrintSheetRenderer({ page }: Props) {
         }
         setSnapGuides([]);
       }
+    } else if (marqueeRef.current) {
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      setMarquee({
+        x1: marqueeRef.current.x1,
+        y1: marqueeRef.current.y1,
+        x2: x,
+        y2: y,
+        clientX1: marqueeRef.current.clientX1,
+        clientX2: e.clientX,
+      });
     } else if (panning) {
       const dx = e.clientX - panning.startX;
       const dy = e.clientY - panning.startY;
@@ -590,7 +656,43 @@ export default function PrintSheetRenderer({ page }: Props) {
   }, [dragging, resizing, panning, page.id, page.viewports, pageWIn, pageHIn, updateViewport, setViewport, clientPxToMm, vpRect]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
-    if (panning && !didMoveRef.current && e.button === 0 && panMode !== "pan-first" && !spaceHeldRef.current) {
+    if (marqueeRef.current && marquee) {
+      const start = containerPxToPaperMm(marquee.x1, marquee.y1);
+      const end = containerPxToPaperMm(marquee.x2, marquee.y2);
+      const box = normalizeRect(start.xMm, start.yMm, end.xMm, end.yMm);
+        const mode = marqueeModeFromDrag(marquee.clientX1, marquee.clientX2);
+        const hasArea = box.maxX - box.minX > 1 && box.maxY - box.minY > 1;
+
+        if (hasArea) {
+          marqueeActiveRef.current = true;
+          const hits: string[] = [];
+          for (const vp of page.viewports) {
+            const item: NormalizedRect = {
+              minX: vp.positionMm.x,
+              minY: vp.positionMm.y,
+              maxX: vp.positionMm.x + vp.sizeMm.w,
+              maxY: vp.positionMm.y + vp.sizeMm.h,
+            };
+            if (hitTestItemRect(mode, item, box)) hits.push(vp.id);
+          }
+          const next = e.shiftKey
+            ? [...new Set([...selectedVpIdsRef.current, ...hits])]
+            : hits;
+      setSelectedVpIds(next);
+      selectedVpIdsRef.current = next;
+      }
+      setMarquee(null);
+      marqueeRef.current = null;
+    }
+
+    if (
+      panning &&
+      !didMoveRef.current &&
+      !marqueeActiveRef.current &&
+      e.button === 0 &&
+      panMode !== "pan-first" &&
+      !spaceHeldRef.current
+    ) {
       setSelectedVpIds([]);
       selectedVpIdsRef.current = [];
     }
@@ -602,7 +704,19 @@ export default function PrintSheetRenderer({ page }: Props) {
     setResizing(null);
     setPanning(null);
     setSnapGuides([]);
-  }, [panning, panMode, dragging, resizing, flushPendingSnapshot, clearPendingUndoSnapshot]);
+    marqueeActiveRef.current = false;
+  }, [
+    panning,
+    panMode,
+    dragging,
+    resizing,
+    marquee,
+    page.viewports,
+    containerPxToPaperMm,
+    setSelectedVpIds,
+    flushPendingSnapshot,
+    clearPendingUndoSnapshot,
+  ]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -675,6 +789,29 @@ export default function PrintSheetRenderer({ page }: Props) {
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDrop}
       >
+        {marquee && (() => {
+          const mode = marqueeModeFromDrag(marquee.clientX1, marquee.clientX2);
+          const style = MARQUEE_BOX_STYLES[mode];
+          const left = Math.min(marquee.x1, marquee.x2);
+          const top = Math.min(marquee.y1, marquee.y2);
+          const width = Math.abs(marquee.x2 - marquee.x1);
+          const height = Math.abs(marquee.y2 - marquee.y1);
+          return (
+            <div
+              className="absolute pointer-events-none z-[60]"
+              style={{
+                left,
+                top,
+                width,
+                height,
+                background: style.fill,
+                border: `2px ${style.strokeDasharray ? "dashed" : "solid"} ${style.stroke}`,
+                boxShadow: "0 0 0 1px rgba(255,255,255,0.9)",
+              }}
+            />
+          );
+        })()}
+
         {/* Paper */}
         <div
           className="bg-white shadow-xl absolute"
@@ -737,7 +874,12 @@ export default function PrintSheetRenderer({ page }: Props) {
                     </div>
                   )}
                   {isSelected && (
-                    <div className="absolute inset-0 border-2 border-blue-500 pointer-events-none" />
+                    <div
+                      className="absolute inset-0 pointer-events-none"
+                      style={{
+                        boxShadow: "inset 0 0 0 2px #f59e0b, 0 0 0 1px #fff",
+                      }}
+                    />
                   )}
                   {isOnlySelected && (
                     <div
@@ -809,8 +951,8 @@ export default function PrintSheetRenderer({ page }: Props) {
             return (
               <>
                 <div
-                  className="absolute pointer-events-none border-2 border-dashed border-blue-400"
-                  style={{ left, top, width, height, zIndex: 9 }}
+                  className="absolute pointer-events-none border-2 border-dashed border-amber-500"
+                  style={{ left, top, width, height, zIndex: 9, boxShadow: "0 0 0 1px #fff" }}
                 />
                 <div
                   className="absolute bg-blue-500 cursor-se-resize"

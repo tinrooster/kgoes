@@ -27,11 +27,19 @@ import TemplateSyncDialog from "./TemplateSyncDialog";
 import { isValidIpv4, isValidSubnetMask, isValidVlan, findDuplicateIps } from "../networkValidation";
 import IpInput from "./IpInput";
 import FacePlateEditor from "./FacePlateEditor";
+import ApplyRackMetadataDialog, { type ApplyRackMetadataPrompt } from "./ApplyRackMetadataDialog";
 import type { FacePlateLayout } from "../types";
 import { AUX_FIELD_GROUPS, normalizeAuxRows, resolveAuxiliaryLine, trimTrailingEmpty } from "../auxiliaryData";
 import { deriveThermalBtuh } from "../thermal";
 import type { MountingClass } from "../rackMount";
-import { getRackMountSummary, validateRackDimensions, heightMmFromRackU } from "../rackMount";
+import {
+  getRackMountSummary,
+  validateRackDimensions,
+  heightMmFromRackU,
+  buildExplicitRackMetadata,
+  rackDeviceDefinitionKey,
+  rackMetadataChanged,
+} from "../rackMount";
 
 const ALL_SIGNAL_TYPES = (Object.keys(SIGNAL_LABELS) as SignalType[]).sort(
   (a, b) => SIGNAL_LABELS[a].localeCompare(SIGNAL_LABELS[b]),
@@ -117,7 +125,6 @@ const MIME = "application/easyschematic-port";
 export default function DeviceEditor() {
   const editingNodeId = useSchematicStore((s) => s.editingNodeId);
   const nodes = useSchematicStore((s) => s.nodes);
-  const updateDevice = useSchematicStore((s) => s.updateDevice);
   const syncDeviceFromTemplate = useSchematicStore((s) => s.syncDeviceFromTemplate);
   const edges = useSchematicStore((s) => s.edges);
   const setEditingNodeId = useSchematicStore((s) => s.setEditingNodeId);
@@ -184,6 +191,13 @@ export default function DeviceEditor() {
   const [rackHeightU, setRackHeightU] = useState<number | undefined>(undefined);
   const [mountingClass, setMountingClass] = useState<MountingClass>("rack-full");
   const [syncMmFromU, setSyncMmFromU] = useState(true);
+  const [applyRackPrompt, setApplyRackPrompt] = useState<ApplyRackMetadataPrompt | null>(null);
+  const pendingSaveRef = useRef<DeviceData | null>(null);
+  const pendingApplyMetaRef = useRef<{
+    rackPatch: ReturnType<typeof buildExplicitRackMetadata>;
+    otherNodeIds: string[];
+    templateId?: string;
+  } | null>(null);
 
   // Cable accessory flags
   const [isCableAccessory, setIsCableAccessory] = useState(false);
@@ -312,6 +326,28 @@ export default function DeviceEditor() {
     setEditingNodeId(null);
   }, [undo, setCreatingNodeId, setEditingNodeId]);
 
+  const finishSave = useCallback((applyToAllSiblings: boolean) => {
+    if (!editingNodeId) return;
+    const data = pendingSaveRef.current;
+    const applyMeta = pendingApplyMetaRef.current;
+    if (!data) return;
+
+    const store = useSchematicStore.getState();
+    store.updateDevice(editingNodeId, data);
+    if (applyMeta) {
+      store.saveDeviceRackMetadata(editingNodeId, applyMeta.rackPatch, {
+        applyToMatching: applyToAllSiblings,
+        updateDefinition: applyToAllSiblings,
+      });
+    }
+    store.syncRackPlacementsForDevice(editingNodeId);
+    setCreatingNodeId(null);
+    pendingSaveRef.current = null;
+    pendingApplyMetaRef.current = null;
+    setApplyRackPrompt(null);
+    close();
+  }, [editingNodeId, setCreatingNodeId, close]);
+
   const handleSave = useCallback(() => {
     if (!editingNodeId) return;
 
@@ -372,8 +408,7 @@ export default function DeviceEditor() {
       ...(widthMm != null ? { widthMm } : {}),
       ...(depthMm != null ? { depthMm } : {}),
       ...(weightKg != null ? { weightKg } : {}),
-      ...(rackHeightU != null ? { rackHeightU, rackMetadataSource: "explicit" as const } : {}),
-      ...(mountingClass ? { mountingClass } : {}),
+      ...buildExplicitRackMetadata(rackHeightU, mountingClass, heightMm),
       ...(isCableAccessory ? { isCableAccessory: true } : {}),
       ...(integratedWithCable ? { integratedWithCable: true } : {}),
       ...(isVenueProvided ? { isVenueProvided: true } : {}),
@@ -386,10 +421,38 @@ export default function DeviceEditor() {
       })()),
       ...(() => { const t = searchTermsRaw.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 20); return t.length > 0 ? { searchTerms: t } : {}; })(),
     };
-    updateDevice(editingNodeId, data);
-    setCreatingNodeId(null); // commit the node — close won't undo it
-    close();
-  }, [editingNodeId, ports, label, shortName, useShortName, wrapLabel, hostname, deviceType, manufacturer, modelNumber, designation, rackLocation, frameSlot, deviceTypeCode, managementIp, vlanSummary, showInstallationBlock, referenceUrl, category, color, headerColor, node, updateDevice, close, setCreatingNodeId, showAllPorts, hiddenPorts, dhcpServer, powerDrawW, powerCapacityW, voltage, thermalBtuh, poeBudgetW, poeDrawW, unitCost, heightMm, widthMm, depthMm, weightKg, isCableAccessory, integratedWithCable, isVenueProvided, adapterVisibility, auxiliaryData, searchTermsRaw]);
+    const rackPatch = buildExplicitRackMetadata(rackHeightU, mountingClass, heightMm);
+    const defKey = existing ? rackDeviceDefinitionKey({ ...existing, ...data }) : null;
+    const rackChanged = rackMetadataChanged(existing, rackHeightU, mountingClass);
+
+    pendingSaveRef.current = data;
+
+    if (rackChanged && defKey) {
+      const store = useSchematicStore.getState();
+      const others = store.nodes.filter(
+        (n) => n.type === "device" && n.id !== editingNodeId && rackDeviceDefinitionKey(n.data as DeviceData) === defKey,
+      );
+      if (others.length > 0) {
+        const modelName = (existing?.model ?? existing?.baseLabel ?? label.trim()) || "this device";
+        pendingApplyMetaRef.current = {
+          rackPatch,
+          otherNodeIds: others.map((n) => n.id),
+          templateId: existing?.templateId,
+        };
+        setApplyRackPrompt({
+          modelName,
+          otherCount: others.length,
+          rackPatch,
+          mountingClass,
+          hasDefinitionKey: !!defKey,
+        });
+        return;
+      }
+    }
+
+    pendingApplyMetaRef.current = null;
+    finishSave(false);
+  }, [editingNodeId, ports, label, shortName, useShortName, wrapLabel, hostname, deviceType, manufacturer, modelNumber, designation, rackLocation, frameSlot, deviceTypeCode, managementIp, vlanSummary, showInstallationBlock, referenceUrl, category, color, headerColor, node, finishSave, showAllPorts, hiddenPorts, dhcpServer, powerDrawW, powerCapacityW, voltage, thermalBtuh, poeBudgetW, poeDrawW, unitCost, heightMm, widthMm, depthMm, weightKg, rackHeightU, mountingClass, isCableAccessory, integratedWithCable, isVenueProvided, adapterVisibility, auxiliaryData, searchTermsRaw]);
 
   // Ctrl+Enter anywhere in the editor → Apply & Close
   const onCtrlEnter = useCallback((e: React.KeyboardEvent) => {
@@ -1226,9 +1289,9 @@ export default function DeviceEditor() {
                 </label>
                 <input
                   type="number"
-                  min={1}
+                  min={0.5}
                   max={60}
-                  step={1}
+                  step={0.5}
                   className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-1 text-xs outline-none focus:border-blue-500"
                   value={rackHeightU ?? ""}
                   onChange={(e) => {
@@ -1773,6 +1836,7 @@ export default function DeviceEditor() {
       <LoginDialog open={showLoginDialog} onClose={() => setShowLoginDialog(false)} />
       {showFacePlateEditor && node && (
         <FacePlateEditor
+          nodeId={editingNodeId!}
           deviceData={node.data as DeviceData}
           onSave={(layout: FacePlateLayout) => {
             patchDeviceData(editingNodeId!, { facePlateLayout: layout });
@@ -1792,6 +1856,18 @@ export default function DeviceEditor() {
             setShowSyncDialog(false);
           }}
           onCancel={() => setShowSyncDialog(false)}
+        />
+      )}
+      {applyRackPrompt && (
+        <ApplyRackMetadataDialog
+          prompt={applyRackPrompt}
+          onApplyAll={() => finishSave(true)}
+          onThisDeviceOnly={() => finishSave(false)}
+          onCancel={() => {
+            setApplyRackPrompt(null);
+            pendingSaveRef.current = null;
+            pendingApplyMetaRef.current = null;
+          }}
         />
       )}
     </div>

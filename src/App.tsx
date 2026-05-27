@@ -45,6 +45,13 @@ import PortContextMenu from "./components/PortContextMenu";
 import RoutingDebugOverlay from "./components/RoutingDebugOverlay";
 import RoutingTuningPanel from "./components/RoutingTuningPanel";
 import SelectionFilterBar from "./components/SelectionFilterBar";
+import { marqueeModeFromDrag } from "./selectionBoxUtils";
+import {
+  arrowDirectionFromKey,
+  axisDelta,
+  isArrowKey,
+  nudgeStepFlowUnits,
+} from "./nudgeUtils";
 import RoomContextMenu from "./components/RoomContextMenu";
 import DeviceContextMenu from "./components/DeviceContextMenu";
 import StubLabelContextMenu from "./components/StubLabelContextMenu";
@@ -248,6 +255,8 @@ function SchematicCanvas() {
   // The <ReactFlow fitView> boolean prop only fires on first mount; without this, opening a file whose content
   // sits far from the origin leaves the viewport at its previous transform and the canvas appears blank.
   const loadSeq = useSchematicStore((s) => s.loadSeq);
+  const activePage = useSchematicStore((s) => s.activePage);
+  const schematicFocusRequest = useSchematicStore((s) => s.schematicFocusRequest);
   const nodesInitialized = useNodesInitialized();
   const lastFittedSeq = useRef<number | null>(null);
   useEffect(() => {
@@ -261,6 +270,22 @@ function SchematicCanvas() {
     lastFittedSeq.current = loadSeq;
     rfInstance.fitView({ duration: 200, padding: 0.1 });
   }, [loadSeq, nodesInitialized, rfInstance]);
+
+  // Zoom to a device when requested from rack elevation / context menus.
+  useEffect(() => {
+    if (!schematicFocusRequest || activePage !== "schematic" || !nodesInitialized) return;
+    const { nodeId } = schematicFocusRequest;
+    const timer = window.setTimeout(() => {
+      void rfInstance.fitView({
+        nodes: [{ id: nodeId }],
+        duration: 300,
+        padding: 0.35,
+        maxZoom: 1.8,
+      });
+      useSchematicStore.setState({ schematicFocusRequest: null });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [schematicFocusRequest, activePage, nodesInitialized, rfInstance]);
 
   // Locked rooms have pointer-events: none (CSS) so right-clicks fall through.
   // React Flow's pane handler uses wrapHandler() which only fires when
@@ -362,7 +387,7 @@ function SchematicCanvas() {
       if (rect.width === 0 && rect.height === 0) return;
       lastRect = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
       lastTransform = [...state.transform] as [number, number, number];
-      const nextDir = rect.x < rect.startX ? 'crossing' : 'window';
+      const nextDir = marqueeModeFromDrag(rect.startX, rect.x);
       if (nextDir !== currentDir) {
         currentDir = nextDir;
         setSelectionDirection(nextDir);
@@ -493,6 +518,7 @@ function SchematicCanvas() {
   const [showDeviceCreator, setShowDeviceCreator] = useState(false);
   const deviceCreatorPosRef = useRef<{ x: number; y: number } | undefined>(undefined);
   const lastPaneClickRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
+  const nudgeUndoArmedRef = useRef(false);
 
   // Viewport transform for rendering flow-space overlays
   const { x: vx, y: vy, zoom } = useViewport();
@@ -817,12 +843,41 @@ function SchematicCanvas() {
       } else if ((e.ctrlKey || e.metaKey) && e.key === "a") {
         e.preventDefault();
         useSchematicStore.getState().selectAll();
+      } else {
+        const dir = arrowDirectionFromKey(e.key);
+        if (dir && !e.ctrlKey && !e.metaKey) {
+          const state = useSchematicStore.getState();
+          const selected = state.nodes.filter(
+            (n) => n.selected && n.type !== "stub-label",
+          );
+          if (selected.length > 0) {
+            e.preventDefault();
+            if (!nudgeUndoArmedRef.current) {
+              setPendingUndoSnapshot();
+              nudgeUndoArmedRef.current = true;
+            }
+            // Grid step matches snapToGrid drag; Alt = 2 screen px (zoom-dependent).
+            const step = e.altKey ? nudgeStepFlowUnits(zoom) : GRID_SIZE;
+            const { dx, dy } = axisDelta(dir, step);
+            const ids = new Set(selected.map((n) => n.id));
+            const updated = state.nodes.map((n) =>
+              ids.has(n.id)
+                ? { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } }
+                : n,
+            ) as SchematicNode[];
+            useSchematicStore.setState({ nodes: updated });
+          }
+        }
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === "Control") { ctrlHeldRef.current = false; }
       if (e.key === " ") setSpaceHeld(false);
       if (e.key === "Shift") setShiftHeld(false);
+      if (isArrowKey(e.key) && nudgeUndoArmedRef.current) {
+        flushPendingSnapshot();
+        nudgeUndoArmedRef.current = false;
+      }
     };
     const handleBlur = () => { ctrlHeldRef.current = false; setShiftHeld(false); };
     window.addEventListener("keydown", handleKeyDown);
@@ -833,7 +888,7 @@ function SchematicCanvas() {
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlur);
     };
-  }, [removeSelected, copySelected, pasteClipboard, clearClickConnect]);
+  }, [removeSelected, copySelected, pasteClipboard, clearClickConnect, zoom, setPendingUndoSnapshot, flushPendingSnapshot]);
 
   const onDragOver = useCallback((event: DragEvent) => {
     event.preventDefault();

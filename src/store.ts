@@ -18,6 +18,7 @@ import type {
   Port,
   SchematicFile,
   SchematicPage,
+  FacePlateLayout,
   RackElevationPage,
   PrintSheetPage,
   PrintViewport,
@@ -46,7 +47,12 @@ import { routeAllEdges, orthogonalize, extractSegments, segmentsCross, type Rout
 import { simplifyWaypoints, waypointsToSvgPath, waypointsToSvgPathWithHops } from "./pathfinding";
 import { areConnectorsCompatible, needsAdapter, findAdaptersForConnectorBridge, findAdaptersForSignalBridge, NETWORK_SIGNAL_TYPES, BARE_WIRE_CONNECTORS, areSignalsCompatibleViaConnector, effectiveSignalType } from "./connectorTypes";
 import { inferRackHeightU, inferRackForm, shelfFootprintMm, shelfInnerWidthMm } from "./rackUtils";
-import { resolveRackHeightU } from "./rackMount";
+import {
+  rackDeviceDefinitionKey,
+  resolveMountingClass,
+  resolveRackHeightU,
+  type RackMetadataPatch,
+} from "./rackMount";
 import { DEVICE_TEMPLATES } from "./deviceLibrary";
 import { createDefaultLayout } from "./titleBlockLayout";
 import { sanitizeNoteHtml } from "./sanitizeHtml";
@@ -83,6 +89,92 @@ function repairMojibake(obj: unknown): unknown {
     return out;
   }
   return obj;
+}
+
+function collectFacePlateDefinitionLayoutsFromNodes(
+  nodes: SchematicNode[],
+): Record<string, FacePlateLayout> {
+  const out: Record<string, FacePlateLayout> = {};
+  for (const n of nodes) {
+    if (n.type !== "device") continue;
+    const data = n.data as DeviceData;
+    if (!data.facePlateLayout) continue;
+    const key = rackDeviceDefinitionKey(data);
+    if (!key) continue;
+    out[key] = JSON.parse(JSON.stringify(data.facePlateLayout)) as FacePlateLayout;
+  }
+  return out;
+}
+
+function mergeFacePlateLayoutsIntoNodes(
+  nodes: SchematicNode[],
+  definitionLayouts: Record<string, FacePlateLayout> | undefined,
+): SchematicNode[] {
+  if (!definitionLayouts || Object.keys(definitionLayouts).length === 0) return nodes;
+  return nodes.map((n) => {
+    if (n.type !== "device") return n;
+    const data = n.data as DeviceData;
+    if (data.facePlateLayout) return n;
+    const key = rackDeviceDefinitionKey(data);
+    const layout = key ? definitionLayouts[key] : undefined;
+    if (!layout) return n;
+    return {
+      ...n,
+      data: {
+        ...data,
+        facePlateLayout: JSON.parse(JSON.stringify(layout)) as FacePlateLayout,
+      },
+    } as DeviceNode;
+  });
+}
+
+function resolveFacePlateDefinitionLayouts(
+  nodes: SchematicNode[],
+  fromFile: Record<string, FacePlateLayout> | undefined,
+): Record<string, FacePlateLayout> {
+  return { ...collectFacePlateDefinitionLayoutsFromNodes(nodes), ...(fromFile ?? {}) };
+}
+
+function collectDeviceDefinitionRackFromNodes(nodes: SchematicNode[]): Record<string, RackMetadataPatch> {
+  const out: Record<string, RackMetadataPatch> = {};
+  for (const n of nodes) {
+    if (n.type !== "device") continue;
+    const data = n.data as DeviceData;
+    if (data.rackMetadataSource !== "explicit") continue;
+    const key = rackDeviceDefinitionKey(data);
+    if (!key) continue;
+    out[key] = {
+      rackHeightU: data.rackHeightU,
+      mountingClass: data.mountingClass,
+      rackMetadataSource: "explicit",
+      rackForm: data.rackForm,
+      heightMm: data.heightMm,
+    };
+  }
+  return out;
+}
+
+function mergeRackDefaultsIntoNodes(
+  nodes: SchematicNode[],
+  defaults: Record<string, RackMetadataPatch> | undefined,
+): SchematicNode[] {
+  if (!defaults || Object.keys(defaults).length === 0) return nodes;
+  return nodes.map((n) => {
+    if (n.type !== "device") return n;
+    const data = n.data as DeviceData;
+    if (data.rackMetadataSource === "explicit") return n;
+    const key = rackDeviceDefinitionKey(data);
+    const patch = key ? defaults[key] : undefined;
+    if (!patch) return n;
+    return { ...n, data: { ...data, ...patch } } as DeviceNode;
+  });
+}
+
+function resolveDeviceDefinitionRackMetadata(
+  nodes: SchematicNode[],
+  fromFile: Record<string, RackMetadataPatch> | undefined,
+): Record<string, RackMetadataPatch> {
+  return { ...collectDeviceDefinitionRackFromNodes(nodes), ...(fromFile ?? {}) };
 }
 
 /** Resolve the rendered stroke color for a connection. Direct-attach always wins as gray;
@@ -248,6 +340,21 @@ interface SchematicState {
   updateDevice: (nodeId: string, data: DeviceData) => void;
   /** Patch device data without clearing baseLabel (for spreadsheet edits). */
   patchDeviceData: (nodeId: string, patch: Partial<DeviceData>) => void;
+  /** Patch multiple devices in one undo step. */
+  batchPatchDeviceData: (patches: { nodeId: string; patch: Partial<DeviceData> }[]) => void;
+  /** Persist face-plate layout on device(s) and definition key for reload / new placements. */
+  facePlateDefinitionLayouts: Record<string, import("./types").FacePlateLayout>;
+  saveFacePlateLayout: (
+    nodeId: string,
+    layout: import("./types").FacePlateLayout,
+    options?: { applyToMatching?: boolean; updateDefinition?: boolean },
+  ) => void;
+  deviceDefinitionRackMetadata: Record<string, RackMetadataPatch>;
+  saveDeviceRackMetadata: (
+    nodeId: string,
+    patch: RackMetadataPatch,
+    options?: { applyToMatching?: boolean; updateDefinition?: boolean },
+  ) => void;
   /** Merge two paired ports into a single passthrough port and re-anchor their edges atomically. */
   convertPortsToPassthrough: (nodeId: string, inputPortId: string, outputPortId: string, newPort: import("./types").Port) => void;
   /** Merge every input/output port pair on a device into passthrough ports in one atomic undo step. */
@@ -621,11 +728,19 @@ interface SchematicState {
   /** Highlight a schematic port from rack elevation (links to edges). */
   selectedRackPort: { deviceNodeId: string; portId: string } | null;
   setSelectedRackPort: (sel: { deviceNodeId: string; portId: string } | null) => void;
+  /** One-shot: fit drawing viewport to a device after switching to the schematic page. */
+  schematicFocusRequest: { nodeId: string; portId?: string } | null;
+  requestSchematicFocus: (nodeId: string, portId?: string) => void;
+  /** Open face-plate layout editor for a device (rack page modal). */
+  facePlateEditNodeId: string | null;
+  setFacePlateEditNodeId: (nodeId: string | null) => void;
   addRackCrossLink: (
     pageId: string,
     link: Omit<import("./types").RackCrossLink, "id">,
   ) => string;
   removeRackCrossLink: (pageId: string, linkId: string) => void;
+  /** Rebalance half-rack sides and clear stale placement flags after device rack metadata changes. */
+  syncRackPlacementsForDevice: (deviceNodeId: string) => void;
 
   // Local file handle (File System Access API — Chromium only, not persisted)
   fileHandle: FileSystemFileHandle | null;
@@ -1216,6 +1331,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   pages: [],
   activePage: "schematic",
   selectedRackPort: null,
+  schematicFocusRequest: null,
+  facePlateEditNodeId: null,
+  facePlateDefinitionLayouts: {},
+  deviceDefinitionRackMetadata: {},
 
   setHideAdapters: (hide) => {
     const state = get();
@@ -1481,6 +1600,15 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
           : { auxiliaryData: [{ text: "{{deviceType}}", position: "header" as const }] }),
       },
     };
+    const defKey = rackDeviceDefinitionKey(newNode.data);
+    if (!newNode.data.facePlateLayout && defKey && state.facePlateDefinitionLayouts[defKey]) {
+      newNode.data.facePlateLayout = JSON.parse(
+        JSON.stringify(state.facePlateDefinitionLayouts[defKey]),
+      ) as DeviceData["facePlateLayout"];
+    }
+    if (defKey && state.deviceDefinitionRackMetadata[defKey] && newNode.data.rackMetadataSource !== "explicit") {
+      Object.assign(newNode.data, state.deviceDefinitionRackMetadata[defKey]);
+    }
     set({ nodes: renumberNodes([...get().nodes, newNode]) });
     get().saveToLocalStorage();
   },
@@ -2083,9 +2211,121 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   patchDeviceData: (nodeId, patch) => {
     const state = get();
     pushUndo({ nodes: state.nodes, edges: state.edges });
+    let definitionLayouts = state.facePlateDefinitionLayouts;
+    if (patch.facePlateLayout) {
+      const layout = JSON.parse(JSON.stringify(patch.facePlateLayout)) as import("./types").FacePlateLayout;
+      const node = state.nodes.find((n) => n.id === nodeId && n.type === "device");
+      if (node) {
+        const defKey = rackDeviceDefinitionKey(node.data as DeviceData);
+        if (defKey) definitionLayouts = { ...definitionLayouts, [defKey]: layout };
+      }
+      patch = { ...patch, facePlateLayout: layout };
+    }
     set({
+      facePlateDefinitionLayouts: definitionLayouts,
       nodes: state.nodes.map((n) => {
         if (n.id !== nodeId || n.type !== "device") return n;
+        return { ...n, data: { ...n.data, ...patch } } as DeviceNode;
+      }),
+    });
+    get().saveToLocalStorage();
+  },
+
+  saveFacePlateLayout: (nodeId, layout, options) => {
+    const state = get();
+    const source = state.nodes.find((n) => n.id === nodeId && n.type === "device");
+    if (!source) return;
+    const sourceData = source.data as DeviceData;
+    const layoutClone = JSON.parse(JSON.stringify(layout)) as import("./types").FacePlateLayout;
+    const defKey = rackDeviceDefinitionKey(sourceData);
+    const applyToMatching = options?.applyToMatching ?? false;
+    const updateDefinition = options?.updateDefinition ?? true;
+
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+
+    let definitionLayouts = { ...state.facePlateDefinitionLayouts };
+    if (defKey && updateDefinition) definitionLayouts[defKey] = layoutClone;
+
+    const nodes = state.nodes.map((n) => {
+      if (n.type !== "device") return n;
+      const data = n.data as DeviceData;
+      if (n.id === nodeId) {
+        return { ...n, data: { ...data, facePlateLayout: layoutClone } } as DeviceNode;
+      }
+      if (applyToMatching && defKey && rackDeviceDefinitionKey(data) === defKey) {
+        return { ...n, data: { ...data, facePlateLayout: layoutClone } } as DeviceNode;
+      }
+      return n;
+    });
+
+    if (sourceData.templateId) {
+      const tpl = state.customTemplates.find((t) => t.id === sourceData.templateId);
+      if (tpl) {
+        get().updateCustomTemplate(sourceData.templateId, { ...tpl, facePlateLayout: layoutClone });
+      }
+    }
+
+    set({
+      nodes,
+      facePlateDefinitionLayouts: definitionLayouts,
+      undoSize: undoStack.length,
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+  },
+
+  saveDeviceRackMetadata: (nodeId, patch, options) => {
+    const state = get();
+    const source = state.nodes.find((n) => n.id === nodeId && n.type === "device");
+    if (!source) return;
+    const sourceData = source.data as DeviceData;
+    const patchClone = { ...patch };
+    const defKey = rackDeviceDefinitionKey(sourceData);
+    const applyToMatching = options?.applyToMatching ?? false;
+    const updateDefinition = options?.updateDefinition ?? true;
+
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+
+    let deviceDefinitionRackMetadata = { ...state.deviceDefinitionRackMetadata };
+    if (defKey && updateDefinition) deviceDefinitionRackMetadata[defKey] = patchClone;
+
+    const nodes = state.nodes.map((n) => {
+      if (n.type !== "device") return n;
+      const data = n.data as DeviceData;
+      if (n.id === nodeId) {
+        return { ...n, data: { ...data, ...patchClone } } as DeviceNode;
+      }
+      if (applyToMatching && defKey && rackDeviceDefinitionKey(data) === defKey) {
+        return { ...n, data: { ...data, ...patchClone } } as DeviceNode;
+      }
+      return n;
+    });
+
+    if (sourceData.templateId) {
+      const tpl = state.customTemplates.find((t) => t.id === sourceData.templateId);
+      if (tpl) {
+        get().updateCustomTemplate(sourceData.templateId, { ...tpl, ...patchClone });
+      }
+    }
+
+    set({
+      nodes,
+      deviceDefinitionRackMetadata,
+      undoSize: undoStack.length,
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+  },
+
+  batchPatchDeviceData: (patches) => {
+    if (patches.length === 0) return;
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    const patchById = new Map(patches.map((p) => [p.nodeId, p.patch]));
+    set({
+      nodes: state.nodes.map((n) => {
+        const patch = patchById.get(n.id);
+        if (!patch || n.type !== "device") return n;
         return { ...n, data: { ...n.data, ...patch } } as DeviceNode;
       }),
     });
@@ -2338,6 +2578,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       ...(newTemplate.widthMm != null ? { widthMm: newTemplate.widthMm } : {}),
       ...(newTemplate.depthMm != null ? { depthMm: newTemplate.depthMm } : {}),
       ...(newTemplate.weightKg != null ? { weightKg: newTemplate.weightKg } : {}),
+      ...(newTemplate.rackHeightU != null
+        ? { rackHeightU: newTemplate.rackHeightU, rackMetadataSource: newTemplate.rackMetadataSource ?? "library" }
+        : {}),
+      ...(newTemplate.mountingClass ? { mountingClass: newTemplate.mountingClass } : {}),
+      ...(newTemplate.rackForm ? { rackForm: newTemplate.rackForm } : {}),
       ...(newTemplate.isVenueProvided ? { isVenueProvided: true } : {}),
       ...(newTemplate.deviceType === "cable-accessory" ? { isCableAccessory: true } : {}),
       ...(installedSlots.length > 0 ? { slots: installedSlots } : {}),
@@ -4089,7 +4334,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const state = get();
     pushUndo({ nodes: state.nodes, edges: state.edges });
     const id = nextPrintSheetId();
-    const pageLabel = label ?? `Sheet ${state.pages.filter((p) => p.type === "print-sheet").length + 1}`;
+    const pageLabel = label ?? `Print View ${state.pages.filter((p) => p.type === "print-sheet").length + 1}`;
     const page: PrintSheetPage = {
       id,
       label: pageLabel,
@@ -4329,6 +4574,21 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
   setSelectedRackPort: (sel) => set({ selectedRackPort: sel }),
 
+  requestSchematicFocus: (nodeId, portId) => {
+    const state = get();
+    if (!state.nodes.some((n) => n.id === nodeId)) return;
+    set({
+      activePage: "schematic",
+      schematicFocusRequest: { nodeId, portId },
+      nodes: state.nodes.map((n) => ({ ...n, selected: n.id === nodeId })),
+      ...(portId
+        ? { selectedRackPort: { deviceNodeId: nodeId, portId } }
+        : {}),
+    });
+  },
+
+  setFacePlateEditNodeId: (nodeId) => set({ facePlateEditNodeId: nodeId }),
+
   addRackCrossLink: (pageId, linkData) => {
     const state = get();
     pushUndo({ nodes: state.nodes, edges: state.edges });
@@ -4357,6 +4617,65 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       undoSize: undoStack.length,
       redoSize: 0,
     });
+    get().saveToLocalStorage();
+  },
+
+  syncRackPlacementsForDevice: (deviceNodeId) => {
+    const state = get();
+    const deviceNode = state.nodes.find((n) => n.id === deviceNodeId && n.type === "device");
+    if (!deviceNode) return;
+
+    const deviceDataMap = new Map<string, DeviceData>();
+    for (const n of state.nodes) {
+      if (n.type === "device") deviceDataMap.set(n.id, n.data as DeviceData);
+    }
+
+    const updatedPages = state.pages.map((page): SchematicPage => {
+      if (page.type !== "rack-elevation") return page;
+
+      let placements = page.placements.map((p) => {
+        if (p.deviceNodeId !== deviceNodeId) return p;
+        const mc = resolveMountingClass(deviceNode.data as DeviceData);
+        if (mc === "rack-full") {
+          const { halfRackSide: _removed, ...rest } = p;
+          return rest as RackDevicePlacement;
+        }
+        return p;
+      });
+
+      const halfKeys = new Set<string>();
+      for (const p of placements) {
+        if (p.mountedOnShelfId) continue;
+        const dd = deviceDataMap.get(p.deviceNodeId);
+        if (!dd || resolveMountingClass(dd) !== "rack-half") continue;
+        halfKeys.add(`${p.rackId}\0${p.face}\0${p.uPosition}`);
+      }
+
+      for (const key of halfKeys) {
+        const [rackId, face, uStr] = key.split("\0");
+        const uPosition = Number(uStr);
+        const halves = placements
+          .filter((p) => {
+            if (p.rackId !== rackId || p.face !== face || p.uPosition !== uPosition || p.mountedOnShelfId) {
+              return false;
+            }
+            const dd = deviceDataMap.get(p.deviceNodeId);
+            return !!dd && resolveMountingClass(dd) === "rack-half";
+          })
+          .sort((a, b) => a.id.localeCompare(b.id));
+
+        placements = placements.map((p) => {
+          const idx = halves.findIndex((h) => h.id === p.id);
+          if (idx < 0) return p;
+          const halfRackSide: "left" | "right" = idx % 2 === 0 ? "left" : "right";
+          return { ...p, halfRackSide };
+        });
+      }
+
+      return { ...page, placements };
+    });
+
+    set({ pages: updatedPages });
     get().saveToLocalStorage();
   },
 
@@ -4420,6 +4739,14 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       colorKeyPage: state.colorKeyPage !== "all" ? state.colorKeyPage : undefined,
       colorKeyOverrides: state.colorKeyOverrides && Object.keys(state.colorKeyOverrides).length > 0 ? state.colorKeyOverrides : undefined,
       pages: state.pages.length > 0 ? state.pages : undefined,
+      facePlateDefinitionLayouts:
+        Object.keys(state.facePlateDefinitionLayouts).length > 0
+          ? state.facePlateDefinitionLayouts
+          : undefined,
+      deviceDefinitionRackMetadata:
+        Object.keys(state.deviceDefinitionRackMetadata).length > 0
+          ? state.deviceDefinitionRackMetadata
+          : undefined,
       cableCosts: state.cableCosts && Object.keys(state.cableCosts).length > 0 ? state.cableCosts : undefined,
       roomDistances: state.roomDistances && Object.keys(state.roomDistances).length > 0 ? state.roomDistances : undefined,
       distanceSettings: state.distanceSettings,
@@ -4532,13 +4859,25 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       applyRoomLockState(data.nodes);
       syncCounters(data.nodes, data.edges);
       data.edges = removeOrphanedEdges(data.nodes, data.edges);
+      const facePlateDefinitionLayouts = resolveFacePlateDefinitionLayouts(
+        data.nodes,
+        data.facePlateDefinitionLayouts,
+      );
+      const deviceDefinitionRackMetadata = resolveDeviceDefinitionRackMetadata(
+        data.nodes,
+        data.deviceDefinitionRackMetadata,
+      );
+      let nodes = mergeFacePlateLayoutsIntoNodes(data.nodes, facePlateDefinitionLayouts);
+      nodes = mergeRackDefaultsIntoNodes(nodes, deviceDefinitionRackMetadata);
       // Always apply colors — if file has none, reset to defaults
       const colors = data.signalColors ?? {};
       applySignalColors(colors);
       saveSignalColors({ ...loadSignalColors(), ...colors });
       set({
-        nodes: data.nodes,
+        nodes,
         edges: data.edges,
+        facePlateDefinitionLayouts,
+        deviceDefinitionRackMetadata,
         schematicName: data.name ?? "Untitled Schematic",
         ownedGear: data.ownedGear ?? [],
         signalColors: data.signalColors,
@@ -4672,6 +5011,14 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       colorKeyPage: state.colorKeyPage !== "all" ? state.colorKeyPage : undefined,
       colorKeyOverrides: state.colorKeyOverrides && Object.keys(state.colorKeyOverrides).length > 0 ? state.colorKeyOverrides : undefined,
       pages: state.pages.length > 0 ? state.pages : undefined,
+      facePlateDefinitionLayouts:
+        Object.keys(state.facePlateDefinitionLayouts).length > 0
+          ? state.facePlateDefinitionLayouts
+          : undefined,
+      deviceDefinitionRackMetadata:
+        Object.keys(state.deviceDefinitionRackMetadata).length > 0
+          ? state.deviceDefinitionRackMetadata
+          : undefined,
       cableCosts: state.cableCosts && Object.keys(state.cableCosts).length > 0 ? state.cableCosts : undefined,
       roomDistances: state.roomDistances && Object.keys(state.roomDistances).length > 0 ? state.roomDistances : undefined,
       distanceSettings: state.distanceSettings,
@@ -4827,8 +5174,18 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   importFromJSON: (rawData) => {
     rawData = repairMojibake(rawData) as SchematicFile;
     const data = migrateSchematic(rawData) as SchematicFile;
-    const nodes = data.nodes ?? [];
+    let nodes = data.nodes ?? [];
     let edges = data.edges ?? [];
+    const facePlateDefinitionLayouts = resolveFacePlateDefinitionLayouts(
+      nodes,
+      data.facePlateDefinitionLayouts,
+    );
+    const deviceDefinitionRackMetadata = resolveDeviceDefinitionRackMetadata(
+      nodes,
+      data.deviceDefinitionRackMetadata,
+    );
+    nodes = mergeFacePlateLayoutsIntoNodes(nodes, facePlateDefinitionLayouts);
+    nodes = mergeRackDefaultsIntoNodes(nodes, deviceDefinitionRackMetadata);
     // Sanitize note HTML to prevent XSS from malicious schematic files
     for (const node of nodes) {
       if (node.type === "note" && node.data && "html" in node.data) {
@@ -4857,6 +5214,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     set({
       nodes,
       edges,
+      facePlateDefinitionLayouts,
+      deviceDefinitionRackMetadata,
       schematicName: data.name ?? "Imported Schematic",
       isDemo: false,
       ownedGear: data.ownedGear ?? [],

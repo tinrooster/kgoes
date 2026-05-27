@@ -68,6 +68,12 @@ export default function PortContextMenu() {
     useSchematicStore.setState({ portContextMenu: null });
   }, [menu]);
 
+  const showInDrawing = useCallback(() => {
+    if (!menu) return;
+    useSchematicStore.getState().requestSchematicFocus(menu.nodeId, menu.portId);
+    useSchematicStore.setState({ portContextMenu: null });
+  }, [menu]);
+
   const showOnRackElevation = useCallback(() => {
     if (!menu) return;
     const state = useSchematicStore.getState();
@@ -239,6 +245,7 @@ export default function PortContextMenu() {
         <MenuItem label="Convert All Ports to Passthrough" onClick={convertAllToPassthrough} />
       )}
       <div className="border-t border-gray-200 my-1" />
+      <MenuItem label="Show in Drawing" onClick={showInDrawing} />
       {isOnRackElevation && (
         <MenuItem label="Show on rack elevation" onClick={showOnRackElevation} />
       )}

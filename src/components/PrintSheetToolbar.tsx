@@ -3,19 +3,31 @@ import type { PrintSheetPage, RackElevationPage } from "../types";
 import { PAPER_SIZES } from "../printConfig";
 import { autoFillSheetForElevationPage, autoFillSheetForRack } from "../printSheetAutoFill";
 import { runPrintSheetExport } from "../printSheetExport";
+import type { PrintLayoutOp } from "../printSheetLayoutUtils";
+import {
+  IconAlignBottom,
+  IconAlignHorizontalCentre,
+  IconAlignTop,
+  IconAlignVerticalCenter,
+  IconDistributeSpacingHorizontal,
+  IconDistributeSpacingVertical,
+  LayoutToolbarButton,
+} from "./LayoutToolbarIcons";
 
 interface Props {
   page: PrintSheetPage;
+  selectedVpIds: string[];
+  onLayout: (op: PrintLayoutOp) => void;
 }
 
-export default function PrintSheetToolbar({ page }: Props) {
+export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Props) {
   const setPrintSheetPaper = useSchematicStore((s) => s.setPrintSheetPaper);
   const addViewport = useSchematicStore((s) => s.addViewport);
   const removeViewport = useSchematicStore((s) => s.removeViewport);
   const pages = useSchematicStore((s) => s.pages);
   const elevationPages = pages.filter((p): p is RackElevationPage => p.type === "rack-elevation");
 
-  // Sheet index display (e.g. "Sheet 2 of 3").
+  // Print view index display (e.g. "Print View 2 of 3").
   const printSheetPages = pages.filter((p): p is PrintSheetPage => p.type === "print-sheet");
   const sheetIndex = printSheetPages.findIndex((p) => p.id === page.id) + 1;
   const sheetCount = printSheetPages.length;
@@ -37,8 +49,11 @@ export default function PrintSheetToolbar({ page }: Props) {
     for (const vp of viewports) addViewport(page.id, vp);
   };
 
+  const selCount = selectedVpIds.length;
+
   return (
-    <div className="flex items-center gap-3 px-3 py-1.5 bg-blue-50 border-b border-blue-200 text-xs" data-print-hide>
+    <div className="flex flex-col border-b border-blue-200 bg-blue-50 text-xs" data-print-hide>
+    <div className="flex items-center gap-3 px-3 py-1.5 flex-wrap">
       {/* Paper size */}
       <label className="text-neutral-500 uppercase tracking-wider" style={{ fontSize: 9 }}>Paper</label>
       <select
@@ -178,7 +193,7 @@ export default function PrintSheetToolbar({ page }: Props) {
       {/* Sheet count */}
       {sheetCount > 1 && (
         <span className="text-neutral-500" style={{ fontFamily: "monospace", fontSize: 11 }}>
-          Sheet {sheetIndex} of {sheetCount}
+          Print View {sheetIndex} of {sheetCount}
         </span>
       )}
 
@@ -199,6 +214,60 @@ export default function PrintSheetToolbar({ page }: Props) {
       >
         Export PDF
       </button>
+    </div>
+
+    <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-t border-blue-100 bg-white/60">
+      <span className="text-[10px] uppercase tracking-wider text-neutral-400 shrink-0">Align</span>
+      <LayoutToolbarButton
+        disabled={selCount < 2}
+        onClick={() => onLayout("align-center-h")}
+        title="Align horizontal centers"
+      >
+        <IconAlignHorizontalCentre />
+      </LayoutToolbarButton>
+      <LayoutToolbarButton
+        disabled={selCount < 2}
+        onClick={() => onLayout("align-top")}
+        title="Align top edges"
+      >
+        <IconAlignTop />
+      </LayoutToolbarButton>
+      <LayoutToolbarButton
+        disabled={selCount < 2}
+        onClick={() => onLayout("align-middle-v")}
+        title="Align vertical centers"
+      >
+        <IconAlignVerticalCenter />
+      </LayoutToolbarButton>
+      <LayoutToolbarButton
+        disabled={selCount < 2}
+        onClick={() => onLayout("align-bottom")}
+        title="Align bottom edges"
+      >
+        <IconAlignBottom />
+      </LayoutToolbarButton>
+      <span className="text-neutral-300">|</span>
+      <span className="text-[10px] uppercase tracking-wider text-neutral-400 shrink-0">Distribute</span>
+      <LayoutToolbarButton
+        disabled={selCount < 2}
+        onClick={() => onLayout("distribute-h")}
+        title="Distribute horizontal spacing between outer views"
+      >
+        <IconDistributeSpacingHorizontal />
+      </LayoutToolbarButton>
+      <LayoutToolbarButton
+        disabled={selCount < 2}
+        onClick={() => onLayout("distribute-v")}
+        title="Distribute vertical spacing between outer views"
+      >
+        <IconDistributeSpacingVertical />
+      </LayoutToolbarButton>
+      <span className="text-[10px] text-neutral-400 ml-auto">
+        {selCount < 1
+          ? "Drag right (blue) = fully inside · drag left (green) = center inside box"
+          : `${selCount} view${selCount === 1 ? "" : "s"} selected`}
+      </span>
+    </div>
     </div>
   );
 }

@@ -1,10 +1,53 @@
-import { useState, useCallback, useRef, useMemo, type WheelEvent } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect, type WheelEvent } from "react";
 import type { DeviceData, FacePlateLayout, FacePlateLabel } from "../types";
-import { autoLayoutPorts, inferRackHeightU, PX_PER_U, DEVICE_WIDTH_PX, PX_PER_MM } from "../rackUtils";
+import { inferRackHeightU, PX_PER_U, DEVICE_WIDTH_PX, PX_PER_MM } from "../rackUtils";
+import {
+  autoLayoutAllFacePlateItems,
+  buildFacePlateLayoutPatch,
+  countMatchingDeviceInstances,
+  enumerateFacePlateItems,
+  facePlateItemKey,
+  FACE_PLATE_SNAP_PCT,
+  itemsForPanel,
+  normalizeFacePlatePositions,
+  parseFacePlateItemKey,
+  rackDeviceDefinitionKey,
+  snapFacePlateCoord,
+  snapGridSpacingPx,
+  type FacePlatePanel,
+} from "../facePlateUtils";
+import { useSchematicStore } from "../store";
 import { ConnectorIcon, getConnectorSpec } from "./connectorIcons";
 import { SIGNAL_COLORS } from "../types";
+import ApplyFacePlateLayoutDialog from "./ApplyFacePlateLayoutDialog";
+import {
+  hitTestItemRect,
+  hitTestPoint,
+  MARQUEE_BOX_STYLES,
+  MARQUEE_FACE_PLATE_HALO_PX,
+  MARQUEE_SCREEN_STROKE_PX,
+  marqueeModeFromDrag,
+  normalizeRect,
+  type NormalizedRect,
+} from "../selectionBoxUtils";
+import {
+  arrowDirectionFromKey,
+  axisDelta,
+  nudgeStepFacePlatePct,
+  type ArrowDirection,
+} from "../nudgeUtils";
+import {
+  IconAlignBottom,
+  IconAlignHorizontalCentre,
+  IconAlignTop,
+  IconAlignVerticalCenter,
+  IconDistributeSpacingHorizontal,
+  IconDistributeSpacingVertical,
+  LayoutToolbarButton,
+} from "./LayoutToolbarIcons";
 
 interface FacePlateEditorProps {
+  nodeId: string;
   deviceData: DeviceData;
   onSave: (layout: FacePlateLayout) => void;
   onClose: () => void;
@@ -12,23 +55,83 @@ interface FacePlateEditorProps {
 
 // Canonical padding around face plate (in rack-pixel units)
 const PAD = 6;
+const PANEL_GAP = 10;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 8;
 const DEVICE_LABEL_ID = "__device_label__";
+type PanelLayoutMode = "stacked" | "sideBySide";
 
 /** Compute device label font size — same formula as rack view */
 function computeDeviceLabelFont(fontSize: number, h: number) {
   return Math.max(4, fontSize * (h / 140));
 }
 
-export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePlateEditorProps) {
+/** viewBox width = svgW/zoom — zoom 1 shows the full plate; values > 1 magnify. */
+function fitZoomToCanvas(canvasW: number, canvasH: number, svgW: number, svgH: number): number {
+  if (canvasW <= 0 || canvasH <= 0 || svgW <= 0 || svgH <= 0) return 1;
+  return Math.max(MIN_ZOOM, Math.min(1, (canvasW / svgW) * 0.92, (canvasH / svgH) * 0.92));
+}
+
+export default function FacePlateEditor({ nodeId, deviceData, onSave, onClose }: FacePlateEditorProps) {
   const heightU = inferRackHeightU(deviceData);
+  const [activePanel, setActivePanel] = useState<FacePlatePanel>("front");
+  const [panelLayout, setPanelLayout] = useState<PanelLayoutMode>("stacked");
+  const [applyPrompt, setApplyPrompt] = useState<{ modelName: string; otherCount: number } | null>(null);
+  const pendingLayoutRef = useRef<FacePlateLayout | null>(null);
+  const [panelAssignments, setPanelAssignments] = useState<Record<string, FacePlatePanel>>(
+    () => ({ ...(deviceData.facePlateLayout?.panelAssignments ?? {}) }),
+  );
+  const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
+
+  const allItems = useMemo(
+    () => enumerateFacePlateItems(deviceData.ports ?? [], deviceData.deviceType, panelAssignments),
+    [deviceData.ports, deviceData.deviceType, panelAssignments],
+  );
+  const frontCount = useMemo(() => itemsForPanel(allItems, "front").length, [allItems]);
+  const rearCount = useMemo(() => itemsForPanel(allItems, "rear").length, [allItems]);
+  const panelItems = useMemo(
+    () => itemsForPanel(allItems, activePanel),
+    [allItems, activePanel],
+  );
+  const dualPanels = rearCount > 0;
 
   // Canonical dimensions — exactly match the rack view
   const canonW = DEVICE_WIDTH_PX;
   const canonH = heightU * PX_PER_U - 1;
-  const svgW = canonW + PAD * 2;
-  const svgH = canonH + PAD * 2;
+  const innerW =
+    dualPanels && panelLayout === "sideBySide" ? canonW * 2 + PANEL_GAP : canonW;
+  const innerH =
+    dualPanels && panelLayout === "stacked" ? canonH * 2 + PANEL_GAP : canonH;
+  const svgW = innerW + PAD * 2;
+  const svgH = innerH + PAD * 2;
+
+  const panelOrigin = useCallback(
+    (panel: FacePlatePanel) => {
+      if (!dualPanels) return { x: PAD, y: PAD };
+      if (panelLayout === "sideBySide") {
+        return panel === "rear"
+          ? { x: PAD + canonW + PANEL_GAP, y: PAD }
+          : { x: PAD, y: PAD };
+      }
+      return panel === "rear"
+        ? { x: PAD, y: PAD + canonH + PANEL_GAP }
+        : { x: PAD, y: PAD };
+    },
+    [dualPanels, panelLayout, canonW, canonH],
+  );
+
+  const panelAtPointer = useCallback(
+    (svgX: number, svgY: number): FacePlatePanel => {
+      if (!dualPanels) return activePanel;
+      if (panelLayout === "sideBySide") {
+        const rearStart = PAD + canonW + PANEL_GAP / 2;
+        return svgX >= rearStart ? "rear" : "front";
+      }
+      const rearStart = PAD + canonH + PANEL_GAP / 2;
+      return svgY >= rearStart ? "rear" : "front";
+    },
+    [dualPanels, panelLayout, canonW, canonH, activePanel],
+  );
 
   // Face-plate rendering sizes
   const availableHeight = canonH - 14;
@@ -40,23 +143,14 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const panRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
 
-  // Auto-layout as fallback
-  const autoLayout = useMemo(
-    () => autoLayoutPorts(deviceData.ports ?? [], canonW, canonH),
-    [deviceData.ports, canonW, canonH],
+  const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>(() =>
+    normalizeFacePlatePositions(
+      deviceData.ports ?? [],
+      deviceData.deviceType,
+      deviceData.facePlateLayout?.positions,
+      deviceData.facePlateLayout?.panelAssignments,
+    ),
   );
-
-  // Initialize positions from existing layout or auto-layout
-  const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>(() => {
-    if (deviceData.facePlateLayout?.positions) {
-      return { ...deviceData.facePlateLayout.positions };
-    }
-    const pos: Record<string, { x: number; y: number }> = {};
-    for (const lp of autoLayout) {
-      pos[lp.id] = { x: lp.x, y: lp.y };
-    }
-    return pos;
-  });
 
   const [labels, setLabels] = useState<FacePlateLabel[]>(
     () => (deviceData.facePlateLayout?.labels ? [...deviceData.facePlateLayout.labels] : []),
@@ -72,7 +166,7 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
   );
 
   const [snapEnabled, setSnapEnabled] = useState(true);
-  const [gridSize, setGridSize] = useState(2);
+  const [gridSize, setGridSize] = useState(FACE_PLATE_SNAP_PCT);
 
   // Multi-selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -134,23 +228,26 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
   } | null>(null);
 
   // Marquee selection state
-  const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
-  const marqueeRef = useRef<{ startX: number; startY: number } | null>(null);
+  const [marquee, setMarquee] = useState<{
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    clientX1: number;
+    clientX2: number;
+  } | null>(null);
+  const marqueeRef = useRef<{ startX: number; startY: number; startClientX: number } | null>(null);
   const justFinishedInteraction = useRef(false);
 
   const svgRef = useRef<SVGSVGElement>(null);
-
-  // Snap — square pixel grid using percentage coordinates
-  const yGridSize = useMemo(() => {
-    const cellPx = (gridSize / 100) * canonW;
-    return (cellPx / canonH) * 100;
-  }, [gridSize, canonW, canonH]);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const autoFitDoneRef = useRef(false);
 
   const snapX = useCallback(
     (val: number) => {
       const clamped = Math.max(2, Math.min(98, val));
       if (!snapEnabled) return clamped;
-      return Math.max(2, Math.min(98, Math.round(clamped / gridSize) * gridSize));
+      return snapFacePlateCoord(clamped, gridSize);
     },
     [snapEnabled, gridSize],
   );
@@ -159,28 +256,31 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
     (val: number) => {
       const clamped = Math.max(2, Math.min(98, val));
       if (!snapEnabled) return clamped;
-      return Math.max(2, Math.min(98, Math.round(clamped / yGridSize) * yGridSize));
+      return snapFacePlateCoord(clamped, gridSize);
     },
-    [snapEnabled, yGridSize],
+    [snapEnabled, gridSize],
   );
 
   // Convert mouse position to face-plate percentage coordinates (viewBox-aware via getScreenCTM)
   const toFaceCoords = useCallback(
     (e: React.MouseEvent) => {
       const svg = svgRef.current;
-      if (!svg) return { x: 50, y: 50 };
+      if (!svg) return { x: 50, y: 50, panel: activePanel as FacePlatePanel };
       const ctm = svg.getScreenCTM();
-      if (!ctm) return { x: 50, y: 50 };
+      if (!ctm) return { x: 50, y: 50, panel: activePanel as FacePlatePanel };
       const pt = svg.createSVGPoint();
       pt.x = e.clientX;
       pt.y = e.clientY;
       const svgPt = pt.matrixTransform(ctm.inverse());
+      const panel = panelAtPointer(svgPt.x, svgPt.y);
+      const origin = panelOrigin(panel);
       return {
-        x: ((svgPt.x - PAD) / canonW) * 100,
-        y: ((svgPt.y - PAD) / canonH) * 100,
+        panel,
+        x: ((svgPt.x - origin.x) / canonW) * 100,
+        y: ((svgPt.y - origin.y) / canonH) * 100,
       };
     },
-    [canonW, canonH],
+    [canonW, canonH, activePanel, panelAtPointer, panelOrigin],
   );
 
   // Get position for any item by id
@@ -234,6 +334,8 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
           y1: marqueeRef.current.startY,
           x2: coords.x,
           y2: coords.y,
+          clientX1: marqueeRef.current.startClientX,
+          clientX2: e.clientX,
         });
         return;
       }
@@ -281,26 +383,54 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
     [toFaceCoords, snapX, snapY, positions],
   );
 
+  const portItemRect = useCallback(
+    (itemKey: string, pos: { x: number; y: number }): NormalizedRect => {
+      const item = allItems.find((i) => i.key === itemKey);
+      if (!item) {
+        return { minX: pos.x, maxX: pos.x, minY: pos.y, maxY: pos.y };
+      }
+      const spec = getConnectorSpec(item.connectorType);
+      const halfW = ((spec.widthMm * PX_PER_MM) / 2 / canonW) * 100;
+      const halfH = ((spec.heightMm * PX_PER_MM) / 2 / canonH) * 100;
+      return {
+        minX: pos.x - halfW,
+        maxX: pos.x + halfW,
+        minY: pos.y - halfH,
+        maxY: pos.y + halfH,
+      };
+    },
+    [allItems, canonW, canonH],
+  );
+
   const handleMouseUp = useCallback(() => {
     if (marqueeRef.current && marquee) {
-      const minX = Math.min(marquee.x1, marquee.x2);
-      const maxX = Math.max(marquee.x1, marquee.x2);
-      const minY = Math.min(marquee.y1, marquee.y2);
-      const maxY = Math.max(marquee.y1, marquee.y2);
+      const box = normalizeRect(marquee.x1, marquee.y1, marquee.x2, marquee.y2);
+      const mode = marqueeModeFromDrag(marquee.clientX1, marquee.clientX2);
+      const hasArea = box.maxX - box.minX > 0.25 && box.maxY - box.minY > 0.25;
 
-      const hits = new Set<string>();
-      for (const [pid, pos] of Object.entries(positions)) {
-        if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) hits.add(pid);
-      }
-      for (const lbl of labels) {
-        if (lbl.x >= minX && lbl.x <= maxX && lbl.y >= minY && lbl.y <= maxY) hits.add(lbl.id);
-      }
-      if (deviceLabelPos.x >= minX && deviceLabelPos.x <= maxX &&
-          deviceLabelPos.y >= minY && deviceLabelPos.y <= maxY) {
-        hits.add(DEVICE_LABEL_ID);
+      if (hasArea) {
+        const hits = new Set<string>();
+        for (const [pid, pos] of Object.entries(positions)) {
+          const parsed = parseFacePlateItemKey(pid);
+          if (dualPanels && parsed.panel && parsed.panel !== activePanel) continue;
+          const rect = portItemRect(pid, pos);
+          if (mode === "window") {
+            if (hitTestItemRect(mode, rect, box)) hits.add(pid);
+          } else {
+            const cx = (rect.minX + rect.maxX) / 2;
+            const cy = (rect.minY + rect.maxY) / 2;
+            if (hitTestPoint("window", cx, cy, box)) hits.add(pid);
+          }
+        }
+        for (const lbl of labels) {
+          if (hitTestPoint(mode, lbl.x, lbl.y, box)) hits.add(lbl.id);
+        }
+        if (hitTestPoint(mode, deviceLabelPos.x, deviceLabelPos.y, box)) {
+          hits.add(DEVICE_LABEL_ID);
+        }
+        setSelectedIds(hits);
       }
 
-      setSelectedIds(hits);
       setMarquee(null);
       marqueeRef.current = null;
     }
@@ -308,7 +438,7 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
     dragRef.current = null;
     panRef.current = null;
     justFinishedInteraction.current = true;
-  }, [marquee, positions, labels, deviceLabelPos]);
+  }, [marquee, positions, labels, deviceLabelPos, portItemRect, dualPanels, activePanel]);
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
@@ -320,7 +450,7 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
     pt.x = e.clientX;
     pt.y = e.clientY;
     const svgPt = pt.matrixTransform(ctm.inverse());
-    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    const factor = Math.exp(-e.deltaY * 0.0015);
     const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * factor));
     const ratio = newZoom / zoom;
     setPan((prev) => ({
@@ -338,11 +468,19 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
     }
     if (e.button === 0) {
       const coords = toFaceCoords(e);
-      marqueeRef.current = { startX: coords.x, startY: coords.y };
-      setMarquee({ x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y });
+      if (dualPanels) setActivePanel(coords.panel);
+      marqueeRef.current = { startX: coords.x, startY: coords.y, startClientX: e.clientX };
+      setMarquee({
+        x1: coords.x,
+        y1: coords.y,
+        x2: coords.x,
+        y2: coords.y,
+        clientX1: e.clientX,
+        clientX2: e.clientX,
+      });
       if (!e.shiftKey) setSelectedIds(new Set());
     }
-  }, [pan, toFaceCoords]);
+  }, [pan, toFaceCoords, dualPanels]);
 
   const handleBgMouseMove = useCallback((e: React.MouseEvent) => {
     if (panRef.current) {
@@ -360,26 +498,86 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
   }, [handleMouseMove]);
 
   const handleResetView = useCallback(() => {
-    setZoom(1);
+    const el = canvasRef.current;
+    if (el) {
+      setZoom(fitZoomToCanvas(el.clientWidth, el.clientHeight, svgW, svgH));
+    } else {
+      setZoom(1);
+    }
     setPan({ x: 0, y: 0 });
-  }, []);
+    autoFitDoneRef.current = true;
+  }, [svgW, svgH]);
 
   const handleResetLayout = useCallback(() => {
     pushUndo();
-    const pos: Record<string, { x: number; y: number }> = {};
-    for (const lp of autoLayout) {
-      pos[lp.id] = { x: lp.x, y: lp.y };
-    }
-    setPositions(pos);
+    setPositions(
+      autoLayoutAllFacePlateItems(deviceData.ports ?? [], deviceData.deviceType, panelAssignments),
+    );
     setLabels([]);
     setDeviceLabelPos({ x: 50, y: 8, fontSize: 12 });
     setSelectedIds(new Set());
-  }, [autoLayout, pushUndo]);
+  }, [deviceData.ports, deviceData.deviceType, panelAssignments, pushUndo]);
+
+  const movePortToPanel = useCallback(
+    (portId: string, fromKey: string, targetPanel: FacePlatePanel) => {
+      const port = (deviceData.ports ?? []).find((p) => p.id === portId);
+      if (!port || port.direction === "passthrough") return;
+      pushUndo();
+      setPanelAssignments((prev) => ({ ...prev, [portId]: targetPanel }));
+      const newKey = facePlateItemKey(portId, targetPanel);
+      setPositions((prev) => {
+        const pos = prev[fromKey] ?? prev[portId];
+        const next = { ...prev };
+        if (pos) next[newKey] = pos;
+        delete next[fromKey];
+        delete next[portId];
+        return next;
+      });
+      setActivePanel(targetPanel);
+      setSelectedIds(new Set([newKey]));
+    },
+    [deviceData.ports, pushUndo],
+  );
+
+  const moveSelectedPortsToPanel = useCallback((targetPanel: FacePlatePanel) => {
+    const ports = deviceData.ports ?? [];
+    const selected = [...selectedIds]
+      .map((id) => ({ id, parsed: parseFacePlateItemKey(id) }))
+      .filter(({ parsed }) => parsed.panel === "front" || parsed.panel === "rear")
+      .map(({ id, parsed }) => ({ id, portId: parsed.portId }));
+    if (selected.length === 0) return;
+    const movable = selected.filter(({ portId }) => {
+      const p = ports.find((x) => x.id === portId);
+      return p && p.direction !== "passthrough";
+    });
+    if (movable.length === 0) return;
+    pushUndo();
+    const movedSelection = new Set<string>();
+    setPanelAssignments((prev) => {
+      const next = { ...prev };
+      for (const m of movable) next[m.portId] = targetPanel;
+      return next;
+    });
+    setPositions((prev) => {
+      const next = { ...prev };
+      for (const m of movable) {
+        const newKey = facePlateItemKey(m.portId, targetPanel);
+        const oldPos = next[m.id] ?? next[m.portId];
+        if (oldPos) next[newKey] = oldPos;
+        delete next[m.id];
+        delete next[m.portId];
+        movedSelection.add(newKey);
+      }
+      return next;
+    });
+    setSelectedIds(movedSelection);
+    setActivePanel(targetPanel);
+  }, [deviceData.ports, selectedIds, pushUndo]);
 
   const handleAddLabel = useCallback(() => {
     pushUndo();
     const id = `lbl-${Date.now()}`;
-    setLabels((prev) => [...prev, { id, text: "LABEL", x: 50, y: 8 }]);
+    setLabels((prev) => [...prev, { id, text: "LABEL", x: 50, y: 8, fontSize: 4 }]);
     setSelectedIds(new Set([id]));
   }, [pushUndo]);
 
@@ -399,13 +597,45 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
     }
   }, [selectedIds, labels, pushUndo]);
 
+  const commitSave = useCallback(
+    (applyToAll: boolean) => {
+      const layout = pendingLayoutRef.current;
+      if (!layout) return;
+      useSchematicStore.getState().saveFacePlateLayout(nodeId, layout, {
+        applyToMatching: applyToAll,
+        updateDefinition: applyToAll,
+      });
+      pendingLayoutRef.current = null;
+      setApplyPrompt(null);
+      onClose();
+    },
+    [nodeId, onSave, onClose],
+  );
+
   const handleSave = useCallback(() => {
-    onSave({
+    const layout = buildFacePlateLayoutPatch(
       positions,
-      labels: labels.length > 0 ? labels : undefined,
-      deviceLabel: { x: deviceLabelPos.x, y: deviceLabelPos.y, fontSize: deviceLabelPos.fontSize },
-    });
-  }, [positions, labels, deviceLabelPos, onSave]);
+      labels.length > 0 ? labels : undefined,
+      { x: deviceLabelPos.x, y: deviceLabelPos.y, fontSize: deviceLabelPos.fontSize },
+      panelAssignments,
+    );
+    pendingLayoutRef.current = layout;
+    const defKey = rackDeviceDefinitionKey(deviceData);
+    const { others, modelName } = countMatchingDeviceInstances(
+      useSchematicStore.getState().nodes.map((n) => ({
+        id: n.id,
+        type: n.type,
+        data: n.data as DeviceData,
+      })),
+      nodeId,
+      defKey,
+    );
+    if (others.length > 0) {
+      setApplyPrompt({ modelName, otherCount: others.length });
+      return;
+    }
+    commitSave(false);
+  }, [positions, labels, deviceLabelPos, deviceData, nodeId, commitSave]);
 
   // ── Align / Distribute ──────────────────────────────────────────────
 
@@ -464,9 +694,20 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
 
   const handleDistribute = useCallback((axis: "x" | "y") => {
     const items = getSelectedPositions();
-    if (items.length < 3) return;
+    if (items.length < 2) return;
     pushUndo();
     const sorted = [...items].sort((a, b) => (axis === "x" ? a.x - b.x : a.y - b.y));
+    if (sorted.length === 2) {
+      const a = axis === "x" ? sorted[0].x : sorted[0].y;
+      const b = axis === "x" ? sorted[1].x : sorted[1].y;
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      applyPositions([
+        { ...sorted[0], ...(axis === "x" ? { x: lo } : { y: lo }) },
+        { ...sorted[1], ...(axis === "x" ? { x: hi } : { y: hi }) },
+      ]);
+      return;
+    }
     const first = axis === "x" ? sorted[0].x : sorted[0].y;
     const last = axis === "x" ? sorted[sorted.length - 1].x : sorted[sorted.length - 1].y;
     const step = (last - first) / (sorted.length - 1);
@@ -477,6 +718,81 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
     })));
   }, [getSelectedPositions, applyPositions, pushUndo]);
 
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const handleNudge = useCallback(
+    (direction: ArrowDirection) => {
+      if (!direction || selectedIds.size === 0 || editingLabelId) return;
+
+      let stepX: number;
+      let stepY: number;
+      if (snapEnabled) {
+        const step = gridSize;
+        ({ dx: stepX, dy: stepY } = axisDelta(direction, step));
+      } else {
+        const scale = svgRef.current?.getScreenCTM()?.a ?? 1;
+        const { dxPct, dyPct } = nudgeStepFacePlatePct(scale, canonW, canonH);
+        stepX = direction === "left" ? -dxPct : direction === "right" ? dxPct : 0;
+        stepY = direction === "up" ? -dyPct : direction === "down" ? dyPct : 0;
+      }
+
+      pushUndo();
+      const items = getSelectedPositions().map((it) => ({
+        ...it,
+        x: Math.max(2, Math.min(98, it.x + stepX)),
+        y: Math.max(2, Math.min(98, it.y + stepY)),
+      }));
+      applyPositions(items);
+    },
+    [
+      selectedIds.size,
+      editingLabelId,
+      snapEnabled,
+      gridSize,
+      canonW,
+      canonH,
+      pushUndo,
+      getSelectedPositions,
+      applyPositions,
+    ],
+  );
+
+  useEffect(() => {
+    autoFitDoneRef.current = false;
+  }, [svgW, svgH, panelLayout]);
+
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const applyFit = () => {
+      if (autoFitDoneRef.current) return;
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w <= 0 || h <= 0) return;
+      autoFitDoneRef.current = true;
+      setZoom(fitZoomToCanvas(w, h, svgW, svgH));
+      setPan({ x: 0, y: 0 });
+    };
+    applyFit();
+    const ro = new ResizeObserver(applyFit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [svgW, svgH, panelLayout]);
+
+  useEffect(() => {
+    panelRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "F9") return;
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      e.preventDefault();
+      e.stopPropagation();
+      setSnapEnabled((v) => !v);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
   // ── Port data ───────────────────────────────────────────────────────
 
   const portMap = useMemo(() => {
@@ -485,44 +801,63 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
     return map;
   }, [deviceData]);
 
-  const portIds = useMemo(() => (deviceData.ports ?? []).map((p) => p.id), [deviceData.ports]);
-
-  // Layout ports — same logic as rack view
-  const layoutPorts = useMemo(() => {
-    const auto = autoLayoutPorts(deviceData.ports ?? [], canonW, canonH);
-    const custom = positions;
-    return auto.map((lp) => {
-      const pos = custom[lp.id];
-      return pos ? { ...lp, x: pos.x, y: pos.y } : lp;
-    });
-  }, [deviceData.ports, canonW, canonH, positions]);
+  const panelItemKeys = useMemo(() => panelItems.map((i) => i.key), [panelItems]);
 
   // Status info
   const singleSelectedId = selectedIds.size === 1 ? [...selectedIds][0] : null;
-  const selectedPort = singleSelectedId ? portMap.get(singleSelectedId) : null;
+  const selectedParsed = singleSelectedId ? parseFacePlateItemKey(singleSelectedId) : null;
+  const selectedPort = selectedParsed ? portMap.get(selectedParsed.portId) : null;
+  const selectedPortPanel = selectedParsed?.panel;
   const selectedLabel = singleSelectedId ? labels.find((l) => l.id === singleSelectedId) : null;
   const selectedPos = singleSelectedId ? positions[singleSelectedId] : null;
   const isDeviceLabelSelected = singleSelectedId === DEVICE_LABEL_ID;
+  const selectedLabelCount = useMemo(
+    () => [...selectedIds].filter((id) => labels.some((l) => l.id === id)).length,
+    [selectedIds, labels],
+  );
+  const canMoveSelectedPort =
+    !!singleSelectedId &&
+    !!selectedPort &&
+    selectedPort.direction !== "passthrough" &&
+    !!selectedPortPanel &&
+    (selectedPortPanel === "front" || selectedPortPanel === "rear");
+  const selectedMovablePorts = useMemo(() => {
+    const ports = deviceData.ports ?? [];
+    return [...selectedIds]
+      .map((id) => parseFacePlateItemKey(id))
+      .filter((x) => x.panel === "front" || x.panel === "rear")
+      .map((x) => ports.find((p) => p.id === x.portId))
+      .filter((p): p is NonNullable<typeof p> => !!p && p.direction !== "passthrough").length;
+  }, [selectedIds, deviceData.ports]);
 
   // Computed device label font (same formula as rack view)
   const dlFontSize = computeDeviceLabelFont(deviceLabelPos.fontSize, canonH);
 
+  const marqueeMode = marquee ? marqueeModeFromDrag(marquee.clientX1, marquee.clientX2) : null;
+  const marqueeStyle = marqueeMode ? MARQUEE_BOX_STYLES[marqueeMode] : null;
+
   // Marquee rect in canonical SVG coordinates
+  const activeOrigin = panelOrigin(activePanel);
   const marqueeRect = marquee ? {
-    x: PAD + (Math.min(marquee.x1, marquee.x2) / 100) * canonW,
-    y: PAD + (Math.min(marquee.y1, marquee.y2) / 100) * canonH,
+    x: activeOrigin.x + (Math.min(marquee.x1, marquee.x2) / 100) * canonW,
+    y: activeOrigin.y + (Math.min(marquee.y1, marquee.y2) / 100) * canonH,
     w: (Math.abs(marquee.x2 - marquee.x1) / 100) * canonW,
     h: (Math.abs(marquee.y2 - marquee.y1) / 100) * canonH,
   } : null;
 
-  // Stroke widths scaled for canonical coordinates (will look normal when viewBox scales up)
-  const thinStroke = 0.5;
-  const selStroke = 0.4;
+  const visiblePanels = useMemo(
+    (): FacePlatePanel[] => (dualPanels ? ["front", "rear"] : [activePanel]),
+    [dualPanels, activePanel],
+  );
+
+  const selStroke = 1.1;
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose} onWheel={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
       <div
-        className="bg-white rounded-lg shadow-xl flex flex-col text-xs"
+        ref={panelRef}
+        tabIndex={-1}
+        className="bg-white rounded-lg shadow-xl flex flex-col text-xs outline-none"
         style={{ width: "90vw", height: "90vh", maxWidth: 1400 }}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
@@ -531,7 +866,7 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
           if (e.key === "Escape") { if (selectedIds.size > 0) setSelectedIds(new Set()); else onClose(); }
           if (e.key === "a" && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
-            setSelectedIds(new Set(portIds));
+            setSelectedIds(new Set(panelItemKeys));
           }
           if (e.key === "z" && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
             e.preventDefault();
@@ -541,34 +876,231 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
             e.preventDefault();
             handleRedo();
           }
+          const dir = arrowDirectionFromKey(e.key);
+          if (dir && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            handleNudge(dir);
+          }
         }}
-        tabIndex={-1}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200">
-          <div>
-            <h3 className="font-semibold text-sm">Face-Plate Layout</h3>
-            <span className="text-neutral-400">{deviceData.label} — {heightU}U</span>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200 gap-3">
+          <div className="min-w-0">
+            <h3 className="font-semibold text-sm">Face-plate layout editor</h3>
+            <span className="text-neutral-500">{deviceData.label} — {heightU}U</span>
+            <div className="flex gap-1 mt-2">
+              <button
+                type="button"
+                className={`px-2 py-0.5 text-[11px] rounded-md border font-medium ${
+                  activePanel === "front"
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50"
+                }`}
+                onClick={() => { setActivePanel("front"); setSelectedIds(new Set()); }}
+              >
+                Front panel{frontCount > 0 ? ` (${frontCount})` : ""}
+              </button>
+              <button
+                type="button"
+                className={`px-2 py-0.5 text-[11px] rounded-md border font-medium ${
+                  activePanel === "rear"
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50"
+                }`}
+                onClick={() => { setActivePanel("rear"); setSelectedIds(new Set()); }}
+              >
+                Rear panel ({rearCount})
+              </button>
+              {dualPanels && (
+                <span className="inline-flex rounded-md border border-neutral-300 overflow-hidden ml-1">
+                  <button
+                    type="button"
+                    className={`px-2 py-0.5 text-[10px] ${panelLayout === "stacked" ? "bg-blue-600 text-white" : "bg-white text-neutral-600"}`}
+                    onClick={() => setPanelLayout("stacked")}
+                  >
+                    Stacked
+                  </button>
+                  <button
+                    type="button"
+                    className={`px-2 py-0.5 text-[10px] border-l border-neutral-300 ${panelLayout === "sideBySide" ? "bg-blue-600 text-white" : "bg-white text-neutral-600"}`}
+                    onClick={() => setPanelLayout("sideBySide")}
+                  >
+                    Side by side
+                  </button>
+                </span>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
+              type="button"
+              className="px-2 py-1 rounded border border-neutral-300 hover:bg-neutral-50 text-xs disabled:opacity-40"
+              onClick={handleUndo}
+              title="Undo (Ctrl+Z)"
+            >
+              Undo
+            </button>
+            <button
+              type="button"
+              className="px-2 py-1 rounded border border-neutral-300 hover:bg-neutral-50 text-xs disabled:opacity-40"
+              onClick={handleRedo}
+              title="Redo (Ctrl+Shift+Z)"
+            >
+              Redo
+            </button>
+            <button
+              type="button"
               className="px-2 py-1 rounded border border-neutral-300 hover:bg-neutral-50 text-xs"
               onClick={handleResetLayout}
               title="Reset all positions to auto-layout"
             >
-              Reset
+              Reset layout
             </button>
             <button
-              className="text-neutral-400 hover:text-neutral-600 text-lg leading-none"
+              type="button"
+              className="text-neutral-400 hover:text-neutral-600 text-lg leading-none px-1"
               onClick={onClose}
+              aria-label="Close"
             >
               ×
             </button>
           </div>
         </div>
 
+        <div className="px-4 py-2 border-b border-neutral-100 bg-neutral-50 text-[11px] text-neutral-600 leading-snug">
+          {dualPanels ? (
+            <>
+              <strong>Front</strong> and <strong>rear</strong> shown {panelLayout === "stacked" ? "stacked" : "side by side"} · click a panel to focus ·
+            </>
+          ) : (
+            <strong>{activePanel === "front" ? "Front" : "Rear"}</strong>
+          )}
+          {" "}patch inputs default to rear, outputs to front · click to select/move · double-click a label to edit text
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-neutral-200 bg-white">
+          <span className="text-[10px] uppercase tracking-wider text-neutral-400 shrink-0">Align</span>
+          <LayoutToolbarButton
+            disabled={selectedIds.size < 2}
+            onClick={() => handleAlign("x", "mid")}
+            title="Align horizontal centers — line up the middle of each selected item left–right"
+          >
+            <IconAlignHorizontalCentre />
+          </LayoutToolbarButton>
+          <LayoutToolbarButton
+            disabled={selectedIds.size < 2}
+            onClick={() => handleAlign("y", "min")}
+            title="Align top edges — move selected items to the same top row"
+          >
+            <IconAlignTop />
+          </LayoutToolbarButton>
+          <LayoutToolbarButton
+            disabled={selectedIds.size < 2}
+            onClick={() => handleAlign("y", "mid")}
+            title="Align vertical centers — line up the middle of each selected item top–bottom"
+          >
+            <IconAlignVerticalCenter />
+          </LayoutToolbarButton>
+          <LayoutToolbarButton
+            disabled={selectedIds.size < 2}
+            onClick={() => handleAlign("y", "max")}
+            title="Align bottom edges — move selected items to the same bottom row"
+          >
+            <IconAlignBottom />
+          </LayoutToolbarButton>
+          <span className="text-neutral-300">|</span>
+          <span className="text-[10px] uppercase tracking-wider text-neutral-400 shrink-0">Distribute</span>
+          <LayoutToolbarButton
+            disabled={selectedIds.size < 2}
+            onClick={() => handleDistribute("x")}
+            title="Distribute horizontal spacing — 2 items snap to left & right edges; 3+ get even gaps between the outermost items"
+          >
+            <IconDistributeSpacingHorizontal />
+          </LayoutToolbarButton>
+          <LayoutToolbarButton
+            disabled={selectedIds.size < 2}
+            onClick={() => handleDistribute("y")}
+            title="Distribute vertical spacing — 2 items snap to top & bottom edges; 3+ get even gaps between the outermost items (does not move everything downward)"
+          >
+            <IconDistributeSpacingVertical />
+          </LayoutToolbarButton>
+          <span className="text-neutral-300">|</span>
+          <button type="button" className="px-2 py-1 text-[11px] rounded border border-neutral-300 hover:bg-neutral-50" onClick={handleAddLabel} title="Add a text label on the face-plate (edit in place)">+ Label</button>
+          <button
+            type="button"
+            className="px-2 py-1 text-[11px] rounded border border-neutral-300 hover:bg-neutral-50 disabled:opacity-40"
+            disabled={selectedLabelCount === 0}
+            onClick={handleDeleteSelected}
+            title="Delete selected labels"
+          >
+            Delete label
+          </button>
+          {canMoveSelectedPort && (
+            <button
+              type="button"
+              className="px-2 py-1 text-[11px] rounded border border-blue-300 text-blue-700 hover:bg-blue-50"
+              onClick={() =>
+                movePortToPanel(
+                  selectedParsed!.portId,
+                  singleSelectedId!,
+                  selectedPortPanel === "front" ? "rear" : "front",
+                )
+              }
+              title="Move selected port to the other panel"
+            >
+              Move to {selectedPortPanel === "front" ? "rear" : "front"} panel
+            </button>
+          )}
+          {selectedMovablePorts > 1 && (
+            <button
+              type="button"
+              className="px-2 py-1 text-[11px] rounded border border-blue-300 text-blue-700 hover:bg-blue-50"
+              onClick={() => moveSelectedPortsToPanel(activePanel === "front" ? "rear" : "front")}
+              title="Move all selected ports to the other panel"
+            >
+              Move {selectedMovablePorts} selected to {activePanel === "front" ? "rear" : "front"}
+            </button>
+          )}
+          {isDeviceLabelSelected && (
+            <div className="flex items-center gap-1 ml-1">
+              <span className="text-neutral-500 text-[10px]">Title size</span>
+              <input
+                type="range"
+                min={6}
+                max={20}
+                step={1}
+                value={deviceLabelPos.fontSize}
+                onChange={(e) => setDeviceLabelPos((prev) => ({ ...prev, fontSize: Number(e.target.value) }))}
+                className="w-16 accent-blue-600"
+              />
+            </div>
+          )}
+          {selectedLabel && (
+            <div className="flex items-center gap-1 ml-1">
+              <span className="text-neutral-500 text-[10px]">Label size</span>
+              <input
+                type="range"
+                min={3}
+                max={8}
+                step={0.25}
+                value={selectedLabel.fontSize ?? 4}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setLabels((prev) => prev.map((l) => (l.id === selectedLabel.id ? { ...l, fontSize: v } : l)));
+                }}
+                className="w-16 accent-blue-600"
+              />
+            </div>
+          )}
+          <span className="text-[10px] text-neutral-400 ml-auto max-w-[280px] leading-snug">
+            {selectedIds.size < 2
+              ? "Marquee: drag right (blue) = fully inside · drag left (green) = center inside box · Arrow keys nudge"
+              : "Distribute spaces evenly between outer items on that axis"}
+          </span>
+        </div>
+
         {/* Canvas — renders at canonical rack dimensions, viewBox scales up */}
-        <div className="flex-1 overflow-hidden bg-neutral-100 relative" style={{ minHeight: 0 }}>
+        <div ref={canvasRef} className="flex-1 overflow-hidden bg-neutral-100 relative" style={{ minHeight: 0 }}>
           <svg
             ref={svgRef}
             width="100%"
@@ -582,55 +1114,77 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
             onWheel={handleWheel}
             onClick={() => { if (justFinishedInteraction.current) { justFinishedInteraction.current = false; return; } setSelectedIds(new Set()); }}
           >
-            {/* Face-plate background — uses device color, same as rack view */}
-            <rect
-              x={PAD}
-              y={PAD}
-              width={canonW}
-              height={canonH}
-              rx={1}
-              fill={deviceColor}
-              stroke="#333"
-              strokeWidth={0.75}
-            />
-
-            {/* Snap grid — thin lines at canonical scale */}
-            {snapEnabled && (() => {
-              const cellPx = (gridSize / 100) * canonW;
-              const vLines = Math.floor(canonW / cellPx) - 1;
-              const hLines = Math.floor(canonH / cellPx) - 1;
+            {visiblePanels.map((panel) => {
+              const origin = panelOrigin(panel);
+              const ox = origin.x;
+              const oy = origin.y;
+              const panelPorts = itemsForPanel(allItems, panel);
+              const isFocus = activePanel === panel;
               return (
-                <g>
-                  {Array.from({ length: vLines }, (_, i) => {
-                    const gx = PAD + cellPx * (i + 1);
-                    return <line key={`v${i}`} x1={gx} y1={PAD} x2={gx} y2={PAD + canonH} stroke="rgba(255,255,255,0.15)" strokeWidth={0.25} />;
-                  })}
-                  {Array.from({ length: hLines }, (_, i) => {
-                    const gy = PAD + cellPx * (i + 1);
-                    return <line key={`h${i}`} x1={PAD} y1={gy} x2={PAD + canonW} y2={gy} stroke="rgba(255,255,255,0.15)" strokeWidth={0.25} />;
-                  })}
+                <g key={panel} opacity={dualPanels && !isFocus ? 0.92 : 1}>
+                  <rect
+                    x={ox}
+                    y={oy}
+                    width={canonW}
+                    height={canonH}
+                    rx={1}
+                    fill={deviceColor}
+                    stroke={isFocus ? "#333" : "#666"}
+                    strokeWidth={isFocus ? 0.75 : 0.5}
+                  />
+                  {dualPanels && (
+                    <text
+                      x={ox + canonW / 2}
+                      y={oy - 2}
+                      textAnchor="middle"
+                      fontSize={4.5}
+                      fontWeight={600}
+                      fill={isFocus ? "#1e40af" : "#64748b"}
+                      style={{ pointerEvents: "none" }}
+                    >
+                      {panel === "front" ? "Front" : "Rear"} ({panelPorts.length})
+                    </text>
+                  )}
+                  {snapEnabled && (() => {
+                    const cellPx = (gridSize / 100) * canonW;
+                    const vLines = Math.floor(canonW / cellPx) - 1;
+                    const hLines = Math.floor(canonH / cellPx) - 1;
+                    return (
+                      <g>
+                        {Array.from({ length: vLines }, (_, i) => {
+                          const gx = ox + cellPx * (i + 1);
+                          return <line key={`v${panel}${i}`} x1={gx} y1={oy} x2={gx} y2={oy + canonH} stroke="rgba(255,255,255,0.15)" strokeWidth={0.25} />;
+                        })}
+                        {Array.from({ length: hLines }, (_, i) => {
+                          const gy = oy + cellPx * (i + 1);
+                          return <line key={`h${panel}${i}`} x1={ox} y1={gy} x2={ox + canonW} y2={gy} stroke="rgba(255,255,255,0.15)" strokeWidth={0.25} />;
+                        })}
+                      </g>
+                    );
+                  })()}
                 </g>
               );
-            })()}
+            })}
 
-            {/* Device label — same rendering as rack view */}
-            {(() => {
-              const dlx = PAD + (deviceLabelPos.x / 100) * canonW;
-              const dly = PAD + (deviceLabelPos.y / 100) * canonH;
+            {/* Device label — same rendering as rack view (on each visible panel) */}
+            {visiblePanels.map((panel) => {
+              const origin = panelOrigin(panel);
+              const dlx = origin.x + (deviceLabelPos.x / 100) * canonW;
+              const dly = origin.y + (deviceLabelPos.y / 100) * canonH;
               const isSel = selectedIds.has(DEVICE_LABEL_ID);
               const truncLabel = deviceData.label.length > 28 ? deviceData.label.slice(0, 27) + "…" : deviceData.label;
               return (
-                <g>
-                  {isSel && (
+                <g key={`dl-${panel}`}>
+                  {isSel && activePanel === panel && (
                     <rect
                       x={dlx - dlFontSize * 3}
                       y={dly - dlFontSize * 0.6}
                       width={dlFontSize * 6}
                       height={dlFontSize * 1.2}
-                      fill="none"
-                      stroke="#3b82f6"
+                      fill="rgba(15,23,42,0.35)"
+                      stroke="#fde047"
                       strokeWidth={selStroke}
-                      strokeDasharray="1 0.5"
+                      strokeDasharray="2 1"
                       rx={0.5}
                     />
                   )}
@@ -644,76 +1198,161 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
                     fill="#fff"
                     style={{ cursor: "grab" }}
                     onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => handleMouseDown(e, DEVICE_LABEL_ID, "device-label")}
+                    onMouseDown={(e) => {
+                      if (dualPanels) setActivePanel(panel);
+                      handleMouseDown(e, DEVICE_LABEL_ID, "device-label");
+                    }}
                   >
                     {truncLabel}
                   </text>
                 </g>
               );
-            })()}
+            })}
 
-            {/* Section labels — same rendering as rack view */}
+            {/* Section labels — edit in place when selected */}
             {labels.map((lbl) => {
-              const lx = PAD + (lbl.x / 100) * canonW;
-              const ly = PAD + (lbl.y / 100) * canonH;
+              const origin = panelOrigin(activePanel);
+              const lx = origin.x + (lbl.x / 100) * canonW;
+              const ly = origin.y + (lbl.y / 100) * canonH;
               const isSel = selectedIds.has(lbl.id);
+              const editingThis = editingLabelId === lbl.id;
               return (
                 <g key={lbl.id}>
-                  {isSel && (
+                  {isSel && !editingThis && (
                     <rect
                       x={lx - 10}
                       y={ly - 2.5}
                       width={20}
                       height={5}
-                      fill="none"
-                      stroke="#3b82f6"
+                      fill="rgba(15,23,42,0.3)"
+                      stroke="#fde047"
                       strokeWidth={selStroke}
-                      strokeDasharray="1 0.5"
+                      strokeDasharray="2 1"
                       rx={0.5}
                     />
                   )}
-                  <text
-                    x={lx}
-                    y={ly}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fontSize={3.5}
-                    fontWeight={700}
-                    fill="rgba(255,255,255,0.6)"
-                    letterSpacing={0.5}
-                    style={{ cursor: "grab", textTransform: "uppercase" }}
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => handleMouseDown(e, lbl.id, "label")}
-                  >
-                    {lbl.text}
-                  </text>
+                  {editingThis ? (
+                    <foreignObject
+                      x={lx - 28}
+                      y={ly - 4.5}
+                      width={56}
+                      height={9}
+                      style={{ overflow: "visible" }}
+                    >
+                      <input
+                        type="text"
+                        value={lbl.text}
+                        autoFocus
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setLabels((prev) =>
+                            prev.map((l) => (l.id === lbl.id ? { ...l, text: val } : l)),
+                          );
+                        }}
+                        onKeyDown={(e) => {
+                          e.stopPropagation();
+                          if (e.key === "Enter" || e.key === "Escape") setEditingLabelId(null);
+                        }}
+                        onBlur={() => setEditingLabelId(null)}
+                        style={{
+                          width: "100%",
+                          fontSize: Math.max(6, (lbl.fontSize ?? 4) * 1.5),
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                          textAlign: "center",
+                          border: "1px solid #3b82f6",
+                          borderRadius: 2,
+                          padding: "1px 4px",
+                          outline: "none",
+                        }}
+                      />
+                    </foreignObject>
+                  ) : (
+                    <text
+                      x={lx}
+                      y={ly}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fontSize={lbl.fontSize ?? 3.5}
+                      fontWeight={700}
+                      fill="rgba(255,255,255,0.6)"
+                      letterSpacing={0.5}
+                      style={{ cursor: "grab", textTransform: "uppercase" }}
+                      onClick={(e) => { e.stopPropagation(); setEditingLabelId(null); setSelectedIds(new Set([lbl.id])); }}
+                      onDoubleClick={(e) => { e.stopPropagation(); setSelectedIds(new Set([lbl.id])); setEditingLabelId(lbl.id); }}
+                      onMouseDown={(e) => handleMouseDown(e, lbl.id, "label")}
+                    >
+                      {lbl.text}
+                    </text>
+                  )}
                 </g>
               );
             })}
 
-            {/* Connector icons — same rendering as rack view */}
-            {layoutPorts.map((lp) => {
-              const port = portMap.get(lp.id);
-              if (!port) return null;
-              const cx = PAD + (lp.x / 100) * canonW;
-              const cy = PAD + (lp.y / 100) * canonH;
-              const sigColor = (SIGNAL_COLORS as Record<string, string>)[lp.signalType] ?? "#fff";
-              const isSel = selectedIds.has(lp.id);
+            {visiblePanels.map((panel) => {
+              const origin = panelOrigin(panel);
+              const portsOnPanel = itemsForPanel(allItems, panel);
+              if (portsOnPanel.length > 0) return null;
+              return (
+                <text
+                  key={`empty-${panel}`}
+                  x={origin.x + canonW / 2}
+                  y={origin.y + canonH / 2}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize={5}
+                  fill="rgba(255,255,255,0.55)"
+                  style={{ pointerEvents: "none" }}
+                >
+                  {panel === "rear"
+                    ? "No ports on rear"
+                    : "No ports on front"}
+                </text>
+              );
+            })}
 
+            {/* Connector icons — same rendering as rack view */}
+            {visiblePanels.flatMap((panel) => {
+              const origin = panelOrigin(panel);
+              return itemsForPanel(allItems, panel).map((item) => {
+                const lp = {
+                  ...item,
+                  x: positions[item.key]?.x ?? 50,
+                  y: positions[item.key]?.y ?? 50,
+                };
+              const port = portMap.get(lp.portId);
+              if (!port) return null;
+              const cx = origin.x + (lp.x / 100) * canonW;
+              const cy = origin.y + (lp.y / 100) * canonH;
+              const sigColor = (SIGNAL_COLORS as Record<string, string>)[lp.signalType] ?? "#fff";
+              const isSel = selectedIds.has(lp.key);
+
+              const canMovePanel = port.direction !== "passthrough";
               return (
                 <g
-                  key={lp.id}
+                  key={lp.key}
                   style={{ cursor: "grab" }}
                   onClick={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => handleMouseDown(e, lp.id, "port")}
+                  onMouseDown={(e) => {
+                    if (dualPanels) setActivePanel(panel);
+                    handleMouseDown(e, lp.key, "port");
+                  }}
+                  onContextMenu={(e) => {
+                    if (!canMovePanel) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
                 >
                   {/* Selection ring */}
                   {isSel && (() => {
                     const spec = getConnectorSpec(lp.connectorType);
                     const selR = Math.max(spec.widthMm, spec.heightMm) * PX_PER_MM / 2 + 1;
                     return (
-                      <circle cx={cx} cy={cy} r={selR}
-                        fill="none" stroke="#3b82f6" strokeWidth={selStroke} strokeDasharray="1 0.5"
+                      <circle cx={cx} cy={cy} r={selR + 0.5}
+                        fill="rgba(250,204,21,0.25)" stroke="#fde047" strokeWidth={selStroke}
                       />
                     );
                   })()}
@@ -735,26 +1374,47 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
                       fontSize={4}
                       fill="rgba(255,255,255,0.8)"
                     >
-                      {port.label.length > 8 ? port.label.slice(0, 7) + "…" : port.label}
+                      {(lp.sideTag ? `${lp.sideTag} ` : "") + (port.label.length > 8 ? port.label.slice(0, 7) + "…" : port.label)}
                     </text>
                   )}
                 </g>
               );
+              });
             })}
 
             {/* Marquee selection rectangle */}
-            {marqueeRect && (
-              <rect
-                x={marqueeRect.x}
-                y={marqueeRect.y}
-                width={marqueeRect.w}
-                height={marqueeRect.h}
-                fill="rgba(59,130,246,0.15)"
-                stroke="#3b82f6"
-                strokeWidth={thinStroke}
-                strokeDasharray="1.5 0.75"
-                style={{ pointerEvents: "none" }}
-              />
+            {marqueeRect && marqueeStyle && (
+              <>
+                {/* White surround — thick stroke behind colored border (visible on blue face-plates) */}
+                <rect
+                  x={marqueeRect.x}
+                  y={marqueeRect.y}
+                  width={marqueeRect.w}
+                  height={marqueeRect.h}
+                  fill="none"
+                  stroke={marqueeStyle.haloStroke}
+                  strokeWidth={MARQUEE_FACE_PLATE_HALO_PX}
+                  strokeDasharray={marqueeStyle.strokeDasharray}
+                  vectorEffect="non-scaling-stroke"
+                  style={{ pointerEvents: "none" }}
+                />
+                <rect
+                  x={marqueeRect.x}
+                  y={marqueeRect.y}
+                  width={marqueeRect.w}
+                  height={marqueeRect.h}
+                  fill={marqueeStyle.fill}
+                  stroke={marqueeStyle.stroke}
+                  strokeWidth={MARQUEE_SCREEN_STROKE_PX}
+                  strokeDasharray={marqueeStyle.strokeDasharray}
+                  vectorEffect="non-scaling-stroke"
+                  style={{
+                    pointerEvents: "none",
+                    filter:
+                      "drop-shadow(0 0 1px rgba(255,255,255,1)) drop-shadow(0 0 2px rgba(255,255,255,0.9))",
+                  }}
+                />
+              </>
             )}
           </svg>
         </div>
@@ -769,56 +1429,38 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
                 onChange={(e) => setSnapEnabled(e.target.checked)}
                 className="rounded accent-blue-600"
               />
-              <span>Snap</span>
+              <span>Snap (F9)</span>
             </label>
-            {snapEnabled && (
-              <select
-                className="border border-neutral-300 rounded px-1.5 py-0.5 text-xs"
-                value={gridSize}
-                onChange={(e) => setGridSize(Number(e.target.value))}
-              >
-                <option value={1}>Fine</option>
-                <option value={2}>Medium</option>
-                <option value={5}>Coarse</option>
-              </select>
+            {selectedIds.size > 0 && (
+              <span className="text-neutral-400 text-[10px]">
+                {snapEnabled
+                  ? `Nudge: ${gridSize}% grid`
+                  : "Nudge: 2 px (zoom for finer steps)"}
+              </span>
             )}
-            <button
-              className="px-2 py-1 rounded border border-neutral-300 hover:bg-neutral-50"
-              onClick={handleAddLabel}
-            >
-              + Label
-            </button>
-            <span className="text-neutral-400">|</span>
+            {snapEnabled && (
+              <label className="flex items-center gap-1 text-neutral-500">
+                <span>Grid</span>
+                <select
+                  className="border border-neutral-300 rounded px-1.5 py-0.5 text-xs"
+                  value={gridSize}
+                  onChange={(e) => setGridSize(Number(e.target.value))}
+                  title="Distance between snap lines on the face-plate"
+                >
+                  <option value={4}>Small (~{snapGridSpacingPx(4, canonW)} px)</option>
+                  <option value={8}>Medium (~{snapGridSpacingPx(8, canonW)} px)</option>
+                  <option value={12}>Large (~{snapGridSpacingPx(12, canonW)} px)</option>
+                </select>
+              </label>
+            )}
             <span className="text-neutral-500">{Math.round(zoom * 100)}%</span>
-            {(zoom !== 1 || pan.x !== 0 || pan.y !== 0) && (
+            {(Math.abs(pan.x) > 0.01 || Math.abs(pan.y) > 0.01 || zoom > 1.01) && (
               <button
                 className="px-2 py-1 rounded border border-neutral-300 hover:bg-neutral-50"
                 onClick={handleResetView}
               >
                 Reset View
               </button>
-            )}
-
-            {/* Align / distribute — visible when 2+ items selected */}
-            {selectedIds.size >= 2 && (
-              <>
-                <span className="text-neutral-400">|</span>
-                <span className="text-neutral-500">Align:</span>
-                <button className="px-1.5 py-0.5 rounded border border-neutral-300 hover:bg-neutral-50" onClick={() => handleAlign("x", "min")} title="Align left">L</button>
-                <button className="px-1.5 py-0.5 rounded border border-neutral-300 hover:bg-neutral-50" onClick={() => handleAlign("x", "mid")} title="Align center horizontally">CX</button>
-                <button className="px-1.5 py-0.5 rounded border border-neutral-300 hover:bg-neutral-50" onClick={() => handleAlign("x", "max")} title="Align right">R</button>
-                <button className="px-1.5 py-0.5 rounded border border-neutral-300 hover:bg-neutral-50" onClick={() => handleAlign("y", "min")} title="Align top">T</button>
-                <button className="px-1.5 py-0.5 rounded border border-neutral-300 hover:bg-neutral-50" onClick={() => handleAlign("y", "mid")} title="Align center vertically">CY</button>
-                <button className="px-1.5 py-0.5 rounded border border-neutral-300 hover:bg-neutral-50" onClick={() => handleAlign("y", "max")} title="Align bottom">B</button>
-                {selectedIds.size >= 3 && (
-                  <>
-                    <span className="text-neutral-400">|</span>
-                    <span className="text-neutral-500">Distribute:</span>
-                    <button className="px-1.5 py-0.5 rounded border border-neutral-300 hover:bg-neutral-50" onClick={() => handleDistribute("x")} title="Distribute horizontally">H</button>
-                    <button className="px-1.5 py-0.5 rounded border border-neutral-300 hover:bg-neutral-50" onClick={() => handleDistribute("y")} title="Distribute vertically">V</button>
-                  </>
-                )}
-              </>
             )}
 
             {/* Status bar */}
@@ -831,45 +1473,10 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
                     ? `${selectedPort.label} — (${selectedPos.x.toFixed(0)}%, ${selectedPos.y.toFixed(0)}%)`
                     : selectedLabel
                       ? `"${selectedLabel.text}" — (${selectedLabel.x.toFixed(0)}%, ${selectedLabel.y.toFixed(0)}%)`
-                      : `${portIds.length} ports`}
+                      : `${panelItems.length} port${panelItems.length === 1 ? "" : "s"} on ${activePanel} panel`}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            {/* Device label font size control */}
-            {isDeviceLabelSelected && (
-              <div className="flex items-center gap-1 mr-2">
-                <span className="text-neutral-500">Size</span>
-                <input
-                  type="range"
-                  min={6}
-                  max={20}
-                  step={1}
-                  value={deviceLabelPos.fontSize}
-                  onChange={(e) => setDeviceLabelPos((prev) => ({ ...prev, fontSize: Number(e.target.value) }))}
-                  className="w-20 accent-blue-600"
-                />
-                <span className="text-neutral-500 w-6 text-right">{deviceLabelPos.fontSize}</span>
-              </div>
-            )}
-            {/* Inline label text editor */}
-            {selectedLabel && (
-              <input
-                className="border border-neutral-300 rounded px-2 py-0.5 text-xs w-28"
-                value={selectedLabel.text}
-                autoFocus
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setLabels((prev) =>
-                    prev.map((l) => (l.id === singleSelectedId ? { ...l, text: val } : l)),
-                  );
-                }}
-                onKeyDown={(e) => {
-                  e.stopPropagation();
-                  if (e.key === "Enter") setSelectedIds(new Set());
-                }}
-                placeholder="Label text"
-              />
-            )}
             <button
               className="px-3 py-1 rounded border border-neutral-300 hover:bg-neutral-50"
               onClick={onClose}
@@ -885,6 +1492,20 @@ export default function FacePlateEditor({ deviceData, onSave, onClose }: FacePla
           </div>
         </div>
       </div>
+
+      {applyPrompt && (
+        <ApplyFacePlateLayoutDialog
+          modelName={applyPrompt.modelName}
+          otherCount={applyPrompt.otherCount}
+          hasDefinitionKey={!!rackDeviceDefinitionKey(deviceData)}
+          onApplyAll={() => commitSave(true)}
+          onThisDeviceOnly={() => commitSave(false)}
+          onCancel={() => {
+            setApplyPrompt(null);
+            pendingLayoutRef.current = null;
+          }}
+        />
+      )}
     </div>
   );
 }

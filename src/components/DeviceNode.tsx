@@ -500,7 +500,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
       onDoubleClick={() => setEditingNodeId(id)}
       className={`
         relative rounded-lg border bg-white
-        ${isOverlapping ? "border-red-400 shadow-lg shadow-red-400/30" : selected ? "border-blue-500 shadow-lg shadow-blue-500/20" : "border-[var(--color-border)]"}
+        ${isOverlapping ? "border-2 border-red-500 ring-1 ring-white/90" : selected ? "border-2 border-blue-500 ring-1 ring-white/90" : "border border-[var(--color-border)]"}
       `}
       style={{ width: 180 }}
     >
