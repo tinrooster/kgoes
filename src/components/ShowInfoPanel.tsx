@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { useSchematicStore } from "../store";
+import { useSidebarStore } from "../sidebarStore";
 import TitleBlockDialog from "./TitleBlockDialog";
 
 const FIELDS: { key: string; label: string; placeholder: string }[] = [
@@ -12,7 +13,10 @@ const FIELDS: { key: string; label: string; placeholder: string }[] = [
 ];
 
 export default function ShowInfoPanel({ mobile, onClose }: { mobile?: boolean; onClose?: () => void } = {}) {
-  const [collapsed, setCollapsed] = useState(true);
+  const rightExpanded = useSidebarStore((s) => s.rightShowInfoExpanded);
+  const setRightExpanded = useSidebarStore((s) => s.setRightShowInfoExpanded);
+  const expandRightPanel = useSidebarStore((s) => s.expandRightPanel);
+  const collapsed = mobile ? false : !rightExpanded;
   const [showEditor, setShowEditor] = useState(false);
   const titleBlock = useSchematicStore((s) => s.titleBlock);
   const setTitleBlock = useSchematicStore((s) => s.setTitleBlock);
@@ -77,7 +81,7 @@ export default function ShowInfoPanel({ mobile, onClose }: { mobile?: boolean; o
     return (
       <div className="w-8 bg-[var(--color-surface)] border-l border-[var(--color-border)] flex flex-col items-center h-full">
         <button
-          onClick={() => setCollapsed(false)}
+          onClick={() => expandRightPanel("showInfo")}
           className="py-3 cursor-pointer hover:bg-[var(--color-surface-hover)] w-full flex justify-center transition-colors"
           title="Show info"
         >
@@ -103,7 +107,7 @@ export default function ShowInfoPanel({ mobile, onClose }: { mobile?: boolean; o
           Show Info
         </h2>
         <button
-          onClick={() => mobile ? onClose?.() : setCollapsed(true)}
+          onClick={() => (mobile ? onClose?.() : setRightExpanded(false))}
           className="cursor-pointer hover:bg-[var(--color-surface-hover)] rounded p-0.5 transition-colors"
           title={mobile ? "Close" : "Collapse"}
         >

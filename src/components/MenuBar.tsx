@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
+import {
+  KGO_ES_DRAWING_TAB_LABEL,
+  KGO_ES_ISSUES_URL,
+  KGO_ES_NAME,
+  KGO_ES_REPO_URL,
+  KGO_ES_SUPPORT_EMAIL,
+  KGO_ES_UPSTREAM_DEVICES_URL,
+  KGO_ES_UPSTREAM_DOCS_URL,
+} from "../branding";
 import { useSchematicStore } from "../store";
 import { exportImage } from "../exportUtils";
 import { exportDxf } from "../dxfExport";
@@ -22,8 +31,10 @@ import ViewOptionsPanel from "./ViewOptionsPanel";
 import ShowInfoPanel from "./ShowInfoPanel";
 import CsvImportWizard from "./CsvImportWizard";
 import SignalColorPanel from "./SignalColorPanel";
+import { useSidebarStore } from "../sidebarStore";
 import { useTheme } from "../hooks/useTheme";
 import { isTrackItLinked, saveToTrackItParent } from "../trackitIntegration";
+import { getAppVersionLabel } from "../buildVersion";
 
 // ─── Menu data types ─────────────────────────────────────────────
 
@@ -41,12 +52,28 @@ interface MenuSeparatorDef {
   type: "separator";
 }
 
-type MenuEntry = MenuItemDef | MenuSeparatorDef;
+interface MenuCaptionDef {
+  type: "caption";
+  label: string;
+}
+
+type MenuEntry = MenuItemDef | MenuSeparatorDef | MenuCaptionDef;
 
 // ─── Sub-components ──────────────────────────────────────────────
 
 function MenuSeparator() {
   return <div className="h-px bg-[var(--color-border)] my-1" />;
+}
+
+function MenuCaption({ label }: { label: string }) {
+  return (
+    <div
+      className="px-2 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] select-none pointer-events-none"
+      role="presentation"
+    >
+      {label}
+    </div>
+  );
 }
 
 function MenuItem({
@@ -89,6 +116,7 @@ function MenuDropdown({ items, onClose }: { items: MenuEntry[]; onClose: () => v
     <div className="absolute top-full left-0 mt-0.5 min-w-[220px] bg-white border border-[var(--color-border)] rounded-lg shadow-lg p-1 z-50">
       {items.map((entry, i) => {
         if (entry.type === "separator") return <MenuSeparator key={i} />;
+        if (entry.type === "caption") return <MenuCaption key={i} label={entry.label} />;
         return (
           <MenuItem
             key={i}
@@ -119,6 +147,11 @@ export default function MenuBar() {
     newSchematic,
     undo,
     redo,
+    pages,
+    activePage,
+    setActivePage,
+    addRackPage,
+    addPrintSheetPage,
   } = useSchematicStore();
 
   const printView = useSchematicStore((s) => s.printView);
@@ -159,6 +192,10 @@ export default function MenuBar() {
   const cloudSavedAt = useSchematicStore((s) => s.cloudSavedAt);
   const fileHandle = useSchematicStore((s) => s.fileHandle);
   const isOnline = useSchematicStore((s) => s.isOnline);
+  const quickToolbarVisible = useSidebarStore((s) => s.quickToolbarVisible);
+  const setQuickToolbarVisible = useSidebarStore((s) => s.setQuickToolbarVisible);
+  const panelsVisible = useSidebarStore((s) => s.panelsVisible);
+  const setPanelVisible = useSidebarStore((s) => s.setPanelVisible);
 
   // Keep nameValue in sync when schematicName changes externally
   useEffect(() => {
@@ -230,7 +267,7 @@ export default function MenuBar() {
     try {
       const handle = await window.showSaveFilePicker({
         suggestedName: `${store.schematicName.replace(/[^a-zA-Z0-9-_ ]/g, "")}.json`,
-        types: [{ description: "EasySchematic files", accept: { "application/json": [".json"] } }],
+        types: [{ description: `${KGO_ES_NAME} files`, accept: { "application/json": [".json"] } }],
       });
       return handle;
     } catch {
@@ -337,7 +374,7 @@ export default function MenuBar() {
     if ("showOpenFilePicker" in window) {
       try {
         const [handle] = await window.showOpenFilePicker({
-          types: [{ description: "EasySchematic files", accept: { "application/json": [".json"] } }],
+          types: [{ description: `${KGO_ES_NAME} files`, accept: { "application/json": [".json"] } }],
           multiple: false,
         });
         const file = await handle.getFile();
@@ -546,6 +583,39 @@ export default function MenuBar() {
 
   const closeMenu = () => setOpenMenu(null);
 
+  const rackPageCount = pages.filter((p) => p.type === "rack-elevation").length;
+
+  const pagesMenuItems: MenuEntry[] = [
+    {
+      type: "item",
+      label: `Go to ${KGO_ES_DRAWING_TAB_LABEL}`,
+      checked: activePage === "schematic",
+      onClick: () => setActivePage("schematic"),
+    },
+    ...(pages.length > 0
+      ? [
+          { type: "separator" as const },
+          ...pages.map((p): MenuEntry => ({
+            type: "item",
+            label: p.type === "print-sheet" ? `📄 ${p.label}` : `🗄 ${p.label}`,
+            checked: activePage === p.id,
+            onClick: () => setActivePage(p.id),
+          })),
+        ]
+      : []),
+    { type: "separator" },
+    {
+      type: "item",
+      label: "New rack elevation page…",
+      onClick: () => addRackPage(`Rack Page ${rackPageCount + 1}`),
+    },
+    {
+      type: "item",
+      label: "New print sheet page…",
+      onClick: () => addPrintSheetPage(),
+    },
+  ];
+
   const menus: Record<string, MenuEntry[]> = {
     File: [
       { type: "item", label: "New", onClick: handleNew },
@@ -588,6 +658,7 @@ export default function MenuBar() {
       { type: "item", label: "Add Diamond", onClick: () => addAnnotation("diamond") },
       { type: "item", label: "Add Triangle", onClick: () => addAnnotation("triangle") },
     ],
+    Pages: pagesMenuItems,
     View: [
       {
         type: "item",
@@ -629,6 +700,46 @@ export default function MenuBar() {
         onClick: () => useSchematicStore.getState().toggleDebugEdges(),
       },
     ],
+    Toolbar: [
+      {
+        type: "item",
+        label: "Show toolbar",
+        checked: quickToolbarVisible,
+        onClick: () => setQuickToolbarVisible(!quickToolbarVisible),
+      },
+      { type: "separator" },
+      { type: "caption", label: "Sidebar" },
+      {
+        type: "item",
+        label: "Devices",
+        checked: panelsVisible.devices,
+        onClick: () => setPanelVisible("devices", !panelsVisible.devices),
+      },
+      {
+        type: "item",
+        label: "View options",
+        checked: panelsVisible.viewOptions,
+        onClick: () => setPanelVisible("viewOptions", !panelsVisible.viewOptions),
+      },
+      {
+        type: "item",
+        label: "trackIT numbers",
+        checked: panelsVisible.trackItNumbers,
+        onClick: () => setPanelVisible("trackItNumbers", !panelsVisible.trackItNumbers),
+      },
+      {
+        type: "item",
+        label: "Show info",
+        checked: panelsVisible.showInfo,
+        onClick: () => setPanelVisible("showInfo", !panelsVisible.showInfo),
+      },
+      {
+        type: "item",
+        label: "Colors",
+        checked: panelsVisible.colors,
+        onClick: () => setPanelVisible("colors", !panelsVisible.colors),
+      },
+    ],
     Export: [
       { type: "item", label: "Export as PNG", onClick: doExportPng },
       { type: "item", label: "Export as SVG", onClick: doExportSvg },
@@ -652,28 +763,38 @@ export default function MenuBar() {
     Help: [
       {
         type: "item",
-        label: "Documentation \u2197",
-        onClick: () => window.open("https://docs.easyschematic.live", "_blank", "noopener,noreferrer"),
+        label: `${KGO_ES_NAME} on GitHub \u2197`,
+        onClick: () => window.open(KGO_ES_REPO_URL, "_blank", "noopener,noreferrer"),
       },
       {
         type: "item",
-        label: "Device Database \u2197",
-        onClick: () => window.open("https://devices.easyschematic.live", "_blank", "noopener,noreferrer"),
+        label: "Report a bug \u2197",
+        onClick: () => window.open(KGO_ES_ISSUES_URL, "_blank", "noopener,noreferrer"),
+      },
+      {
+        type: "item",
+        label: "Contact support",
+        onClick: () => { window.location.href = `mailto:${KGO_ES_SUPPORT_EMAIL}`; },
       },
       { type: "separator" },
       {
         type: "item",
-        label: "Landing Page",
-        onClick: () => {
-          localStorage.removeItem("easyschematic-skip-landing");
-          window.location.href = "/";
-        },
+        label: "Upstream docs \u2197",
+        onClick: () => window.open(KGO_ES_UPSTREAM_DOCS_URL, "_blank", "noopener,noreferrer"),
       },
       {
         type: "item",
-        label: "About EasySchematic",
+        label: "Device database \u2197",
+        onClick: () => window.open(KGO_ES_UPSTREAM_DEVICES_URL, "_blank", "noopener,noreferrer"),
+      },
+      { type: "separator" },
+      {
+        type: "item",
+        label: `About ${KGO_ES_NAME}`,
         onClick: () => setShowAboutDialog(true),
       },
+      { type: "separator" },
+      { type: "caption", label: getAppVersionLabel() },
     ],
   };
 
@@ -704,6 +825,7 @@ export default function MenuBar() {
           <div className="pb-2 px-2">
             {items.map((entry, i) => {
               if (entry.type === "separator") return <div key={i} className="h-px bg-[var(--color-border)] my-1 mx-2" />;
+              if (entry.type === "caption") return <MenuCaption key={i} label={entry.label} />;
               return (
                 <button
                   key={i}
@@ -736,7 +858,7 @@ export default function MenuBar() {
           <div className="flex items-center gap-2 px-3 shrink-0">
             <img src="/favicon.svg" alt="" className="w-5 h-5" />
             <span className="text-xs font-semibold text-[var(--color-text-heading)] tracking-tight">
-              EasySchematic
+              {KGO_ES_NAME}
             </span>
           </div>
           <div className="w-px h-5 bg-[var(--color-border)]" />

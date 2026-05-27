@@ -7,6 +7,8 @@ import { computeRackStats, formatStatsLine } from "../rackStats";
 import { computeCellRects, normalizeSizes, getFieldValue } from "../titleBlockLayout";
 import { computeDragSnap, computeResizeSnap, type SheetGuide, type Rect } from "../printSheetSnap";
 import RackFaceSVG from "./RackFaceSVG";
+import ViewNavBar from "./ViewNavBar";
+import { boundsFromSize, computeFitViewport, unionBounds, type ContentBounds } from "../viewNavUtils";
 
 const IN_TO_MM = 25.4;
 const SCREEN_PPI = 96;
@@ -212,11 +214,42 @@ export default function PrintSheetRenderer({ page }: Props) {
   const fitView = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
-    const padding = 48;
-    const z = Math.min((el.clientWidth - padding * 2) / pageWPx, (el.clientHeight - padding * 2) / pageHPx, 2);
-    const p = { x: (el.clientWidth - pageWPx * z) / 2, y: (el.clientHeight - pageHPx * z) / 2 };
-    setViewport(z, p);
+    const { zoom: z, pan } = computeFitViewport(
+      el.clientWidth,
+      el.clientHeight,
+      boundsFromSize(0, 0, pageWPx, pageHPx),
+      { maxZoom: 2, minZoom: 0.1 },
+    );
+    setViewport(z, pan);
   }, [pageWPx, pageHPx, setViewport]);
+
+  const zoomInView = useCallback(() => {
+    const el = containerRef.current;
+    const { zoom: z, pan: p } = vpRef.current;
+    const newZ = Math.min(4, z * 1.25);
+    if (!el) {
+      setViewport(newZ, p);
+      return;
+    }
+    const cx = el.clientWidth / 2;
+    const cy = el.clientHeight / 2;
+    const ratio = newZ / z;
+    setViewport(newZ, { x: cx * (1 - ratio) + p.x * ratio, y: cy * (1 - ratio) + p.y * ratio });
+  }, [setViewport]);
+
+  const zoomOutView = useCallback(() => {
+    const el = containerRef.current;
+    const { zoom: z, pan: p } = vpRef.current;
+    const newZ = Math.max(0.1, z / 1.25);
+    if (!el) {
+      setViewport(newZ, p);
+      return;
+    }
+    const cx = el.clientWidth / 2;
+    const cy = el.clientHeight / 2;
+    const ratio = newZ / z;
+    setViewport(newZ, { x: cx * (1 - ratio) + p.x * ratio, y: cy * (1 - ratio) + p.y * ratio });
+  }, [setViewport]);
 
   useEffect(() => { fitView(); }, [page.id, page.paperId, page.orientation, fitView]);
 
@@ -293,6 +326,31 @@ export default function PrintSheetRenderer({ page }: Props) {
   const [selectedVpIds, setSelectedVpIds] = useState<string[]>([]);
   const selectedVpIdsRef = useRef<string[]>([]);
   useEffect(() => { selectedVpIdsRef.current = selectedVpIds; }, [selectedVpIds]);
+
+  const fitSelectionView = useCallback(() => {
+    const el = containerRef.current;
+    const ids = selectedVpIdsRef.current;
+    if (!el || ids.length === 0) return;
+    let bounds: ContentBounds | null = null;
+    for (const id of ids) {
+      const vp = page.viewports.find((v) => v.id === id);
+      if (!vp) continue;
+      const b = boundsFromSize(
+        mmToPagePx(vp.positionMm.x),
+        mmToPagePx(vp.positionMm.y),
+        mmToPagePx(vp.sizeMm.w),
+        mmToPagePx(vp.sizeMm.h),
+      );
+      bounds = bounds ? unionBounds(bounds, b) : b;
+    }
+    if (!bounds) return;
+    const { zoom: z, pan } = computeFitViewport(el.clientWidth, el.clientHeight, bounds, {
+      maxZoom: 2.5,
+      minZoom: 0.1,
+      padding: 40,
+    });
+    setViewport(z, pan);
+  }, [page.viewports, setViewport]);
 
   type DragState = {
     startClientX: number;
@@ -820,14 +878,15 @@ export default function PrintSheetRenderer({ page }: Props) {
         </div>
       </div>
 
-      {/* Zoom controls */}
-      <div className="absolute bottom-4 right-4 flex items-center gap-1 bg-white/90 border border-neutral-300 rounded shadow px-2 py-1 text-xs select-none" data-print-hide>
-        <button className="px-2 py-0.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded cursor-pointer" onClick={fitView}>Fit</button>
-        <div className="border-l border-neutral-200 h-3" />
-        <button className="w-6 h-6 flex items-center justify-center text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded cursor-pointer" onClick={() => { const z = Math.max(0.1, vpRef.current.zoom / 1.25); setViewport(z, vpRef.current.pan); }}>−</button>
-        <span className="w-10 text-center text-neutral-600">{Math.round(zoom * 100)}%</span>
-        <button className="w-6 h-6 flex items-center justify-center text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded cursor-pointer" onClick={() => { const z = Math.min(4, vpRef.current.zoom * 1.25); setViewport(z, vpRef.current.pan); }}>+</button>
-      </div>
+      <ViewNavBar
+        className="bottom-4 left-4"
+        zoom={zoom}
+        onZoomIn={zoomInView}
+        onZoomOut={zoomOutView}
+        onFitAll={fitView}
+        onFitSelection={fitSelectionView}
+        selectionDisabled={selectedVpIds.length === 0}
+      />
     </div>
   );
 }

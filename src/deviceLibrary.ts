@@ -20,6 +20,7 @@ import { templates as lighting } from "./devices/lighting";
 import { templates as cableAccessories } from "./devices/cable-accessories";
 import { templates as cloudServices } from "./devices/cloud-services";
 import { templates as codecs } from "./devices/codecs";
+import { templates as vjf } from "./devices/vjf";
 import { templates as expansionCards } from "./devices/expansion-cards";
 import { templates as storageMedia } from "./devices/storage-media";
 
@@ -48,6 +49,7 @@ export const DEVICE_TEMPLATES: DeviceTemplate[] = [
   ...cableAccessories,
   ...cloudServices,
   ...codecs,
+  ...vjf,
 ];
 
 export const CARD_TEMPLATES: DeviceTemplate[] = [...expansionCards, ...storageMedia];

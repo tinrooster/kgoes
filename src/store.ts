@@ -46,6 +46,7 @@ import { routeAllEdges, orthogonalize, extractSegments, segmentsCross, type Rout
 import { simplifyWaypoints, waypointsToSvgPath, waypointsToSvgPathWithHops } from "./pathfinding";
 import { areConnectorsCompatible, needsAdapter, findAdaptersForConnectorBridge, findAdaptersForSignalBridge, NETWORK_SIGNAL_TYPES, BARE_WIRE_CONNECTORS, areSignalsCompatibleViaConnector, effectiveSignalType } from "./connectorTypes";
 import { inferRackHeightU, inferRackForm, shelfFootprintMm, shelfInnerWidthMm } from "./rackUtils";
+import { resolveRackHeightU } from "./rackMount";
 import { DEVICE_TEMPLATES } from "./deviceLibrary";
 import { createDefaultLayout } from "./titleBlockLayout";
 import { sanitizeNoteHtml } from "./sanitizeHtml";
@@ -458,10 +459,12 @@ interface SchematicState {
   hiddenSignalTypes: string;
   hiddenPinSignalTypes: string;
   hideUnconnectedPorts: boolean;
+  showInstallationInfo: boolean;
   templateHiddenSignals: Record<string, SignalType[]>;
   toggleSignalTypeVisibility: (type: SignalType) => void;
   togglePinSignalTypeVisibility: (type: SignalType) => void;
   setHideUnconnectedPorts: (hide: boolean) => void;
+  setShowInstallationInfo: (show: boolean) => void;
   showPortCounts: boolean;
   setShowPortCounts: (show: boolean) => void;
   setTemplateHiddenSignals: (templateId: string, hidden: SignalType[]) => void;
@@ -613,6 +616,16 @@ interface SchematicState {
   setPrintSheetPaper: (pageId: string, paperId: string, orientation: "landscape" | "portrait", customWidthIn?: number, customHeightIn?: number) => void;
   /** Move a rack (and all its placements + accessories) from one rack-elevation page to another. */
   moveRackToPage: (srcPageId: string, rackId: string, dstPageId: string) => void;
+  /** Lay out all racks on an elevation page in a horizontal row with aligned tops. */
+  layoutRacksOnPage: (pageId: string) => void;
+  /** Highlight a schematic port from rack elevation (links to edges). */
+  selectedRackPort: { deviceNodeId: string; portId: string } | null;
+  setSelectedRackPort: (sel: { deviceNodeId: string; portId: string } | null) => void;
+  addRackCrossLink: (
+    pageId: string,
+    link: Omit<import("./types").RackCrossLink, "id">,
+  ) => string;
+  removeRackCrossLink: (pageId: string, linkId: string) => void;
 
   // Local file handle (File System Access API — Chromium only, not persisted)
   fileHandle: FileSystemFileHandle | null;
@@ -1168,6 +1181,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   hiddenSignalTypes: "",
   hiddenPinSignalTypes: "",
   hideUnconnectedPorts: false,
+  showInstallationInfo: true,
   showPortCounts: false,
   templateHiddenSignals: {},
   templatePresets: {},
@@ -1201,6 +1215,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   virtualEdgeGradients: {},
   pages: [],
   activePage: "schematic",
+  selectedRackPort: null,
 
   setHideAdapters: (hide) => {
     const state = get();
@@ -1442,6 +1457,14 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...(template.widthMm != null ? { widthMm: template.widthMm } : {}),
         ...(template.depthMm != null ? { depthMm: template.depthMm } : {}),
         ...(template.weightKg != null ? { weightKg: template.weightKg } : {}),
+        ...(template.rackHeightU != null
+          ? { rackHeightU: template.rackHeightU, rackMetadataSource: template.rackMetadataSource ?? "library" }
+          : {}),
+        ...(template.mountingClass ? { mountingClass: template.mountingClass } : {}),
+        ...(template.rackForm ? { rackForm: template.rackForm } : {}),
+        ...(template.facePlateLayout
+          ? { facePlateLayout: JSON.parse(JSON.stringify(template.facePlateLayout)) as DeviceData["facePlateLayout"] }
+          : {}),
         ...(template.hostname ? { hostname: template.hostname } : {}),
         ...(hiddenPorts && hiddenPorts.length > 0 ? { hiddenPorts } : {}),
         ...(template.isVenueProvided ? { isVenueProvided: true } : {}),
@@ -3423,6 +3446,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     get().saveToLocalStorage();
   },
 
+  setShowInstallationInfo: (show) => {
+    set({ showInstallationInfo: show });
+    get().saveToLocalStorage();
+  },
+
   setShowPortCounts: (show) => {
     set({ showPortCounts: show });
     get().saveToLocalStorage();
@@ -3650,7 +3678,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const state = get();
     pushUndo({ nodes: state.nodes, edges: state.edges });
     const id = nextRackPageId();
-    const page: RackElevationPage = { id, label, type: "rack-elevation", racks: [], placements: [], accessories: [] };
+    const page: RackElevationPage = { id, label, type: "rack-elevation", racks: [], placements: [], accessories: [], crossLinks: [] };
     set({ pages: [...state.pages, page], activePage: id, undoSize: undoStack.length, redoSize: 0 });
     get().saveToLocalStorage();
     return id;
@@ -3756,12 +3784,14 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       const shelfId = nextAccessoryId();
       const placementId = nextPlacementId();
       const innerWMm = shelfInnerWidthMm();
+      const deviceU = resolveRackHeightU(device).heightU;
+      const shelfHeightU = Math.max(1, Math.min(rack.heightU, deviceU));
       const shelf: RackAccessory = {
         id: shelfId,
         rackId,
         type: "shelf",
         uPosition,
-        heightU: 1,
+        heightU: shelfHeightU,
         face,
       };
       const newW = device.widthMm ?? innerWMm;
@@ -4126,6 +4156,12 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       id: nextAccessoryId(),
       rackId: rackIdMap.get(a.rackId) ?? a.rackId,
     }));
+    const newCrossLinks = (src.crossLinks ?? []).map((link) => ({
+      ...link,
+      id: crypto.randomUUID(),
+      fromRackId: rackIdMap.get(link.fromRackId) ?? link.fromRackId,
+      toRackId: rackIdMap.get(link.toRackId) ?? link.toRackId,
+    }));
     const newPage: RackElevationPage = {
       id: newPageId,
       label: `${src.label} (copy)`,
@@ -4133,6 +4169,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       racks: newRacks,
       placements: newPlacements,
       accessories: newAccessories,
+      crossLinks: newCrossLinks,
     };
     // Insert immediately after the source
     const idx = state.pages.findIndex((p) => p.id === pageId);
@@ -4263,6 +4300,66 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     get().saveToLocalStorage();
   },
 
+  layoutRacksOnPage: (pageId) => {
+    const state = get();
+    const page = state.pages.find((p) => p.id === pageId && p.type === "rack-elevation") as RackElevationPage | undefined;
+    if (!page || page.racks.length < 2) return;
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    const H_SPACING = 320;
+    const startX = 40;
+    const startY = 40;
+    const sorted = [...page.racks].sort((a, b) => a.position.x - b.position.x || a.position.y - b.position.y);
+    const posById = new Map<string, { x: number; y: number }>();
+    sorted.forEach((rack, i) => {
+      posById.set(rack.id, { x: startX + i * H_SPACING, y: startY });
+    });
+    set({
+      pages: mapElevationPage(state.pages, pageId, (p) => ({
+        ...p,
+        racks: p.racks.map((r) => {
+          const pos = posById.get(r.id);
+          return pos ? { ...r, position: pos } : r;
+        }),
+      })),
+      undoSize: undoStack.length,
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+  },
+
+  setSelectedRackPort: (sel) => set({ selectedRackPort: sel }),
+
+  addRackCrossLink: (pageId, linkData) => {
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    const id = crypto.randomUUID();
+    const link = { ...linkData, id };
+    set({
+      pages: mapElevationPage(state.pages, pageId, (p) => ({
+        ...p,
+        crossLinks: [...(p.crossLinks ?? []), link],
+      })),
+      undoSize: undoStack.length,
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+    return id;
+  },
+
+  removeRackCrossLink: (pageId, linkId) => {
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    set({
+      pages: mapElevationPage(state.pages, pageId, (p) => ({
+        ...p,
+        crossLinks: (p.crossLinks ?? []).filter((l) => l.id !== linkId),
+      })),
+      undoSize: undoStack.length,
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+  },
+
   saveToLocalStorage: () => {
     if (!hydrated) return;
     const state = get();
@@ -4286,6 +4383,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       hiddenSignalTypes: state.hiddenSignalTypes ? state.hiddenSignalTypes.split(",") as SignalType[] : undefined,
       hiddenPinSignalTypes: state.hiddenPinSignalTypes ? state.hiddenPinSignalTypes.split(",") as SignalType[] : undefined,
       hideUnconnectedPorts: state.hideUnconnectedPorts || undefined,
+      showInstallationInfo: state.showInstallationInfo === false ? false : undefined,
       showPortCounts: state.showPortCounts || undefined,
       templateHiddenSignals: Object.keys(state.templateHiddenSignals).length > 0 ? state.templateHiddenSignals : undefined,
       templatePresets: Object.keys(state.templatePresets).length > 0 ? state.templatePresets : undefined,
@@ -4537,6 +4635,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       hiddenSignalTypes: state.hiddenSignalTypes ? state.hiddenSignalTypes.split(",") as SignalType[] : undefined,
       hiddenPinSignalTypes: state.hiddenPinSignalTypes ? state.hiddenPinSignalTypes.split(",") as SignalType[] : undefined,
       hideUnconnectedPorts: state.hideUnconnectedPorts || undefined,
+      showInstallationInfo: state.showInstallationInfo === false ? false : undefined,
       showPortCounts: state.showPortCounts || undefined,
       templateHiddenSignals: Object.keys(state.templateHiddenSignals).length > 0 ? state.templateHiddenSignals : undefined,
       templatePresets: Object.keys(state.templatePresets).length > 0 ? state.templatePresets : undefined,
@@ -4775,6 +4874,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       hiddenSignalTypes: data.hiddenSignalTypes?.length ? [...data.hiddenSignalTypes].sort().join(",") : "",
       hiddenPinSignalTypes: data.hiddenPinSignalTypes?.length ? [...data.hiddenPinSignalTypes].sort().join(",") : "",
       hideUnconnectedPorts: data.hideUnconnectedPorts ?? false,
+      showInstallationInfo: data.showInstallationInfo ?? true,
       showPortCounts: data.showPortCounts ?? false,
       templateHiddenSignals: data.templateHiddenSignals ?? {},
       templatePresets: data.templatePresets ?? {},

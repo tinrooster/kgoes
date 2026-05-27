@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useCallback } from "react";
 import { SIGNAL_LABELS, SIGNAL_COLORS, LINE_STYLE_DASHARRAY, type SignalType, type LineStyle, type Port } from "../types";
 import { useSchematicStore } from "../store";
+import { useSidebarStore } from "../sidebarStore";
 import { DEFAULT_SIGNAL_COLORS, loadSignalColors } from "../signalColors";
 
 const ALL_SIGNAL_TYPES = (Object.keys(SIGNAL_LABELS) as SignalType[]).sort(
@@ -15,7 +16,10 @@ const LINE_STYLE_TIPS: Record<LineStyle, string> = {
 };
 
 export default function ViewOptionsPanel({ mobile, onClose }: { mobile?: boolean; onClose?: () => void } = {}) {
-  const [collapsed, setCollapsed] = useState(true);
+  const rightExpanded = useSidebarStore((s) => s.rightViewOptionsExpanded);
+  const setRightExpanded = useSidebarStore((s) => s.setRightViewOptionsExpanded);
+  const expandRightPanel = useSidebarStore((s) => s.expandRightPanel);
+  const collapsed = mobile ? false : !rightExpanded;
   const hiddenSignalTypesStr = useSchematicStore((s) => s.hiddenSignalTypes);
   const hiddenPinSignalTypesStr = useSchematicStore((s) => s.hiddenPinSignalTypes);
   const hideUnconnectedPorts = useSchematicStore((s) => s.hideUnconnectedPorts);
@@ -133,7 +137,7 @@ export default function ViewOptionsPanel({ mobile, onClose }: { mobile?: boolean
     return (
       <div className="w-8 bg-[var(--color-surface)] border-l border-[var(--color-border)] flex flex-col items-center h-full">
         <button
-          onClick={() => setCollapsed(false)}
+          onClick={() => expandRightPanel("viewOptions")}
           className="py-3 cursor-pointer hover:bg-[var(--color-surface-hover)] w-full flex justify-center transition-colors"
           title="View options"
         >
@@ -168,7 +172,7 @@ export default function ViewOptionsPanel({ mobile, onClose }: { mobile?: boolean
           View Options
         </h2>
         <button
-          onClick={() => mobile ? onClose?.() : setCollapsed(true)}
+          onClick={() => (mobile ? onClose?.() : setRightExpanded(false))}
           className="cursor-pointer hover:bg-[var(--color-surface-hover)] rounded p-0.5 transition-colors"
           title={mobile ? "Close" : "Collapse"}
         >

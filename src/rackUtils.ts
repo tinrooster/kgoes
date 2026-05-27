@@ -7,6 +7,7 @@ import type {
   RackAccessory,
   RackDepthConflict,
 } from "./types";
+import { mountingClassToRackForm, resolveMountingClass, resolveRackHeightU } from "./rackMount";
 
 /** Millimeters per standard rack unit */
 export const MM_PER_U = 44.45;
@@ -16,28 +17,10 @@ export const mmToU = (mm: number): number => Math.round(mm / MM_PER_U);
 
 /**
  * Get or infer a rack height in U for a device.
- * If heightMm is set, converts to U. Otherwise uses port count / device type heuristics.
+ * Priority: rackHeightU → heightMm → port/type heuristic.
  */
 export function inferRackHeightU(data: DeviceData): number {
-  if (data.heightMm) return Math.max(1, mmToU(data.heightMm));
-
-  const portCount = data.ports?.length ?? 0;
-  const dt = data.deviceType?.toLowerCase() ?? "";
-
-  // Known multi-U device types
-  if (dt.includes("matrix") || dt.includes("router")) return portCount > 32 ? 4 : portCount > 16 ? 3 : 2;
-  if (dt.includes("mixing-console") || dt.includes("mixer")) return 3;
-  if (dt.includes("amplifier") || dt.includes("amp")) return 2;
-  if (dt.includes("power-distribution") || dt.includes("pdu")) return 1;
-  if (dt.includes("media-server") || dt.includes("server")) return 2;
-  if (dt.includes("network-switch")) return portCount > 24 ? 2 : 1;
-  if (dt.includes("patch-panel")) return 1;
-
-  // General heuristic: 1U for small devices, 2U for medium, up to 4U
-  if (portCount <= 8) return 1;
-  if (portCount <= 20) return 2;
-  if (portCount <= 40) return 3;
-  return 4;
+  return resolveRackHeightU(data).heightU;
 }
 
 /**
@@ -55,7 +38,17 @@ export type RackForm = "full" | "half" | "shelf-only" | "oversize" | "unknown";
  * Honors an explicit `device.rackForm` override before applying the heuristic.
  */
 export function inferRackForm(device: DeviceData): RackForm {
+  if (device.mountingClass) {
+    const mapped = mountingClassToRackForm(device.mountingClass);
+    if (mapped !== "unknown" && mapped !== "oversize") return mapped;
+    if (mapped === "oversize") return "oversize";
+  }
   if (device.rackForm) return device.rackForm;
+
+  const mc = resolveMountingClass(device);
+  const fromMc = mountingClassToRackForm(mc);
+  if (fromMc !== "unknown" && fromMc !== "oversize") return fromMc;
+  if (fromMc === "oversize") return "oversize";
 
   const w = device.widthMm;
   const h = device.heightMm;

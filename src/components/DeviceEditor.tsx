@@ -30,6 +30,8 @@ import FacePlateEditor from "./FacePlateEditor";
 import type { FacePlateLayout } from "../types";
 import { AUX_FIELD_GROUPS, normalizeAuxRows, resolveAuxiliaryLine, trimTrailingEmpty } from "../auxiliaryData";
 import { deriveThermalBtuh } from "../thermal";
+import type { MountingClass } from "../rackMount";
+import { getRackMountSummary, validateRackDimensions, heightMmFromRackU } from "../rackMount";
 
 const ALL_SIGNAL_TYPES = (Object.keys(SIGNAL_LABELS) as SignalType[]).sort(
   (a, b) => SIGNAL_LABELS[a].localeCompare(SIGNAL_LABELS[b]),
@@ -142,6 +144,13 @@ export default function DeviceEditor() {
   const [deviceType, setDeviceType] = useState("");
   const [manufacturer, setManufacturer] = useState("");
   const [modelNumber, setModelNumber] = useState("");
+  const [designation, setDesignation] = useState("");
+  const [rackLocation, setRackLocation] = useState("");
+  const [frameSlot, setFrameSlot] = useState("");
+  const [deviceTypeCode, setDeviceTypeCode] = useState("");
+  const [managementIp, setManagementIp] = useState("");
+  const [vlanSummary, setVlanSummary] = useState("");
+  const [showInstallationBlock, setShowInstallationBlock] = useState<boolean | undefined>(undefined);
   const [referenceUrl, setReferenceUrl] = useState("");
   const [category, setCategory] = useState("");
   const [color, setColor] = useState<string | undefined>(undefined);
@@ -172,6 +181,9 @@ export default function DeviceEditor() {
   const [widthMm, setWidthMm] = useState<number | undefined>(undefined);
   const [depthMm, setDepthMm] = useState<number | undefined>(undefined);
   const [weightKg, setWeightKg] = useState<number | undefined>(undefined);
+  const [rackHeightU, setRackHeightU] = useState<number | undefined>(undefined);
+  const [mountingClass, setMountingClass] = useState<MountingClass>("rack-full");
+  const [syncMmFromU, setSyncMmFromU] = useState(true);
 
   // Cable accessory flags
   const [isCableAccessory, setIsCableAccessory] = useState(false);
@@ -222,6 +234,13 @@ export default function DeviceEditor() {
     setDeviceType(node.data.deviceType);
     setManufacturer(node.data.manufacturer ?? "");
     setModelNumber(node.data.modelNumber ?? "");
+    setDesignation(node.data.designation ?? "");
+    setRackLocation(node.data.rackLocation ?? "");
+    setFrameSlot(node.data.frameSlot ?? "");
+    setDeviceTypeCode(node.data.deviceTypeCode ?? "");
+    setManagementIp(node.data.managementIp ?? "");
+    setVlanSummary(node.data.vlanSummary ?? "");
+    setShowInstallationBlock(node.data.showInstallationBlock);
     setReferenceUrl(node.data.referenceUrl ?? tpl?.referenceUrl ?? "");
     setCategory(node.data.category ?? tpl?.category ?? "");
     setColor(node.data.color);
@@ -268,6 +287,9 @@ export default function DeviceEditor() {
     setWidthMm(node.data.widthMm);
     setDepthMm(node.data.depthMm);
     setWeightKg(node.data.weightKg);
+    setRackHeightU(node.data.rackHeightU ?? (node.data.heightMm != null ? Math.max(1, Math.round(node.data.heightMm / 44.45)) : undefined));
+    setMountingClass(node.data.mountingClass ?? (node.data.rackForm === "half" ? "rack-half" : node.data.rackForm === "shelf-only" ? "shelf" : "rack-full"));
+    setSyncMmFromU(true);
     setIsCableAccessory(node.data.isCableAccessory ?? false);
     setIntegratedWithCable(node.data.integratedWithCable ?? false);
     setIsVenueProvided(node.data.isVenueProvided ?? false);
@@ -321,6 +343,13 @@ export default function DeviceEditor() {
       ports: finalPorts,
       ...(manufacturer.trim() ? { manufacturer: manufacturer.trim() } : {}),
       ...(modelNumber.trim() ? { modelNumber: modelNumber.trim() } : {}),
+      ...(designation.trim() ? { designation: designation.trim() } : {}),
+      ...(rackLocation.trim() ? { rackLocation: rackLocation.trim() } : {}),
+      ...(frameSlot.trim() ? { frameSlot: frameSlot.trim() } : {}),
+      ...(deviceTypeCode.trim() ? { deviceTypeCode: deviceTypeCode.trim() } : {}),
+      ...(managementIp.trim() ? { managementIp: managementIp.trim() } : {}),
+      ...(vlanSummary.trim() ? { vlanSummary: vlanSummary.trim() } : {}),
+      ...(showInstallationBlock !== undefined ? { showInstallationBlock } : {}),
       ...(referenceUrl.trim() ? { referenceUrl: referenceUrl.trim() } : {}),
       ...(category.trim() ? { category: category.trim() } : {}),
       ...(existing?.templateId ? { templateId: existing.templateId } : {}),
@@ -343,6 +372,8 @@ export default function DeviceEditor() {
       ...(widthMm != null ? { widthMm } : {}),
       ...(depthMm != null ? { depthMm } : {}),
       ...(weightKg != null ? { weightKg } : {}),
+      ...(rackHeightU != null ? { rackHeightU, rackMetadataSource: "explicit" as const } : {}),
+      ...(mountingClass ? { mountingClass } : {}),
       ...(isCableAccessory ? { isCableAccessory: true } : {}),
       ...(integratedWithCable ? { integratedWithCable: true } : {}),
       ...(isVenueProvided ? { isVenueProvided: true } : {}),
@@ -358,7 +389,7 @@ export default function DeviceEditor() {
     updateDevice(editingNodeId, data);
     setCreatingNodeId(null); // commit the node — close won't undo it
     close();
-  }, [editingNodeId, ports, label, shortName, useShortName, wrapLabel, hostname, deviceType, manufacturer, modelNumber, referenceUrl, category, color, headerColor, node, updateDevice, close, setCreatingNodeId, showAllPorts, hiddenPorts, dhcpServer, powerDrawW, powerCapacityW, voltage, thermalBtuh, poeBudgetW, poeDrawW, unitCost, heightMm, widthMm, depthMm, weightKg, isCableAccessory, integratedWithCable, isVenueProvided, adapterVisibility, auxiliaryData, searchTermsRaw]);
+  }, [editingNodeId, ports, label, shortName, useShortName, wrapLabel, hostname, deviceType, manufacturer, modelNumber, designation, rackLocation, frameSlot, deviceTypeCode, managementIp, vlanSummary, showInstallationBlock, referenceUrl, category, color, headerColor, node, updateDevice, close, setCreatingNodeId, showAllPorts, hiddenPorts, dhcpServer, powerDrawW, powerCapacityW, voltage, thermalBtuh, poeBudgetW, poeDrawW, unitCost, heightMm, widthMm, depthMm, weightKg, isCableAccessory, integratedWithCable, isVenueProvided, adapterVisibility, auxiliaryData, searchTermsRaw]);
 
   // Ctrl+Enter anywhere in the editor → Apply & Close
   const onCtrlEnter = useCallback((e: React.KeyboardEvent) => {
@@ -925,6 +956,78 @@ export default function DeviceEditor() {
             </Field>
           </div>
 
+          <div className="border border-[var(--color-border)] rounded-md p-3 space-y-2">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+              Installation (drawing)
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Designation">
+                <input
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs outline-none focus:border-blue-500"
+                  value={designation}
+                  onChange={(e) => setDesignation(e.target.value)}
+                  placeholder="e.g. DSK-01B, TC-03 DA C"
+                />
+              </Field>
+              <Field label="Type code">
+                <input
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs outline-none focus:border-blue-500"
+                  value={deviceTypeCode}
+                  onChange={(e) => setDeviceTypeCode(e.target.value)}
+                  placeholder="DA, RSW, FS…"
+                />
+              </Field>
+              <Field label="Rack location">
+                <input
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs outline-none focus:border-blue-500"
+                  value={rackLocation}
+                  onChange={(e) => setRackLocation(e.target.value)}
+                  placeholder="e.g. RK CB03, TH-03"
+                />
+              </Field>
+              <Field label="Frame / slot">
+                <input
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs outline-none focus:border-blue-500"
+                  value={frameSlot}
+                  onChange={(e) => setFrameSlot(e.target.value)}
+                  placeholder="FRAME 1 SLOT 3/4"
+                />
+              </Field>
+              <Field label="Management IP">
+                <input
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs outline-none focus:border-blue-500"
+                  value={managementIp}
+                  onChange={(e) => setManagementIp(e.target.value)}
+                  placeholder="192.168.x.x"
+                />
+              </Field>
+              <Field label="VLAN summary">
+                <input
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs outline-none focus:border-blue-500"
+                  value={vlanSummary}
+                  onChange={(e) => setVlanSummary(e.target.value)}
+                  placeholder="VLAN 10, 20"
+                />
+              </Field>
+            </div>
+            <label className="flex items-center gap-1.5 text-[11px] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showInstallationBlock === true}
+                ref={(el) => { if (el) el.indeterminate = showInstallationBlock === undefined; }}
+                onChange={(e) =>
+                  setShowInstallationBlock(
+                    e.target.checked ? true : showInstallationBlock === undefined ? false : undefined,
+                  )
+                }
+              />
+              Show installation block on canvas
+              {showInstallationBlock === undefined && (
+                <span className="text-[var(--color-text-muted)]">(inherit)</span>
+              )}
+            </label>
+          </div>
+
           {/* Header color picker */}
           <div className="flex items-center gap-2 -mt-1">
             <span className="text-[10px] text-[var(--color-text-muted)]">Header Color</span>
@@ -1086,10 +1189,96 @@ export default function DeviceEditor() {
             />
           </div>
 
+          {/* Rack elevation */}
+          <div className="border border-[var(--color-border)] rounded-md p-3 space-y-2">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+              Rack elevation
+            </div>
+            {node && (() => {
+              const draft: DeviceData = {
+                label,
+                deviceType,
+                ports: [],
+                rackHeightU,
+                mountingClass,
+                heightMm,
+                widthMm,
+                depthMm,
+              };
+              const summary = getRackMountSummary(draft);
+              const warnings = validateRackDimensions(draft);
+              return (
+                <>
+                  <p className="text-[11px] text-[var(--color-text-muted)]">
+                    {summary.heightU}U · {summary.mountingLabel}
+                    {summary.source === "estimated" ? " · estimated" : ""}
+                  </p>
+                  {warnings.map((w) => (
+                    <p key={w} className="text-[10px] text-amber-700">{w}</p>
+                  ))}
+                </>
+              );
+            })()}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-0.5">
+                  Rack U
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={60}
+                  step={1}
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-1 text-xs outline-none focus:border-blue-500"
+                  value={rackHeightU ?? ""}
+                  onChange={(e) => {
+                    const u = e.target.value ? Number(e.target.value) : undefined;
+                    setRackHeightU(u);
+                    if (syncMmFromU && u != null) setHeightMm(heightMmFromRackU(u));
+                  }}
+                  onKeyDown={(e) => e.stopPropagation()}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-0.5">
+                  Mounting
+                </label>
+                <select
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-1 text-xs outline-none focus:border-blue-500"
+                  value={mountingClass}
+                  onChange={(e) => setMountingClass(e.target.value as MountingClass)}
+                >
+                  <option value="rack-full">Full rack panel</option>
+                  <option value="rack-half">Half rack</option>
+                  <option value="shelf">Shelf / throwdown</option>
+                  <option value="tabletop">Tabletop (not on elevation)</option>
+                  <option value="not-rackable">Not rackable</option>
+                </select>
+              </div>
+            </div>
+            <label className="flex items-center gap-1.5 text-[10px] text-[var(--color-text-muted)] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={syncMmFromU}
+                onChange={(e) => setSyncMmFromU(e.target.checked)}
+              />
+              Sync height (mm) from rack U
+            </label>
+            {(deviceType === "patch-panel" || (ports.length >= 24)) && (
+              <button
+                type="button"
+                className="text-[10px] text-blue-600 hover:underline"
+                onClick={() => setShowFacePlateEditor(true)}
+              >
+                Edit face-plate layout (ports on rack view)
+              </button>
+            )}
+          </div>
+
           {/* Physical Dimensions */}
-          <details className="text-xs">
+          <details className="text-xs" open>
             <summary className="cursor-pointer text-[var(--color-text-secondary)] hover:text-[var(--color-text)] select-none py-1">
-              Physical Dimensions
+              Physical dimensions (mm)
             </summary>
             <div className="pt-1 pl-2 grid grid-cols-4 gap-3">
               <div>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useSchematicStore } from "../store";
+import WorkspaceSettingsSection from "./WorkspaceSettingsSection";
 import { DEFAULT_SCROLL_CONFIG, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_PAGE_MODE } from "../types";
 import type { LabelCaseMode, PanMode, ScrollAction, ScrollConfig, StubLabelPageMode } from "../types";
 
@@ -71,11 +72,12 @@ function SensitivityRow({
   );
 }
 
-type PrefTab = "canvas" | "display";
+type PrefTab = "canvas" | "display" | "workspace";
 
 const TAB_LABELS: Record<PrefTab, string> = {
   canvas: "Canvas",
   display: "Display",
+  workspace: "KGO-ES",
 };
 
 export default function PreferencesDialog({ onClose }: { onClose: () => void }) {
@@ -447,6 +449,8 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
               </div>
             </>
           )}
+
+          {activeTab === "workspace" && <WorkspaceSettingsSection />}
         </div>
 
         {/* Footer */}

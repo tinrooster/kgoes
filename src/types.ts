@@ -274,9 +274,29 @@ export interface DeviceData {
   depthMm?: number;
   /** Device weight in kilograms — reserved for future rack management */
   weightKg?: number;
+  /** Authoritative rack occupancy in whole U (1–60). Takes precedence over heightMm heuristics. */
+  rackHeightU?: number;
+  /** How this device mounts in a rack elevation. */
+  mountingClass?: import("./rackMount").MountingClass;
+  /** Whether rack U / mounting came from library, user entry, or port-count estimate. */
+  rackMetadataSource?: import("./rackMount").RackMetadataSource;
   /** Optional rack-form override — when set, bypasses the size heuristic in `inferRackForm`.
    *  Use for edge cases (e.g., desktop unit with optional rack ears, oddly-sized half-rack gear). */
   rackForm?: "full" | "half" | "shelf-only";
+  /** Facility designation on drawing (e.g. DSK-01B, TC-03 DA C) — distinct from marketing `label`. */
+  designation?: string;
+  /** Rack / location code (e.g. RK CB03, TH-03). */
+  rackLocation?: string;
+  /** Frame and slot text (e.g. FRAME 1 SLOT 3/4). */
+  frameSlot?: string;
+  /** Device type code for housename (DA, RSW, FS, …). */
+  deviceTypeCode?: string;
+  /** Primary management IP when not inferred from ports. */
+  managementIp?: string;
+  /** VLAN summary for header display (e.g. "VLAN 10, 20"). */
+  vlanSummary?: string;
+  /** Per-instance override for installation block under device name. */
+  showInstallationBlock?: boolean;
   /** Adapter visibility override — only meaningful for deviceType "adapter" */
   adapterVisibility?: "default" | "force-show" | "force-hide";
   /** User-customizable auxiliary data rows. Each row carries its own slot (header vs
@@ -474,7 +494,12 @@ export interface DeviceTemplate {
   widthMm?: number;              // Physical width in millimeters
   depthMm?: number;              // Physical depth in millimeters
   weightKg?: number;             // Device weight in kilograms
+  rackHeightU?: number;
+  mountingClass?: import("./rackMount").MountingClass;
+  rackMetadataSource?: import("./rackMount").RackMetadataSource;
   rackForm?: "full" | "half" | "shelf-only"; // Optional override for the size-based rack-form heuristic
+  /** Preset for patch/VJF face-plate layout generation. */
+  panelLayoutPreset?: "vjf-2x32" | "patch-1u-24";
   auxiliaryData?: AuxRow[];      // Aux rows shown on the node (each row carries its own header/footer slot)
   facePlateLayout?: FacePlateLayout; // Custom face-plate connector positions
 }
@@ -637,6 +662,16 @@ export interface RackAccessory {
   shelfDepthMm?: number;
 }
 
+/** Documentation arrow between racks on a facility elevation sheet (not a cable edge). */
+export interface RackCrossLink {
+  id: string;
+  fromRackId: string;
+  toRackId: string;
+  label: string;
+  fromDeviceNodeId?: string;
+  toDeviceNodeId?: string;
+}
+
 export interface RackElevationPage {
   id: string;
   label: string;
@@ -644,6 +679,8 @@ export interface RackElevationPage {
   racks: RackData[];
   placements: RackDevicePlacement[];
   accessories: RackAccessory[];
+  /** Cross-rack callouts (e.g. FIREWALL → ETHERNET PATCH). */
+  crossLinks?: RackCrossLink[];
 }
 
 export interface PrintViewport {
@@ -696,6 +733,8 @@ export interface SchematicFile {
    *  shape so the migration can honor the user's prior suppression intent. */
   hideDeviceTypes?: boolean;
   hideUnconnectedPorts?: boolean;
+  /** Show designation, rack, model block on device headers (default true for new files). */
+  showInstallationInfo?: boolean;
   showPortCounts?: boolean;
   templateHiddenSignals?: Record<string, SignalType[]>;
   templatePresets?: Record<string, TemplatePreset>;

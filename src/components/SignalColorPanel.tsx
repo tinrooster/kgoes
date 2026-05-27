@@ -7,11 +7,15 @@ import {
   saveSignalColors,
 } from "../signalColors";
 import { useSchematicStore } from "../store";
+import { useSidebarStore } from "../sidebarStore";
 
 const SIGNAL_TYPES = Object.keys(DEFAULT_SIGNAL_COLORS) as SignalType[];
 
 export default function SignalColorPanel({ mobile, onClose }: { mobile?: boolean; onClose?: () => void } = {}) {
-  const [collapsed, setCollapsed] = useState(true);
+  const rightExpanded = useSidebarStore((s) => s.rightColorsExpanded);
+  const setRightExpanded = useSidebarStore((s) => s.setRightColorsExpanded);
+  const expandRightPanel = useSidebarStore((s) => s.expandRightPanel);
+  const collapsed = mobile ? false : !rightExpanded;
   const [colors, setColors] = useState<Record<SignalType, string>>(loadSignalColors);
 
   // Sync colors when schematic is loaded/imported
@@ -53,7 +57,7 @@ export default function SignalColorPanel({ mobile, onClose }: { mobile?: boolean
     return (
       <div className="w-8 bg-[var(--color-surface)] border-l border-[var(--color-border)] flex flex-col items-center h-full">
         <button
-          onClick={() => setCollapsed(false)}
+          onClick={() => expandRightPanel("colors")}
           className="py-3 cursor-pointer hover:bg-[var(--color-surface-hover)] w-full flex justify-center transition-colors"
           title="Show signal colors"
         >
@@ -79,7 +83,7 @@ export default function SignalColorPanel({ mobile, onClose }: { mobile?: boolean
           Signal Colors
         </h2>
         <button
-          onClick={() => mobile ? onClose?.() : setCollapsed(true)}
+          onClick={() => (mobile ? onClose?.() : setRightExpanded(false))}
           className="cursor-pointer hover:bg-[var(--color-surface-hover)] rounded p-0.5 transition-colors"
           title={mobile ? "Close" : "Collapse"}
         >

@@ -5,6 +5,7 @@ import path from 'path'
 import os from 'os'
 import { readFileSync } from 'fs'
 import { execSync } from 'child_process'
+import { KGO_ES_DESCRIPTION, KGO_ES_NAME, KGO_ES_PAGE_TITLE } from './src/branding'
 
 // Use temp dir for cache to avoid file-locking issues
 const cacheDir = path.join(os.tmpdir(), 'vite-easyschematic')
@@ -43,9 +44,9 @@ export default defineConfig({
         ],
       },
       manifest: {
-        name: 'EasySchematic — AV Signal Flow Diagram Tool',
-        short_name: 'EasySchematic',
-        description: 'Design audio/video signal flow diagrams for broadcast, live production, and AV integration.',
+        name: KGO_ES_PAGE_TITLE,
+        short_name: KGO_ES_NAME,
+        description: KGO_ES_DESCRIPTION,
         theme_color: '#0f172a',
         background_color: '#0f172a',
         display: 'standalone',

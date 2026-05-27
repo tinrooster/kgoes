@@ -8,9 +8,10 @@ export default function TrackItLinkedBanner() {
   if (!isTrackItLinked()) return null;
 
   const label = link?.dwgNumber ? `DWG ${link.dwgNumber}` : "trackIT drawing";
+  const name = link?.drawingName?.trim();
   const pushedLabel = lastPushed
     ? `Last saved to trackIT ${new Date(lastPushed).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-    : "Not saved to trackIT yet — press Ctrl+S";
+    : "Not saved to trackIT yet — Ctrl+S writes to this linked drawing";
 
   return (
     <div className="flex items-center justify-between gap-3 border-b border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs text-[var(--color-text)]">
@@ -18,6 +19,12 @@ export default function TrackItLinkedBanner() {
         <span className="font-semibold text-blue-700 dark:text-blue-300">trackIT linked</span>
         <span className="mx-1.5 text-[var(--color-text-muted)]">·</span>
         <span className="font-mono">{label}</span>
+        {name ? (
+          <>
+            <span className="mx-1.5 text-[var(--color-text-muted)]">·</span>
+            <span className="truncate">{name}</span>
+          </>
+        ) : null}
         <span className="mx-1.5 text-[var(--color-text-muted)]">·</span>
         <span className="text-[var(--color-text-muted)]">{pushedLabel}</span>
       </div>

@@ -363,15 +363,16 @@ function OffsetEdgeComponent({
   const cableIdLabelStyle: React.CSSProperties = {
     position: "absolute",
     pointerEvents: "none",
-    fontSize: 9,
-    fontFamily: "Inter, system-ui, sans-serif",
-    fontWeight: 600,
-    color: "#374151",
-    background: "rgba(255,255,255,0.92)",
+    fontSize: 8,
+    fontFamily: "JetBrains Mono, ui-monospace, monospace",
+    fontWeight: 700,
+    color: "#1f2937",
+    background: "rgba(255,255,255,0.95)",
     padding: "0 3px",
     borderRadius: 2,
     whiteSpace: "nowrap",
     border: `1px solid ${signalColor}`,
+    letterSpacing: "0.02em",
   };
 
   const customLabelStyle: React.CSSProperties = {
@@ -385,7 +386,7 @@ function OffsetEdgeComponent({
     padding: "1px 4px",
     borderRadius: 3,
     whiteSpace: "nowrap",
-    border: "1px solid #e5e7eb",
+    border: "1px solid #d1d5db",
   };
 
   // Estimate badge width from text length (for offset positioning)
@@ -465,8 +466,13 @@ function OffsetEdgeComponent({
     : CUSTOM_LABEL_GAP;
 
   // Compute midpoint position along the path (for cable ID midpoint and custom midpoint label)
-  const cidMidPt = totalLen > 0 ? pointAtDistance(totalLen / 2 + cidMidOff) : { x: lx, y: ly };
-  const customMidPt = totalLen > 0 ? pointAtDistance(totalLen / 2) : { x: lx, y: ly };
+  const cidMidPt = totalLen > 0 ? pointAtDistance(totalLen / 2 + cidMidOff) : { x: lx, y: ly, dx: 1, dy: 0 };
+  const cableIdMidAtCenter = showCableId && cableIdLabelMode === "midpoint" && showMidLabel;
+  const customMidAlong = cableIdMidAtCenter ? 24 : 0;
+  const customMidPt = totalLen > 0 ? pointAtDistance(totalLen / 2 + customMidAlong) : { x: lx, y: ly, dx: 1, dy: 0 };
+  const customMidPerp = cableIdMidAtCenter ? 14 : 0;
+  const customMidX = customMidPt.x + (-customMidPt.dy) * customMidPerp;
+  const customMidY = customMidPt.y + customMidPt.dx * customMidPerp;
 
   // Cable ID labels — at endpoints or midpoint depending on mode (unchanged)
   const cableIdLabels = showCableId ? (
@@ -500,7 +506,7 @@ function OffsetEdgeComponent({
           key="clbl-mid"
           style={{
             ...customLabelStyle,
-            transform: `translate(-50%, -50%) translate(${customMidPt.x}px, ${customMidPt.y}px)`,
+            transform: `translate(-50%, -50%) translate(${customMidX}px, ${customMidY}px)`,
           }}
         >
           {edgeLabel}

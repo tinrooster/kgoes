@@ -1,6 +1,9 @@
-import { useCallback, useMemo, useRef, useState, type WheelEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useSchematicStore } from "../store";
-import type { RackData, RackDevicePlacement, RackAccessory, RackDepthConflict, DeviceData, RackElevationPage } from "../types";
+import { computeFitViewport, rackPageContentBounds, type ContentBounds } from "../viewNavUtils";
+import ViewNavBar from "./ViewNavBar";
+import type { RackData, RackDevicePlacement, RackAccessory, RackDepthConflict, DeviceData, RackElevationPage, RackCrossLink } from "../types";
+import { getConnectedPortIds } from "../rackMount";
 import { resolveDeviceLabel, type SchematicDisplayDefaults } from "../displayName";
 import { RACK_ACCESSORY_LABELS, RACK_TYPE_LABELS } from "../types";
 import {
@@ -118,13 +121,55 @@ function OccupancyPattern() {
       <pattern id="occupancy-stripes" patternUnits="userSpaceOnUse" width={6} height={6} patternTransform="rotate(45)">
         <line x1={0} y1={0} x2={0} y2={6} stroke="rgba(0,0,0,0.08)" strokeWidth={2} />
       </pattern>
+      <marker id="rack-crosslink-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+        <path d="M0,0 L8,4 L0,8 Z" fill="#64748b" />
+      </marker>
     </defs>
   );
 }
 
 // ── Sub-components ─────────────────────────────────────────────────
 
-function RackFrame({ rack, faceLabel, viewFace = "front" }: { rack: RackData; faceLabel?: string; viewFace?: "front" | "rear" }) {
+function SharedURuler({ x, y, maxHeightU }: { x: number; y: number; maxHeightU: number }) {
+  const totalH = maxHeightU * PX_PER_U;
+  return (
+    <g transform={`translate(${x}, ${y})`} pointerEvents="none">
+      <rect x={-RULER_WIDTH} y={0} width={RULER_WIDTH - 2} height={totalH} fill="#fafafa" stroke="#e5e5e5" strokeWidth={0.5} />
+      {Array.from({ length: maxHeightU }, (_, i) => {
+        const uNum = maxHeightU - i;
+        const lineY = i * PX_PER_U;
+        return (
+          <g key={uNum}>
+            <line x1={-RULER_WIDTH} y1={lineY} x2={0} y2={lineY} stroke="#ddd" strokeWidth={0.5} />
+            <text
+              x={-RULER_WIDTH / 2 - 2}
+              y={lineY + PX_PER_U / 2}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize={8}
+              fill="#666"
+              fontWeight={500}
+            >
+              {uNum}
+            </text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+function RackFrame({
+  rack,
+  faceLabel,
+  viewFace = "front",
+  hideRuler = false,
+}: {
+  rack: RackData;
+  faceLabel?: string;
+  viewFace?: "front" | "rear";
+  hideRuler?: boolean;
+}) {
   const totalH = rack.heightU * PX_PER_U;
   const is2Post = rack.rackType === "open-2post";
   const isOpen = is2Post || rack.rackType === "open-4post";
@@ -162,7 +207,9 @@ function RackFrame({ rack, faceLabel, viewFace = "front" }: { rack: RackData; fa
         return (
           <g key={uNum}>
             <line x1={0} y1={y} x2={RACK_WIDTH} y2={y} stroke="#ddd" strokeWidth={0.5} />
-            <text x={-RULER_WIDTH / 2 - 2} y={y + PX_PER_U / 2} textAnchor="middle" dominantBaseline="central" fontSize={8} fill="#999">{uNum}</text>
+            {!hideRuler && (
+              <text x={-RULER_WIDTH / 2 - 2} y={y + PX_PER_U / 2} textAnchor="middle" dominantBaseline="central" fontSize={8} fill="#999">{uNum}</text>
+            )}
 
             {showRails && [1/6, 3/6, 5/6].map((frac, hi) => {
               const cy = y + PX_PER_U * frac;
@@ -233,12 +280,18 @@ interface DeviceBlockProps {
   zoom: number;
   showFacePlateDetail: boolean;
   schematicDefaults: SchematicDisplayDefaults;
+  connectedPortIds: Set<string>;
+  selectedPortId: string | null;
   onSelect: (id: string) => void;
   onDragStart: (placementId: string, e: React.MouseEvent) => void;
   onContextMenu: (e: React.MouseEvent, placement: RackDevicePlacement) => void;
+  onPortClick: (portId: string, e: React.MouseEvent) => void;
 }
 
-function DeviceBlock({ placement, rack, deviceData, isSelected, isDragging, zoom, showFacePlateDetail, schematicDefaults, onSelect, onDragStart, onContextMenu }: DeviceBlockProps) {
+function DeviceBlock({
+  placement, rack, deviceData, isSelected, isDragging, zoom, showFacePlateDetail, schematicDefaults,
+  connectedPortIds, selectedPortId, onSelect, onDragStart, onContextMenu, onPortClick,
+}: DeviceBlockProps) {
   const resolved = resolveDeviceLabel(deviceData, schematicDefaults);
   const label = resolved.text;
   const heightU = inferRackHeightU(deviceData);
@@ -332,17 +385,35 @@ function DeviceBlock({ placement, rack, deviceData, isSelected, isDragging, zoom
       })()}
 
       {/* U height indicator */}
-      {heightU > 1 && !showConnectors && (
-        <text x={x + w - 4} y={y + 8} textAnchor="end" fontSize={7} fill="rgba(255,255,255,0.7)" style={{ pointerEvents: "none" }}>{heightU}U</text>
-      )}
+      <text x={x + w - 4} y={y + 8} textAnchor="end" fontSize={7} fill="rgba(255,255,255,0.7)" style={{ pointerEvents: "none" }}>
+        {heightU}U
+      </text>
 
       {/* Connector icons */}
       {showConnectors && layoutPorts.map((lp) => {
         const cx = x + (lp.x / 100) * w;
         const cy = y + (lp.y / 100) * h;
         const sigColor = SIGNAL_COLORS[lp.signalType as keyof typeof SIGNAL_COLORS] ?? "#fff";
+        const isLinked = connectedPortIds.has(lp.id);
+        const isPortSelected = selectedPortId === lp.id;
+        const hitR = Math.max(5, 4 * PX_PER_MM);
         return (
-          <g key={lp.id} style={{ pointerEvents: "none" }}>
+          <g key={lp.id}>
+            <circle
+              cx={cx}
+              cy={cy}
+              r={hitR}
+              fill="transparent"
+              className="cursor-pointer"
+              onClick={(e) => { e.stopPropagation(); onPortClick(lp.id, e); }}
+            />
+            {isLinked && (
+              <circle cx={cx} cy={cy} r={hitR + 1.5} fill="none" stroke="#4ade80" strokeWidth={1.25} style={{ pointerEvents: "none" }} />
+            )}
+            {isPortSelected && (
+              <circle cx={cx} cy={cy} r={hitR + 2.5} fill="none" stroke="#fbbf24" strokeWidth={1.5} style={{ pointerEvents: "none" }} />
+            )}
+            <g style={{ pointerEvents: "none" }}>
             <ConnectorIcon
               x={cx}
               y={cy}
@@ -363,6 +434,7 @@ function DeviceBlock({ placement, rack, deviceData, isSelected, isDragging, zoom
                 {lp.label.length > 8 ? lp.label.slice(0, 7) + "…" : lp.label}
               </text>
             )}
+            </g>
           </g>
         );
       })}
@@ -864,6 +936,42 @@ function SideViewRack({
   );
 }
 
+/** Cross-rack documentation arrows between rack tops (facility sheet callouts). */
+function CrossLinkLayer({
+  links,
+  racks,
+}: {
+  links: RackCrossLink[];
+  racks: RackData[];
+}) {
+  if (links.length === 0 || racks.length < 2) return null;
+  const byId = new Map(racks.map((r) => [r.id, r]));
+  return (
+    <g style={{ pointerEvents: "none" }}>
+      {links.map((link) => {
+        const from = byId.get(link.fromRackId);
+        const to = byId.get(link.toRackId);
+        if (!from || !to) return null;
+        const fromX = from.position.x + RACK_PAD_X + RULER_WIDTH + RACK_WIDTH / 2;
+        const fromY = from.position.y + RACK_PAD_Y - 6;
+        const toX = to.position.x + RACK_PAD_X + RULER_WIDTH + RACK_WIDTH / 2;
+        const toY = to.position.y + RACK_PAD_Y - 6;
+        const midX = (fromX + toX) / 2;
+        const arcY = Math.min(fromY, toY) - 28;
+        const path = `M ${fromX} ${fromY} Q ${midX} ${arcY} ${toX} ${toY}`;
+        return (
+          <g key={link.id}>
+            <path d={path} fill="none" stroke="#64748b" strokeWidth={1.25} markerEnd="url(#rack-crosslink-arrow)" />
+            <text x={midX} y={arcY - 4} textAnchor="middle" fontSize={8} fill="#475569" fontWeight={600}>
+              {link.label}
+            </text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
 // ── View toggle ────────────────────────────────────────────────────
 
 function ViewToggle({ viewMode, onChangeView }: { viewMode: ViewMode; onChangeView: (mode: ViewMode) => void }) {
@@ -1263,6 +1371,10 @@ function SlotMenu({
 
 export default function RackRenderer({ page }: { page: RackElevationPage }) {
   const nodes = useSchematicStore((s) => s.nodes);
+  const edges = useSchematicStore((s) => s.edges);
+  const selectedRackPort = useSchematicStore((s) => s.selectedRackPort);
+  const setSelectedRackPort = useSchematicStore((s) => s.setSelectedRackPort);
+  const setActivePage = useSchematicStore((s) => s.setActivePage);
   const addRackPlacement = useSchematicStore((s) => s.addRackPlacement);
   const addPlacementSmart = useSchematicStore((s) => s.addPlacementSmart);
   const removeRackPlacement = useSchematicStore((s) => s.removeRackPlacement);
@@ -1276,10 +1388,10 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
   const addShelfMountedDevice = useSchematicStore((s) => s.addShelfMountedDevice);
   const removeRackAccessoryWithOccupants = useSchematicStore((s) => s.removeRackAccessoryWithOccupants);
   const addRackAccessory = useSchematicStore((s) => s.addRackAccessory);
+  const addRackCrossLink = useSchematicStore((s) => s.addRackCrossLink);
   const removeRackAccessory = useSchematicStore((s) => s.removeRackAccessory);
   const updateRackAccessory = useSchematicStore((s) => s.updateRackAccessory);
   const removeRack = useSchematicStore((s) => s.removeRack);
-  const setActivePage = useSchematicStore((s) => s.setActivePage);
   const useShortNames = useSchematicStore((s) => s.useShortNames);
   const wrapDeviceLabels = useSchematicStore((s) => s.wrapDeviceLabels);
   const schematicDefaults = useMemo<SchematicDisplayDefaults>(
@@ -1317,6 +1429,15 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [viewOffset, setViewOffset] = useState({ x: 40, y: 40 });
   const [zoom, setZoom] = useState(1);
+  const vpRef = useRef({ zoom: 1, pan: { x: 40, y: 40 } });
+  const setViewport = useCallback((z: number, pan: { x: number; y: number }) => {
+    vpRef.current = { zoom: z, pan };
+    setZoom(z);
+    setViewOffset(pan);
+  }, []);
+  const trackpadActiveRef = useRef(false);
+  const trackpadTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const ctrlHeldRef = useRef(false);
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0, ox: 0, oy: 0 });
   const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(null);
@@ -1367,6 +1488,21 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
     [page.racks],
   );
 
+  const leftmostRackId = useMemo(() => {
+    if (page.racks.length === 0) return null;
+    return [...page.racks].sort((a, b) => a.position.x - b.position.x || a.position.y - b.position.y)[0]?.id ?? null;
+  }, [page.racks]);
+
+  const sharedRulerOrigin = useMemo(() => {
+    if (!leftmostRackId || page.racks.length < 2) return null;
+    const rack = page.racks.find((r) => r.id === leftmostRackId);
+    if (!rack) return null;
+    return {
+      x: rack.position.x + RACK_PAD_X,
+      y: rack.position.y + RACK_PAD_Y + LABEL_HEIGHT + (maxRackHeightU - rack.heightU) * PX_PER_U,
+    };
+  }, [leftmostRackId, page.racks, maxRackHeightU]);
+
   const deviceDataMap = useMemo(() => {
     const map = new Map<string, DeviceData>();
     for (const n of nodes) {
@@ -1374,6 +1510,25 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
     }
     return map;
   }, [nodes]);
+
+  const connectedPortsByDevice = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const n of nodes) {
+      if (n.type === "device") {
+        map.set(n.id, getConnectedPortIds(n.id, edges));
+      }
+    }
+    return map;
+  }, [nodes, edges]);
+
+  const handlePortClick = useCallback((deviceNodeId: string, portId: string) => {
+    const current = useSchematicStore.getState().selectedRackPort;
+    if (current?.deviceNodeId === deviceNodeId && current.portId === portId) {
+      setSelectedRackPort(null);
+    } else {
+      setSelectedRackPort({ deviceNodeId, portId });
+    }
+  }, [setSelectedRackPort]);
 
   const handleDeviceContextMenu = useCallback((e: React.MouseEvent, placement: RackDevicePlacement) => {
     const dd = deviceDataMap.get(placement.deviceNodeId);
@@ -1406,25 +1561,129 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
 
   const scrollConfig = useSchematicStore((s) => s.scrollConfig);
 
-  const onWheel = useCallback((e: WheelEvent) => {
-    e.preventDefault();
-    // Determine which action based on modifier keys (matching schematic behavior)
-    const action = (e.ctrlKey || e.metaKey) ? scrollConfig.ctrlScroll
-      : e.shiftKey ? scrollConfig.shiftScroll
-      : scrollConfig.scroll;
+  const fitAllView = useCallback(() => {
+    const el = containerRef.current;
+    const bounds = rackPageContentBounds(page.racks, maxRackHeightU);
+    if (!el || !bounds) return;
+    const { zoom: z, pan } = computeFitViewport(el.clientWidth, el.clientHeight, bounds, {
+      maxZoom: 2,
+      minZoom: 0.25,
+    });
+    setViewport(z, pan);
+  }, [page.racks, maxRackHeightU, setViewport]);
 
-    if (action === "zoom") {
-      const speed = scrollConfig.zoomSpeed;
-      const delta = e.deltaY > 0 ? 1 - 0.1 * speed : 1 + 0.1 * speed;
-      setZoom((z) => Math.min(4, Math.max(0.25, z * delta)));
-    } else if (action === "pan-y") {
-      const speed = scrollConfig.panSpeed;
-      setViewOffset((o) => ({ x: o.x, y: o.y - e.deltaY * speed }));
-    } else if (action === "pan-x") {
-      const speed = scrollConfig.panSpeed;
-      setViewOffset((o) => ({ x: o.x - e.deltaY * speed, y: o.y }));
+  const fitSelectionView = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    let bounds: ContentBounds | null = null;
+    if (selectedPlacementId) {
+      const pl = page.placements.find((p) => p.id === selectedPlacementId);
+      const rack = pl ? page.racks.find((r) => r.id === pl.rackId) : undefined;
+      if (rack) bounds = rackPageContentBounds([rack], maxRackHeightU);
     }
-  }, [scrollConfig]);
+    if (!bounds) return;
+    const { zoom: z, pan } = computeFitViewport(el.clientWidth, el.clientHeight, bounds, {
+      maxZoom: 2.5,
+      minZoom: 0.25,
+      padding: 32,
+    });
+    setViewport(z, pan);
+  }, [page.placements, page.racks, maxRackHeightU, selectedPlacementId, setViewport]);
+
+  const zoomInView = useCallback(() => {
+    const el = containerRef.current;
+    const { zoom: z, pan: p } = vpRef.current;
+    const newZ = Math.min(4, z * 1.25);
+    if (!el) {
+      setViewport(newZ, p);
+      return;
+    }
+    const cx = el.clientWidth / 2;
+    const cy = el.clientHeight / 2;
+    const ratio = newZ / z;
+    setViewport(newZ, { x: cx * (1 - ratio) + p.x * ratio, y: cy * (1 - ratio) + p.y * ratio });
+  }, [setViewport]);
+
+  const zoomOutView = useCallback(() => {
+    const el = containerRef.current;
+    const { zoom: z, pan: p } = vpRef.current;
+    const newZ = Math.max(0.25, z / 1.25);
+    if (!el) {
+      setViewport(newZ, p);
+      return;
+    }
+    const cx = el.clientWidth / 2;
+    const cy = el.clientHeight / 2;
+    const ratio = newZ / z;
+    setViewport(newZ, { x: cx * (1 - ratio) + p.x * ratio, y: cy * (1 - ratio) + p.y * ratio });
+  }, [setViewport]);
+
+  useEffect(() => {
+    if (page.racks.length === 0) return;
+    const timer = window.setTimeout(() => fitAllView(), 0);
+    return () => clearTimeout(timer);
+  }, [page.id, fitAllView, page.racks.length]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if ((e.target as HTMLElement).closest("[data-allow-scroll]")) return;
+      e.preventDefault();
+      const cfg = scrollConfig;
+      const { zoom: z, pan: p } = vpRef.current;
+      if (cfg.trackpadEnabled) {
+        if (e.deltaX !== 0 || (e.ctrlKey && !ctrlHeldRef.current)) trackpadActiveRef.current = true;
+        clearTimeout(trackpadTimerRef.current);
+        trackpadTimerRef.current = setTimeout(() => { trackpadActiveRef.current = false; }, 400);
+      }
+      const rect = el.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      if (cfg.trackpadEnabled && e.ctrlKey && !ctrlHeldRef.current) {
+        const factor = 1 - e.deltaY * 0.01 * cfg.zoomSpeed;
+        const newZ = Math.min(4, Math.max(0.25, z * factor));
+        const ratio = newZ / z;
+        setViewport(newZ, { x: mx * (1 - ratio) + p.x * ratio, y: my * (1 - ratio) + p.y * ratio });
+        return;
+      }
+      if (!e.ctrlKey && !e.shiftKey && trackpadActiveRef.current) {
+        setViewport(z, { x: p.x - e.deltaX * cfg.panSpeed, y: p.y - e.deltaY * cfg.panSpeed });
+        return;
+      }
+      const action = e.ctrlKey || e.metaKey ? cfg.ctrlScroll : e.shiftKey ? cfg.shiftScroll : cfg.scroll;
+      const delta = e.deltaY;
+      if (action === "zoom") {
+        const factor = 1 - delta * 0.001 * cfg.zoomSpeed;
+        const newZ = Math.min(4, Math.max(0.25, z * factor));
+        const ratio = newZ / z;
+        setViewport(newZ, { x: mx * (1 - ratio) + p.x * ratio, y: my * (1 - ratio) + p.y * ratio });
+      } else if (action === "pan-x") {
+        setViewport(z, { x: p.x - delta * cfg.panSpeed, y: p.y });
+      } else {
+        setViewport(z, { x: p.x, y: p.y - delta * cfg.panSpeed });
+      }
+    };
+    el.addEventListener("wheel", handler, { passive: false, capture: true });
+    return () => {
+      el.removeEventListener("wheel", handler, { capture: true });
+      clearTimeout(trackpadTimerRef.current);
+    };
+  }, [scrollConfig, setViewport]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Control") ctrlHeldRef.current = true; };
+    const onKeyUp = (e: KeyboardEvent) => { if (e.key === "Control") ctrlHeldRef.current = false; };
+    const onBlur = () => { ctrlHeldRef.current = false; };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
 
   const onMouseDown = useCallback((e: MouseEvent) => {
     if (inRackDrag) return; // Don't pan while dragging a device
@@ -1867,7 +2126,6 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
       className="relative flex-1 bg-neutral-200 overflow-hidden outline-none select-none"
       style={{ cursor }}
       tabIndex={0}
-      onWheel={onWheel}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
@@ -1878,15 +2136,53 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
       onKeyDown={onKeyDown}
     >
       <ViewToggle viewMode={viewMode} onChangeView={setViewMode} />
+      {page.racks.length >= 2 && (
+        <button
+          type="button"
+          className="absolute top-2 right-2 z-10 px-2 py-1 text-[10px] rounded border border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-50 shadow-sm"
+          data-print-hide
+          onClick={() => {
+            const labels = page.racks.map((r, i) => `${i + 1}: ${r.label}`).join("\n");
+            const fromIdx = window.prompt(`Cross-link FROM rack:\n${labels}\n\nEnter number (1–${page.racks.length}):`);
+            if (!fromIdx) return;
+            const toIdx = window.prompt(`Cross-link TO rack:\n${labels}\n\nEnter number (1–${page.racks.length}):`);
+            if (!toIdx) return;
+            const fi = Number(fromIdx) - 1;
+            const ti = Number(toIdx) - 1;
+            const fromRack = page.racks[fi];
+            const toRack = page.racks[ti];
+            if (!fromRack || !toRack || fi === ti) {
+              addToast("Pick two different racks", "error");
+              return;
+            }
+            const label = window.prompt("Callout label:", `${fromRack.label} → ${toRack.label}`)?.trim();
+            if (!label) return;
+            addRackCrossLink(page.id, { fromRackId: fromRack.id, toRackId: toRack.id, label });
+            addToast("Cross-link added", "success");
+          }}
+        >
+          + Cross-link
+        </button>
+      )}
 
       <svg
         width="100%" height="100%" style={{ display: "block" }}
-        onClick={() => { setRackContextMenu(null); setSlotContextMenu(null); setAccessoryContextMenu(null); setShelfOccupantMenu(null); }}
+        onClick={() => {
+          setRackContextMenu(null);
+          setSlotContextMenu(null);
+          setAccessoryContextMenu(null);
+          setShelfOccupantMenu(null);
+          setSelectedRackPort(null);
+        }}
         onContextMenu={onCanvasContextMenu}
       >
         <OccupancyPattern />
         <g transform={`translate(${viewOffset.x}, ${viewOffset.y}) scale(${zoom})`}>
+          {sharedRulerOrigin && maxRackHeightU > 0 && (
+            <SharedURuler x={sharedRulerOrigin.x} y={sharedRulerOrigin.y} maxHeightU={maxRackHeightU} />
+          )}
           {page.racks.map((rack) => {
+            const hideRuler = page.racks.length > 1;
             const ox = rack.position.x + RACK_PAD_X + RULER_WIDTH;
             const oy = rack.position.y + RACK_PAD_Y + LABEL_HEIGHT + (maxRackHeightU - rack.heightU) * PX_PER_U;
             // Visible (non-shelf-mounted) placements participate in face-specific layout & occupancy
@@ -1997,7 +2293,7 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
                     </>
                   );
                 })()}
-                <RackFrame rack={rack} faceLabel={viewMode === "front" ? "Front" : "Rear"} viewFace={activeFace} />
+                <RackFrame rack={rack} faceLabel={viewMode === "front" ? "Front" : "Rear"} viewFace={activeFace} hideRuler={hideRuler} />
                 {oppositePlacements.map((pl) => {
                   const dd = deviceDataMap.get(pl.deviceNodeId);
                   if (!dd) return null;
@@ -2062,6 +2358,11 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
                       onContextMenu={handleDeviceContextMenu}
                       showFacePlateDetail={showFacePlateDetail}
                       schematicDefaults={schematicDefaults}
+                      connectedPortIds={connectedPortsByDevice.get(pl.deviceNodeId) ?? new Set()}
+                      selectedPortId={
+                        selectedRackPort?.deviceNodeId === pl.deviceNodeId ? selectedRackPort.portId : null
+                      }
+                      onPortClick={(portId) => handlePortClick(pl.deviceNodeId, portId)}
                     />
                   );
                 })}
@@ -2081,6 +2382,8 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
               </g>
             );
           })}
+
+          <CrossLinkLayer links={page.crossLinks ?? []} racks={page.racks} />
 
           {page.racks.length === 0 && (
             <text x={200} y={200} fontSize={14} fill="#999" textAnchor="middle">No racks yet. Use the sidebar to add a rack.</text>
@@ -2128,6 +2431,17 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
               }}
             >
               Edit Face-Plate Layout
+            </button>
+          )}
+          {selectedRackPort?.deviceNodeId === rackContextMenu.placement.deviceNodeId && selectedRackPort.portId && (
+            <button
+              className="w-full text-left px-3 py-1.5 hover:bg-neutral-100"
+              onClick={() => {
+                setActivePage("schematic");
+                setRackContextMenu(null);
+              }}
+            >
+              Show port on schematic
             </button>
           )}
           <button
@@ -2284,6 +2598,15 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
           </button>
         </div>
       )}
+
+      <ViewNavBar
+        zoom={zoom}
+        onZoomIn={zoomInView}
+        onZoomOut={zoomOutView}
+        onFitAll={fitAllView}
+        onFitSelection={fitSelectionView}
+        selectionDisabled={!selectedPlacementId}
+      />
 
       {/* Shelf-delete confirm dialog (occupants present) */}
       {shelfDeleteConfirm && (

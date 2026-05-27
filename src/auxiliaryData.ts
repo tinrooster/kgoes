@@ -42,6 +42,21 @@ export const AUX_FIELDS: AuxField[] = [
   { token: "manufacturer", label: "Manufacturer", group: "Identity", resolve: (d) => str(d.manufacturer) },
   { token: "modelNumber", label: "Model Number", group: "Identity", resolve: (d) => str(d.modelNumber) },
   { token: "deviceType", label: "Device Type", group: "Identity", resolve: (d) => prettyDeviceType(d.deviceType) },
+  { token: "designation", label: "Designation", group: "Installation", resolve: (d) => str(d.designation) },
+  { token: "rackLocation", label: "Rack Location", group: "Installation", resolve: (d) => str(d.rackLocation) },
+  { token: "frameSlot", label: "Frame / Slot", group: "Installation", resolve: (d) => str(d.frameSlot) },
+  { token: "deviceTypeCode", label: "Device Type Code", group: "Installation", resolve: (d) => str(d.deviceTypeCode) },
+  { token: "managementIp", label: "Management IP", group: "Installation", resolve: (d) => str(d.managementIp) },
+  { token: "vlanSummary", label: "VLAN Summary", group: "Installation", resolve: (d) => str(d.vlanSummary) },
+  {
+    token: "primaryIp",
+    label: "Primary IP",
+    group: "Installation",
+    resolve: (d) => {
+      const port = (d.ports ?? []).find((p) => p.networkConfig?.ip);
+      return port?.networkConfig?.ip ? str(port.networkConfig.ip) : "";
+    },
+  },
 
   // Power
   { token: "powerDrawW", label: "Power Draw", group: "Power", resolve: (d) => fmtW(d.powerDrawW) },

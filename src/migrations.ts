@@ -16,7 +16,7 @@ import { defaultStubPlacement } from "./stubPlacement";
 import { getPortAbsolutePositions } from "./snapUtils";
 import type { SchematicNode } from "./types";
 
-export const CURRENT_SCHEMA_VERSION = 39;
+export const CURRENT_SCHEMA_VERSION = 40;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Migration = (data: any) => any;
@@ -482,6 +482,31 @@ const migrations: Record<number, Migration> = {
     delete data.customLabelGap;
     delete data.customLabelMidOffset;
     data.version = 39;
+    return data;
+  },
+
+  39: (data) => {
+    // v39 → v40: optional rackHeightU / mountingClass on devices; crossLinks on rack pages
+    if (Array.isArray(data.nodes)) {
+      for (const n of data.nodes) {
+        if (n?.type !== "device" || !n.data) continue;
+        // Legacy rackForm maps to mountingClass when present
+        if (n.data.rackForm && !n.data.mountingClass) {
+          if (n.data.rackForm === "full") n.data.mountingClass = "rack-full";
+          else if (n.data.rackForm === "half") n.data.mountingClass = "rack-half";
+          else if (n.data.rackForm === "shelf-only") n.data.mountingClass = "shelf";
+        }
+        if (n.data.heightMm != null && n.data.rackHeightU == null) {
+          n.data.rackHeightU = Math.max(1, Math.round(n.data.heightMm / 44.45));
+        }
+      }
+    }
+    if (Array.isArray(data.pages)) {
+      for (const p of data.pages) {
+        if (p?.type === "rack-elevation" && !p.crossLinks) p.crossLinks = [];
+      }
+    }
+    data.version = 40;
     return data;
   },
 

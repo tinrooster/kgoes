@@ -1,19 +1,43 @@
 import { useState } from "react";
+import {
+  KGO_ES_ABOUT_BLURB,
+  KGO_ES_ATTRIBUTION,
+  KGO_ES_FORK_CREDIT,
+  KGO_ES_ISSUES_URL,
+  KGO_ES_NAME,
+  KGO_ES_REPO_URL,
+  KGO_ES_SUPPORT_EMAIL,
+  KGO_ES_TRACKIT_REPO_URL,
+  KGO_ES_UPSTREAM_AUTHOR,
+  KGO_ES_UPSTREAM_DEVICES_URL,
+  KGO_ES_UPSTREAM_DOCS_URL,
+  KGO_ES_UPSTREAM_NAME,
+  KGO_ES_UPSTREAM_REPO_URL,
+} from "../branding";
+import { getAppVersionLabel } from "../buildVersion";
 import { DEVICE_TEMPLATES } from "../deviceLibrary";
 
-declare const __APP_VERSION__: string;
-declare const __BUILD_HASH__: string;
+const PRIMARY_LINKS = [
+  { label: "KGO-ES on GitHub", href: KGO_ES_REPO_URL },
+  { label: "Report a bug", href: KGO_ES_ISSUES_URL },
+  { label: "Support", href: `mailto:${KGO_ES_SUPPORT_EMAIL}` },
+  { label: "trackIT", href: KGO_ES_TRACKIT_REPO_URL },
+] as const;
+
+const UPSTREAM_LINKS = [
+  { label: `${KGO_ES_UPSTREAM_NAME} source`, href: KGO_ES_UPSTREAM_REPO_URL },
+  { label: "Upstream docs", href: KGO_ES_UPSTREAM_DOCS_URL },
+  { label: "Device database", href: KGO_ES_UPSTREAM_DEVICES_URL },
+] as const;
 
 export default function AboutDialog({ onClose }: { onClose: () => void }) {
   const [copied, setCopied] = useState(false);
 
-  const version = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
-  const hash = typeof __BUILD_HASH__ !== "undefined" ? __BUILD_HASH__ : "local";
-  const shortHash = hash.length > 7 ? hash.slice(0, 7) : hash;
+  const versionLabel = getAppVersionLabel();
 
   const copyDebugInfo = async () => {
     const info = [
-      `EasySchematic v${version} (${shortHash})`,
+      `${KGO_ES_NAME} ${versionLabel}`,
       `UA: ${navigator.userAgent}`,
       `Viewport: ${window.innerWidth}\u00d7${window.innerHeight}`,
       `Date: ${new Date().toISOString().split("T")[0]}`,
@@ -32,10 +56,9 @@ export default function AboutDialog({ onClose }: { onClose: () => void }) {
         className="bg-white border border-[var(--color-border)] rounded-lg shadow-2xl w-[420px] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--color-border)]">
           <span className="text-sm font-semibold text-[var(--color-text-heading)]">
-            About EasySchematic
+            About {KGO_ES_NAME}
           </span>
           <button
             onClick={onClose}
@@ -45,41 +68,60 @@ export default function AboutDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {/* Body */}
         <div className="px-5 py-5 flex flex-col items-center text-center gap-4">
           <img src="/favicon.svg" alt="" className="w-12 h-12" />
           <div>
             <div className="text-base font-semibold text-[var(--color-text-heading)]">
-              EasySchematic
+              {KGO_ES_NAME}
             </div>
             <div className="text-xs text-[var(--color-text-muted)] mt-0.5">
-              Version {version} ({shortHash})
+              {versionLabel}
             </div>
           </div>
 
           <p className="text-xs text-[var(--color-text)] leading-relaxed max-w-[320px]">
-            AV signal flow diagram tool for broadcast, live production, and AV
-            integration
+            {KGO_ES_ABOUT_BLURB}
+          </p>
+
+          <p className="text-xs text-[var(--color-text-muted)] leading-relaxed max-w-[340px]">
+            {KGO_ES_FORK_CREDIT}{" "}
+            <a
+              href={KGO_ES_UPSTREAM_REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              github.com/{KGO_ES_UPSTREAM_AUTHOR}/EasySchematic
+            </a>
           </p>
 
           <div className="flex flex-col gap-1 text-xs text-[var(--color-text)]">
             <span>{Math.floor(DEVICE_TEMPLATES.length / 10) * 10}+ bundled device templates</span>
-            <span>2,000+ in the community library</span>
+            <span>Community device library via {KGO_ES_UPSTREAM_NAME}</span>
             <span>68 signal types</span>
           </div>
 
           <div className="w-full h-px bg-[var(--color-border)]" />
 
           <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs">
-            {[
-              { label: "Website", href: "https://easyschematic.live" },
-              { label: "Docs", href: "https://docs.easyschematic.live" },
-              { label: "GitHub", href: "https://github.com/duremovich/EasySchematic" },
-              { label: "Device Database", href: "https://devices.easyschematic.live" },
-              { label: "Support", href: "mailto:support@easyschematic.live" },
-              { label: "Report a Bug", href: "https://github.com/duremovich/EasySchematic/issues" },
-              { label: "Discord", href: "https://discord.gg/dxXn3Jk2a6" },
-            ].map((link) => (
+            {PRIMARY_LINKS.map((link) => (
+              <a
+                key={link.label}
+                href={link.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline"
+              >
+                {link.label}
+              </a>
+            ))}
+          </div>
+
+          <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)]">
+            Upstream ({KGO_ES_UPSTREAM_NAME})
+          </div>
+          <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs">
+            {UPSTREAM_LINKS.map((link) => (
               <a
                 key={link.label}
                 href={link.href}
@@ -95,12 +137,23 @@ export default function AboutDialog({ onClose }: { onClose: () => void }) {
           <div className="w-full h-px bg-[var(--color-border)]" />
 
           <div className="text-[11px] text-[var(--color-text-muted)] leading-relaxed">
-            <div>AGPL-3.0 &middot; &copy; 2025–2026 EasySchematic</div>
+            <div>AGPL-3.0 &middot; {KGO_ES_NAME} (trackIT / KGO fork)</div>
+            <div className="mt-1">{KGO_ES_ATTRIBUTION}</div>
+            <div className="mt-1">
+              &copy; 2025&ndash;2026{" "}
+              <a
+                href={KGO_ES_UPSTREAM_REPO_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline"
+              >
+                {KGO_ES_UPSTREAM_NAME}
+              </a>
+            </div>
             <div className="mt-0.5">Built with React, React Flow, and Zustand</div>
           </div>
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--color-border)]">
           <button
             onClick={copyDebugInfo}

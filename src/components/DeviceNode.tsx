@@ -38,10 +38,21 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
   const displayLabel = useDisplayLabel();
   const useShortNames = useSchematicStore((s) => s.useShortNames);
   const wrapDeviceLabels = useSchematicStore((s) => s.wrapDeviceLabels);
+  const showInstallationInfo = useSchematicStore((s) => s.showInstallationInfo);
   const resolvedLabel = useMemo(
     () => resolveDeviceLabel(data, { useShortNames, wrapDeviceLabels }),
     [data, useShortNames, wrapDeviceLabels],
   );
+  const showInstallBlock =
+    showInstallationInfo &&
+    data.showInstallationBlock !== false &&
+    !!(data.designation || data.rackLocation || data.frameSlot || data.modelNumber || data.managementIp || data.vlanSummary);
+  const headerTitle = useMemo(() => {
+    if (showInstallBlock && data.designation?.trim()) {
+      return displayLabel(data.designation.trim());
+    }
+    return displayLabel(resolvedLabel.text);
+  }, [showInstallBlock, data.designation, resolvedLabel.text, displayLabel]);
   const labelZone = resolvedLabel.wrap ? HEADER_LABEL_ZONE_2_PX : HEADER_LABEL_ZONE_PX;
   const hiddenPinSignalTypesStr = useSchematicStore((s) => s.hiddenPinSignalTypes);
   const isHiddenAdapter = useSchematicStore((s) => s.hiddenAdapterNodeIds.has(id));
@@ -415,8 +426,14 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
    *  Keep the band-height formula in sync with `headerBandHeight()` in auxiliaryData.ts —
    *  snapUtils uses it to estimate device height before React Flow measures it. */
   function renderHeaderBand(rows: AuxRow[]) {
-    const bandH = headerBandHeight(data.auxiliaryData, labelZone);
-    const content = labelZone + rows.reduce((sum, r) => sum + auxRowHeight(r), 0);
+    const installExtra =
+      showInstallBlock
+        ? 12 +
+          (data.modelNumber || data.rackLocation || data.frameSlot ? 12 : 0) +
+          (data.managementIp || data.vlanSummary ? 12 : 0)
+        : 0;
+    const bandH = headerBandHeight(data.auxiliaryData, labelZone) + installExtra;
+    const content = labelZone + installExtra + rows.reduce((sum, r) => sum + auxRowHeight(r), 0);
     const totalPad = bandH - content;
     const pt = Math.floor(totalPad / 2);
     const pb = totalPad - pt;
@@ -451,11 +468,28 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
                 : "text-xs font-semibold text-[var(--color-text-heading)] truncate leading-tight"
             }
             style={labelStyle}
-            title={displayLabel(resolvedLabel.text)}
+            title={headerTitle}
           >
-            {displayLabel(resolvedLabel.text)}
+            {headerTitle}
           </span>
         </div>
+        {showInstallBlock ? (
+          <>
+            {(data.modelNumber || data.rackLocation || data.frameSlot) ? (
+              <div className="flex justify-between gap-1 px-0.5 text-[9px] text-[var(--color-text-muted)] leading-3">
+                <span className="truncate">{data.modelNumber ? displayLabel(data.modelNumber) : ""}</span>
+                <span className="truncate text-right">
+                  {[data.rackLocation, data.frameSlot].filter(Boolean).join(" · ")}
+                </span>
+              </div>
+            ) : null}
+            {(data.managementIp || data.vlanSummary) ? (
+              <div className="text-[9px] text-[var(--color-text-muted)] leading-3 truncate text-center">
+                {[data.managementIp, data.vlanSummary].filter(Boolean).join(" · ")}
+              </div>
+            ) : null}
+          </>
+        ) : null}
         {rows.map((row, i) => renderAuxRow(row, i))}
       </div>
     );

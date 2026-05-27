@@ -75,3 +75,5 @@ devices/src/**/*.js
 # Local dev
 start-dev.sh
 email-signature.html
+
+.vercel

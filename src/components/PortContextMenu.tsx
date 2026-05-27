@@ -8,6 +8,7 @@ import { resolvePortGender } from "../connectorTypes";
 
 export default function PortContextMenu() {
   const menu = useSchematicStore((s) => s.portContextMenu);
+  const pages = useSchematicStore((s) => s.pages);
   const updateNodeInternals = useUpdateNodeInternals();
   const { ref: menuRef, pos: menuPos } = useContextMenuPosition(
     menu?.screenX ?? 0,
@@ -64,6 +65,22 @@ export default function PortContextMenu() {
   const editDevice = useCallback(() => {
     if (!menu) return;
     useSchematicStore.getState().setEditingNodeId(menu.nodeId);
+    useSchematicStore.setState({ portContextMenu: null });
+  }, [menu]);
+
+  const showOnRackElevation = useCallback(() => {
+    if (!menu) return;
+    const state = useSchematicStore.getState();
+    for (const p of state.pages) {
+      if (p.type !== "rack-elevation") continue;
+      if (p.placements.some((pl) => pl.deviceNodeId === menu.nodeId)) {
+        state.setSelectedRackPort({ deviceNodeId: menu.nodeId, portId: menu.portId });
+        state.setActivePage(p.id);
+        useSchematicStore.setState({ portContextMenu: null });
+        return;
+      }
+    }
+    useSchematicStore.getState().addToast("Device is not placed on a rack elevation page", "info");
     useSchematicStore.setState({ portContextMenu: null });
   }, [menu]);
 
@@ -170,6 +187,10 @@ export default function PortContextMenu() {
   const port = data.ports.find((p) => p.id === menu.portId);
   if (!port) return null;
 
+  const isOnRackElevation = pages.some(
+    (p) => p.type === "rack-elevation" && p.placements.some((pl) => pl.deviceNodeId === menu.nodeId),
+  );
+
   const side = portSide(port);
   const flipLabel = side === "left" ? "Flip to Right" : "Flip to Left";
 
@@ -218,6 +239,9 @@ export default function PortContextMenu() {
         <MenuItem label="Convert All Ports to Passthrough" onClick={convertAllToPassthrough} />
       )}
       <div className="border-t border-gray-200 my-1" />
+      {isOnRackElevation && (
+        <MenuItem label="Show on rack elevation" onClick={showOnRackElevation} />
+      )}
       <MenuItem label="Edit Device..." onClick={editDevice} />
     </div>
   );

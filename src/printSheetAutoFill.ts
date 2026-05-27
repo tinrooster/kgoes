@@ -57,3 +57,63 @@ export function autoFillSheetForRack(
 
   return viewports;
 }
+
+/** Front + rear + side viewports for every rack on an elevation page, stacked in bands. */
+export function autoFillSheetForElevationPage(
+  sheet: PrintSheetPage,
+  elevPage: RackElevationPage,
+): Omit<PrintViewport, "id">[] {
+  if (elevPage.racks.length === 0) return [];
+
+  const paper = getPaperSize(sheet.paperId, sheet.customWidthIn, sheet.customHeightIn);
+  const pageW = sheet.orientation === "landscape" ? paper.heightIn * IN_TO_MM : paper.widthIn * IN_TO_MM;
+  const pageH = sheet.orientation === "landscape" ? paper.widthIn * IN_TO_MM : paper.heightIn * IN_TO_MM;
+
+  const marginMm = PAGE_MARGIN_IN * IN_TO_MM;
+  const titleBlockH = sheet.showTitleBlock ? TITLE_BLOCK_HEIGHT_IN * IN_TO_MM : 0;
+
+  const contentW = pageW - 2 * marginMm;
+  const contentH = pageH - 2 * marginMm - titleBlockH;
+  const bandGapMm = 6;
+  const bandH = (contentH - bandGapMm * Math.max(0, elevPage.racks.length - 1)) / elevPage.racks.length;
+
+  const viewports: Omit<PrintViewport, "id">[] = [];
+
+  elevPage.racks.forEach((rack, rackIndex) => {
+    const is2Post = rack.rackType === "open-2post";
+    const viewCount = is2Post ? 2 : 3;
+    const viewW = contentW / viewCount;
+    const y = marginMm + rackIndex * (bandH + bandGapMm);
+
+    viewports.push({
+      kind: "rack-front",
+      rackRefPageId: elevPage.id,
+      rackRefId: rack.id,
+      positionMm: { x: marginMm, y },
+      sizeMm: { w: viewW, h: bandH },
+      showLabel: true,
+    });
+
+    if (!is2Post) {
+      viewports.push({
+        kind: "rack-rear",
+        rackRefPageId: elevPage.id,
+        rackRefId: rack.id,
+        positionMm: { x: marginMm + viewW, y },
+        sizeMm: { w: viewW, h: bandH },
+        showLabel: true,
+      });
+    }
+
+    viewports.push({
+      kind: "rack-side",
+      rackRefPageId: elevPage.id,
+      rackRefId: rack.id,
+      positionMm: { x: marginMm + viewW * (is2Post ? 1 : 2), y },
+      sizeMm: { w: viewW, h: bandH },
+      showLabel: true,
+    });
+  });
+
+  return viewports;
+}

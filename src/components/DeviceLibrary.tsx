@@ -3,13 +3,11 @@ import { getBundledTemplates, fetchTemplates } from "../templateApi";
 import { SIGNAL_LABELS } from "../types";
 import type { DeviceTemplate, CustomTemplateGroup, OwnedGearFile, OwnedGearItem, SchematicNode, DeviceData } from "../types";
 import { useSchematicStore, CATEGORY_ORDER_DEFAULT } from "../store";
+import { useSidebarStore } from "../sidebarStore";
 import { scoreTemplate } from "../templateSearch";
 import { inventoryKeyFromDeviceData, inventoryKeyFromTemplate } from "../inventoryKey";
 import DeviceCreatorPicker from "./DeviceCreatorPicker";
 import ImportDevicesDialog from "./ImportDevicesDialog";
-
-const APP_VERSION = __APP_VERSION__;
-const BUILD_HASH = __BUILD_HASH__;
 
 function onDragStart(event: DragEvent, template: DeviceTemplate) {
   event.dataTransfer.setData(
@@ -1057,7 +1055,11 @@ export default function DeviceLibrary() {
   const [search, setSearch] = useState("");
   const [showDeviceCreator, setShowDeviceCreator] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const leftExpanded = useSidebarStore((s) => s.leftExpanded);
+  const setLeftExpanded = useSidebarStore((s) => s.setLeftExpanded);
+  const libraryBrowseMode = useSidebarStore((s) => s.libraryBrowseMode);
+  const setLibraryBrowseMode = useSidebarStore((s) => s.setLibraryBrowseMode);
+  const collapsed = !leftExpanded;
   const [templates, setTemplates] = useState(getBundledTemplates);
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
   const [selectedBrands, setSelectedBrands] = useState<Set<string>>(new Set());
@@ -1223,7 +1225,7 @@ export default function DeviceLibrary() {
     return (
       <div className="w-8 bg-[var(--color-surface)] border-r border-[var(--color-border)] flex flex-col items-center h-full">
         <button
-          onClick={() => setCollapsed(false)}
+          onClick={() => setLeftExpanded(true)}
           className="py-3 cursor-pointer hover:bg-[var(--color-surface-hover)] w-full flex justify-center transition-colors"
           title="Show device library"
         >
@@ -1248,7 +1250,7 @@ export default function DeviceLibrary() {
           {showOwnedGearPane ? "Library" : "Devices"}
         </h2>
         <button
-          onClick={() => setCollapsed(true)}
+          onClick={() => setLeftExpanded(false)}
           className="cursor-pointer hover:bg-[var(--color-surface-hover)] rounded p-0.5 transition-colors"
           title="Collapse device library"
         >
@@ -1257,6 +1259,22 @@ export default function DeviceLibrary() {
           </svg>
         </button>
       </div>
+
+      {libraryActiveTab === "devices" && (
+        <div className="px-2 py-1 border-b border-[var(--color-border)]">
+          <label className="flex items-center gap-2 cursor-pointer px-1 py-0.5">
+            <input
+              type="checkbox"
+              checked={libraryBrowseMode === "userTemplatesOnly"}
+              onChange={(e) =>
+                setLibraryBrowseMode(e.target.checked ? "userTemplatesOnly" : "full")
+              }
+              className="w-3 h-3 accent-blue-500"
+            />
+            <span className="text-[10px] text-[var(--color-text)]">User library only</span>
+          </label>
+        </div>
+      )}
 
       {showOwnedGearPane && (
         <div className="px-2 py-1.5 border-b border-[var(--color-border)] flex gap-1">
@@ -1562,31 +1580,27 @@ export default function DeviceLibrary() {
               onAddToOwned={handleAddToOwned}
             />
 
-            {filteredCategories.map((cat, i) => (
-              <CategorySection
-                key={cat.label}
-                label={cat.label}
-                templates={cat.templates}
-                query={query}
-                defaultOpen={false}
-                presetIds={presetIds}
-                favoriteSet={favoriteSet}
-                ownedQuantityMap={ownedQuantityMap}
-                onToggleFavorite={toggleFavoriteTemplate}
-                onAddToOwned={handleAddToOwned}
-                categoryIndex={i}
-                onCategoryReorder={reorderCategory}
-              />
-            ))}
+            {(libraryBrowseMode !== "userTemplatesOnly" || query) &&
+              filteredCategories.map((cat, i) => (
+                <CategorySection
+                  key={cat.label}
+                  label={cat.label}
+                  templates={cat.templates}
+                  query={query}
+                  defaultOpen={false}
+                  presetIds={presetIds}
+                  favoriteSet={favoriteSet}
+                  ownedQuantityMap={ownedQuantityMap}
+                  onToggleFavorite={toggleFavoriteTemplate}
+                  onAddToOwned={handleAddToOwned}
+                  categoryIndex={i}
+                  onCategoryReorder={reorderCategory}
+                />
+              ))}
           </>
         )}
       </div>
       )}
-
-      {/* Version */}
-      <div className="px-3 py-1.5 border-t border-[var(--color-border)] text-[10px] text-[var(--color-text-muted)]">
-        v{APP_VERSION} ({BUILD_HASH})
-      </div>
     </div>
   );
 }

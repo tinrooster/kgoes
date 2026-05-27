@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useSchematicStore } from "../store";
+import { useSidebarStore } from "../sidebarStore";
 import type { TrackItNumberBlock } from "../types";
 import { sortBlocksForDisplay } from "../trackitNumberingMerge";
 import {
@@ -33,7 +34,10 @@ export default function TrackItNumberingPanel({
   mobile?: boolean;
   onClose?: () => void;
 } = {}) {
-  const [collapsed, setCollapsed] = useState(false);
+  const rightExpanded = useSidebarStore((s) => s.rightTrackItExpanded);
+  const setRightExpanded = useSidebarStore((s) => s.setRightTrackItExpanded);
+  const expandRightPanel = useSidebarStore((s) => s.expandRightPanel);
+  const collapsed = mobile ? false : !rightExpanded;
   const [manualInput, setManualInput] = useState("");
   const trackItNumbering = useSchematicStore((s) => s.trackItNumbering);
   const edges = useSchematicStore((s) => s.edges);
@@ -99,7 +103,7 @@ export default function TrackItNumberingPanel({
       <div className="w-8 bg-[var(--color-surface)] border-l border-[var(--color-border)] flex flex-col items-center h-full">
         <button
           type="button"
-          onClick={() => setCollapsed(false)}
+          onClick={() => expandRightPanel("trackIt")}
           className="py-3 cursor-pointer hover:bg-[var(--color-surface-hover)] w-full flex justify-center transition-colors"
           title="Show trackIT numbering"
         >
@@ -136,7 +140,7 @@ export default function TrackItNumberingPanel({
         {!mobile ? (
           <button
             type="button"
-            onClick={() => setCollapsed(true)}
+            onClick={() => setRightExpanded(false)}
             className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer p-0.5"
             title="Collapse panel"
           >

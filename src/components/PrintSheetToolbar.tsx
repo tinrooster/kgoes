@@ -1,7 +1,7 @@
 import { useSchematicStore } from "../store";
 import type { PrintSheetPage, RackElevationPage } from "../types";
 import { PAPER_SIZES } from "../printConfig";
-import { autoFillSheetForRack } from "../printSheetAutoFill";
+import { autoFillSheetForElevationPage, autoFillSheetForRack } from "../printSheetAutoFill";
 import { runPrintSheetExport } from "../printSheetExport";
 
 interface Props {
@@ -22,11 +22,18 @@ export default function PrintSheetToolbar({ page }: Props) {
 
   const isCustomPaper = page.paperId === "custom";
 
-  const handleAutoFill = (elevPageId: string, rackId: string) => {
+  const handleAutoFillRack = (elevPageId: string, rackId: string) => {
     const elevPage = elevationPages.find((p) => p.id === elevPageId);
     const rack = elevPage?.racks.find((r) => r.id === rackId);
     if (!elevPage || !rack) return;
     const viewports = autoFillSheetForRack(page, rack, elevPage);
+    for (const vp of viewports) addViewport(page.id, vp);
+  };
+
+  const handleAutoFillElevationPage = (elevPageId: string) => {
+    const elevPage = elevationPages.find((p) => p.id === elevPageId);
+    if (!elevPage || elevPage.racks.length === 0) return;
+    const viewports = autoFillSheetForElevationPage(page, elevPage);
     for (const vp of viewports) addViewport(page.id, vp);
   };
 
@@ -104,18 +111,30 @@ export default function PrintSheetToolbar({ page }: Props) {
             className="bg-white border border-neutral-200 rounded px-2 py-0.5 text-xs outline-none focus:border-blue-400"
             defaultValue=""
             onChange={(e) => {
-              const [pageId, rackId] = e.target.value.split("|");
-              if (pageId && rackId) handleAutoFill(pageId, rackId);
+              const value = e.target.value;
+              if (value.startsWith("page|")) {
+                handleAutoFillElevationPage(value.slice(5));
+              } else {
+                const [pageId, rackId] = value.split("|");
+                if (pageId && rackId) handleAutoFillRack(pageId, rackId);
+              }
               e.target.value = "";
             }}
           >
-            <option value="">— Pick rack —</option>
+            <option value="">— Pick rack or page —</option>
+            {elevationPages.map((ep) =>
+              ep.racks.length > 1 ? (
+                <option key={`page|${ep.id}`} value={`page|${ep.id}`}>
+                  {ep.label} — all {ep.racks.length} racks
+                </option>
+              ) : null,
+            )}
             {elevationPages.flatMap((ep) =>
               ep.racks.map((r) => (
                 <option key={`${ep.id}|${r.id}`} value={`${ep.id}|${r.id}`}>
                   {ep.label} / {r.label}
                 </option>
-              ))
+              )),
             )}
           </select>
         </div>

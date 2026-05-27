@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useSchematicStore } from "../store";
 import type { DeviceData, RackElevationPage, RackType, RackData, RoomData } from "../types";
 import { RACK_TYPE_LABELS } from "../types";
-import { inferRackHeightU } from "../rackUtils";
+import { getRackMountSummary } from "../rackMount";
 import { aggregateRackStats, computeRackStats, formatStatsLine } from "../rackStats";
 import { getDevicesInRoom } from "../rackLink";
 import { resolveDeviceLabel } from "../displayName";
@@ -22,6 +22,7 @@ export default function RackSidebar({ page }: RackSidebarProps) {
   const removeRack = useSchematicStore((s) => s.removeRack);
   const updateRack = useSchematicStore((s) => s.updateRack);
   const moveRackToPage = useSchematicStore((s) => s.moveRackToPage);
+  const layoutRacksOnPage = useSchematicStore((s) => s.layoutRacksOnPage);
   const allPagesForMove = useSchematicStore((s) => s.pages);
   const useShortNames = useSchematicStore((s) => s.useShortNames);
   const otherElevationPages = useMemo(() =>
@@ -41,9 +42,12 @@ export default function RackSidebar({ page }: RackSidebarProps) {
     allPages.flatMap((p) => p.type === "rack-elevation" ? p.placements.map((pl) => pl.deviceNodeId) : [])
   );
 
-  const unrackedDevices = nodes.filter(
-    (n) => n.type === "device" && !placedNodeIds.has(n.id) && (n.data as DeviceData).deviceType !== "adapter"
-  );
+  const unrackedDevices = nodes.filter((n) => {
+    if (n.type !== "device" || placedNodeIds.has(n.id)) return false;
+    const data = n.data as DeviceData;
+    if (data.deviceType === "adapter") return false;
+    return getRackMountSummary(data).showInRackSidebar;
+  });
 
   const deviceDataMap = useMemo(() => {
     const map = new Map<string, DeviceData>();
@@ -102,10 +106,23 @@ export default function RackSidebar({ page }: RackSidebarProps) {
       )}
 
       {/* Racks on this page */}
+      {page.racks.length > 1 && (
+        <div className="px-2 pt-2 pb-0">
+          <button
+            type="button"
+            className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300"
+            onClick={() => layoutRacksOnPage(page.id)}
+            title="Arrange racks in a horizontal row with aligned U tops"
+          >
+            Align racks in row
+          </button>
+        </div>
+      )}
+
       {page.racks.length > 0 && (
         <div className="p-2 border-b border-neutral-200">
           <div className="font-semibold text-neutral-500 mb-1 uppercase tracking-wider" style={{ fontSize: 9 }}>
-            Racks
+            Racks ({page.racks.length})
           </div>
           {page.racks.map((rack) => {
             const placementCount = page.placements.filter((p) => p.rackId === rack.id).length;
@@ -215,20 +232,21 @@ export default function RackSidebar({ page }: RackSidebarProps) {
           const renderDevice = (node: typeof unrackedDevices[number]) => {
             const data = node.data as DeviceData;
             const resolved = resolveDeviceLabel(data, { useShortNames, wrapDeviceLabels: false });
-            const heightU = inferRackHeightU(data);
-            const needsShelf = data.heightMm == null;
+            const summary = getRackMountSummary(data);
+            const shelfHint = summary.mountingClass === "shelf";
+            const badge = `${summary.heightU}U · ${summary.mountingClass === "rack-half" ? "½" : summary.mountingClass === "shelf" ? "shelf" : "full"}${summary.source === "estimated" ? "*" : ""}`;
             return (
               <div
                 key={node.id}
                 className="flex items-center justify-between px-2 py-1 rounded bg-neutral-50 border border-neutral-200 cursor-grab hover:bg-blue-50 hover:border-blue-300"
                 draggable
-                onDragStart={(e) => handleDragStart(e, node.id, heightU)}
+                onDragStart={(e) => handleDragStart(e, node.id, summary.heightU)}
                 onDragEnd={handleDragEnd}
-                title={needsShelf ? `No height set — drop on a shelf accessory · ${data.label}` : data.label}
+                title={shelfHint ? `Shelf / throwdown — auto-shelf on drop · ${data.label}` : data.label}
               >
                 <span className="truncate">{resolved.text}</span>
-                <span className="text-neutral-400 ml-1 shrink-0">
-                  {needsShelf ? <span className="text-amber-600" title="needs shelf">⬚</span> : `${heightU}U`}
+                <span className={`ml-1 shrink-0 text-[10px] ${summary.source === "estimated" ? "text-amber-600" : "text-neutral-400"}`}>
+                  {badge}
                 </span>
               </div>
             );

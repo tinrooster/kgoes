@@ -30,6 +30,9 @@ import TrackItNumberingPanel from "./components/TrackItNumberingPanel";
 import TrackItLinkedBanner from "./components/TrackItLinkedBanner";
 import ShowInfoPanel from "./components/ShowInfoPanel";
 import ViewOptionsPanel from "./components/ViewOptionsPanel";
+import QuickSettingsToolbar from "./components/QuickSettingsToolbar";
+import { useSidebarStore } from "./sidebarStore";
+import { KGO_ES_NAME, kgoEsDocumentTitle } from "./branding";
 import MenuBar from "./components/MenuBar";
 import EdgeContextMenu from "./components/EdgeContextMenu";
 import IncompatibleConnectionDialog from "./components/IncompatibleConnectionDialog";
@@ -50,6 +53,7 @@ import AnnotationEditor from "./components/AnnotationEditor";
 import QuickAddDevice from "./components/QuickAddDevice";
 import DeviceCreatorPicker from "./components/DeviceCreatorPicker";
 import PageTabs from "./components/PageTabs";
+import SchematicViewNav from "./components/SchematicViewNav";
 import RackPage from "./components/RackPage";
 import PrintSheetPage from "./components/PrintSheetPage";
 import { computeSnap, enforceMinSpacing, detectOverlap, speculativeReparent, type GuideLine } from "./snapUtils";
@@ -569,12 +573,39 @@ function SchematicCanvas() {
     s.edges.map((e) => `${e.id}:${e.source}:${e.sourceHandle}:${e.target}:${e.targetHandle}:${e.data?.manualWaypoints?.length ?? 0}:${e.data?.stubbed ? "s" : ""}`).join("|"),
   );
 
+  const selectedRackPort = useSchematicStore((s) => s.selectedRackPort);
+
   // Filter out edges whose signal type is hidden (presentation-only — store edges stay complete)
   const visibleEdges = useMemo(() => {
-    if (!hiddenSignalTypesStr) return edges;
-    const hidden = new Set(hiddenSignalTypesStr.split(","));
-    return edges.filter((e) => !hidden.has(e.data?.signalType ?? ""));
-  }, [edges, hiddenSignalTypesStr]);
+    let list = edges;
+    if (hiddenSignalTypesStr) {
+      const hidden = new Set(hiddenSignalTypesStr.split(","));
+      list = list.filter((e) => !hidden.has(e.data?.signalType ?? ""));
+    }
+    if (!selectedRackPort) return list;
+    const { deviceNodeId, portId } = selectedRackPort;
+    const edgeTouchesPort = (e: ConnectionEdge) => {
+      const matchHandle = (nodeId: string, handle: string | null | undefined) => {
+        if (nodeId !== deviceNodeId || !handle) return false;
+        const base = handle.replace(/-(in|out|rear|front)$/, "");
+        return base === portId;
+      };
+      return matchHandle(e.source, e.sourceHandle) || matchHandle(e.target, e.targetHandle);
+    };
+    return list.map((e) => {
+      const hit = edgeTouchesPort(e);
+      return {
+        ...e,
+        style: {
+          ...e.style,
+          opacity: hit ? 1 : 0.12,
+          ...(hit ? { strokeWidth: 3 } : {}),
+        },
+        animated: hit ? true : e.animated,
+        className: hit ? "rack-port-highlight-edge" : e.className,
+      };
+    });
+  }, [edges, hiddenSignalTypesStr, selectedRackPort]);
 
   const autoRoute = useSchematicStore((s) => s.autoRoute);
   const edgeHitboxSize = useSchematicStore((s) => s.edgeHitboxSize);
@@ -891,6 +922,22 @@ function SchematicCanvas() {
     },
     [screenToFlowPosition, addDevice, addRoom, addNote, reparentNode],
   );
+
+  // Quick-add from toolbar search: drop the selected device at viewport center.
+  useEffect(() => {
+    const onQuickAdd = (event: Event) => {
+      const detail = (event as CustomEvent<{ template?: DeviceTemplate }>).detail;
+      const template = detail?.template;
+      if (!template) return;
+      const center = screenToFlowPosition({
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      });
+      addDevice(template, center);
+    };
+    window.addEventListener("kgoes:quick-add-device", onQuickAdd as EventListener);
+    return () => window.removeEventListener("kgoes:quick-add-device", onQuickAdd as EventListener);
+  }, [addDevice, screenToFlowPosition]);
 
   // Reconnection via React Flow's reconnection path (connected handle drags)
   const onReconnectStart = useCallback((_event: React.MouseEvent, edge: Edge) => {
@@ -1595,8 +1642,10 @@ function SchematicCanvas() {
         position="bottom-left"
         pannable
         zoomable
+        style={{ bottom: 44, left: 12 }}
         nodeColor={(node) => node.type === "room" ? (isDark ? "#334155" : "#e5e7eb") : "#3b82f6"}
       />
+      <SchematicViewNav />
       <RoutingDebugOverlay />
     </ReactFlow>
     <RoutingTuningPanel />
@@ -1632,7 +1681,7 @@ function PrintTitleBlock() {
       <div className="text-[10px] text-gray-400 text-right leading-relaxed">
         <div>{titleBlock.designer && `Designer: ${titleBlock.designer}`}</div>
         <div>{titleBlock.date || today}</div>
-        <div>EasySchematic</div>
+        <div>{KGO_ES_NAME}</div>
       </div>
     </div>
   );
@@ -1650,7 +1699,7 @@ function DemoBanner() {
     <div className="bg-slate-700 text-slate-200 text-sm px-4 py-2 flex items-center justify-between gap-4" data-print-hide>
       <span>
         You&apos;re viewing a demo schematic. Start fresh with{" "}
-        <strong>File &gt; New</strong>, or explore to see what EasySchematic can do.
+        <strong>File &gt; New</strong>, or explore to see what {KGO_ES_NAME} can do.
       </span>
       <button
         className="text-slate-400 hover:text-white shrink-0"
@@ -1666,6 +1715,7 @@ function DemoBanner() {
 }
 
 export default function App() {
+  const schematicName = useSchematicStore((s) => s.schematicName);
   const printView = useSchematicStore((s) => s.printView);
   const activePage = useSchematicStore((s) => s.activePage);
   const activePgType = useSchematicStore((s) => {
@@ -1675,6 +1725,12 @@ export default function App() {
   const isSchematicActive = activePage === "schematic";
   const undo = useSchematicStore((s) => s.undo);
   const redo = useSchematicStore((s) => s.redo);
+  const panelsVisible = useSidebarStore((s) => s.panelsVisible);
+  const quickToolbarVisible = useSidebarStore((s) => s.quickToolbarVisible);
+
+  useEffect(() => {
+    document.title = kgoEsDocumentTitle(schematicName);
+  }, [schematicName]);
 
   // Handle /s/{token} URLs for shared schematics
   useEffect(() => {
@@ -1744,18 +1800,23 @@ export default function App() {
       {isSchematicActive && <PrintTitleBlock />}
       <PageTabs />
       {isSchematicActive ? (
-        <div className="flex flex-1 overflow-hidden">
-          <div data-print-hide data-mobile-hide>
-            <DeviceLibrary />
-          </div>
-          <div className="flex-1">
-            <SchematicCanvas />
-          </div>
-          <div data-print-hide className="hidden md:flex">
-            <ViewOptionsPanel />
-            <ShowInfoPanel />
-            <TrackItNumberingPanel />
-            <SignalColorPanel />
+        <div className="flex flex-1 flex-col overflow-hidden min-h-0">
+          {quickToolbarVisible && <QuickSettingsToolbar />}
+          <div className="flex flex-1 overflow-hidden min-h-0">
+            {panelsVisible.devices && (
+              <div data-print-hide data-mobile-hide>
+                <DeviceLibrary />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <SchematicCanvas />
+            </div>
+            <div data-print-hide className="hidden md:flex shrink-0">
+              {panelsVisible.viewOptions && <ViewOptionsPanel />}
+              {panelsVisible.showInfo && <ShowInfoPanel />}
+              {panelsVisible.trackItNumbers && <TrackItNumberingPanel />}
+              {panelsVisible.colors && <SignalColorPanel />}
+            </div>
           </div>
         </div>
       ) : activePgType === "print-sheet" ? (
