@@ -61,7 +61,6 @@ import { syncDeviceWithTemplate, type SyncResult } from "./templateSync";
 import { chooseNewHandleSuffix, type SwapPlan, type NewPortRef } from "./deviceSwap";
 import { getSignalColorOverrides, applySignalColors, loadSignalColors, saveSignalColors } from "./signalColors";
 import { computeCableSchedule } from "./cableSchedule";
-import { autoFillSheetForRack } from "./printSheetAutoFill";
 import type { TrackItLinkContext, TrackItNumberBlock, TrackItNumberingState } from "./types";
 import { scheduleTrackItAutosave } from "./trackitIntegration";
 import {
@@ -718,7 +717,7 @@ interface SchematicState {
   duplicateRackPage: (pageId: string) => string;
   duplicatePrintSheetPage: (pageId: string) => string;
   addViewport: (pageId: string, viewport: Omit<PrintViewport, "id">) => string;
-  updateViewport: (pageId: string, viewportId: string, patch: Partial<PrintViewport>) => void;
+  updateViewport: (pageId: string, viewportId: string, patch: Partial<PrintViewport>, options?: { persist?: boolean }) => void;
   removeViewport: (pageId: string, viewportId: string) => void;
   setPrintSheetPaper: (pageId: string, paperId: string, orientation: "landscape" | "portrait", customWidthIn?: number, customHeightIn?: number) => void;
   /** Move a rack (and all its placements + accessories) from one rack-elevation page to another. */
@@ -4345,16 +4344,6 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       showTitleBlock: true,
     };
 
-    // H9: auto-fill with first rack if any exist
-    const firstElevPage = state.pages.find((p): p is RackElevationPage => p.type === "rack-elevation" && p.racks.length > 0);
-    if (firstElevPage) {
-      const firstRack = firstElevPage.racks[0];
-      const proposals = autoFillSheetForRack(page, firstRack, firstElevPage);
-      for (const vp of proposals) {
-        page.viewports.push({ ...vp, id: nextViewportId() });
-      }
-    }
-
     set({ pages: [...state.pages, page], activePage: id, undoSize: undoStack.length, redoSize: 0 });
     get().saveToLocalStorage();
     return id;
@@ -4447,7 +4436,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const state = get();
     pushUndo({ nodes: state.nodes, edges: state.edges });
     const id = nextViewportId();
-    const viewport: PrintViewport = { showStats: true, ...viewportData, id };
+    const defaultShowStats = viewportData.kind === "drawing" ? false : true;
+    const viewport: PrintViewport = { showStats: defaultShowStats, ...viewportData, id };
     const updatedPages = state.pages.map((p): SchematicPage => {
       if (p.id !== pageId || p.type !== "print-sheet") return p;
       return { ...p, viewports: [...p.viewports, viewport] };
@@ -4457,14 +4447,14 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     return id;
   },
 
-  updateViewport: (pageId, viewportId, patch) => {
+  updateViewport: (pageId, viewportId, patch, options?: { persist?: boolean }) => {
     const state = get();
     const updatedPages = state.pages.map((p): SchematicPage => {
       if (p.id !== pageId || p.type !== "print-sheet") return p;
       return { ...p, viewports: p.viewports.map((v) => v.id === viewportId ? { ...v, ...patch } : v) };
     });
     set({ pages: updatedPages });
-    get().saveToLocalStorage();
+    if (options?.persist !== false) get().saveToLocalStorage();
   },
 
   removeViewport: (pageId, viewportId) => {

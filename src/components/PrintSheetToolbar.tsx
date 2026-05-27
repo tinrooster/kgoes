@@ -1,9 +1,15 @@
 import { useSchematicStore } from "../store";
+import { KGO_ES_DRAWING_TAB_LABEL } from "../branding";
 import type { PrintSheetPage, RackElevationPage } from "../types";
 import { PAPER_SIZES } from "../printConfig";
 import { autoFillSheetForElevationPage, autoFillSheetForRack } from "../printSheetAutoFill";
 import { runPrintSheetExport } from "../printSheetExport";
 import type { PrintLayoutOp } from "../printSheetLayoutUtils";
+import {
+  isDrawingViewport,
+  layoutDrawingViewportOnSheet,
+  newDrawingViewportForSheet,
+} from "../drawingViewportUtils";
 import {
   IconAlignBottom,
   IconAlignHorizontalCentre,
@@ -23,9 +29,13 @@ interface Props {
 export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Props) {
   const setPrintSheetPaper = useSchematicStore((s) => s.setPrintSheetPaper);
   const addViewport = useSchematicStore((s) => s.addViewport);
+  const updateViewport = useSchematicStore((s) => s.updateViewport);
   const removeViewport = useSchematicStore((s) => s.removeViewport);
+  const pushSnapshot = useSchematicStore((s) => s.pushSnapshot);
   const pages = useSchematicStore((s) => s.pages);
+  const nodes = useSchematicStore((s) => s.nodes);
   const elevationPages = pages.filter((p): p is RackElevationPage => p.type === "rack-elevation");
+  const hasDrawing = nodes.length > 0;
 
   // Print view index display (e.g. "Print View 2 of 3").
   const printSheetPages = pages.filter((p): p is PrintSheetPage => p.type === "print-sheet");
@@ -49,7 +59,25 @@ export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Pro
     for (const vp of viewports) addViewport(page.id, vp);
   };
 
+  const handleAutoFillDrawing = () => {
+    const vp = newDrawingViewportForSheet(page, nodes);
+    if (vp) addViewport(page.id, vp);
+  };
+
   const selCount = selectedVpIds.length;
+
+  const drawingOnSheet = page.viewports.filter(isDrawingViewport);
+  const selectedDrawing = page.viewports.filter((v) => selectedVpIds.includes(v.id) && isDrawingViewport(v));
+  const fitDrawingTargets = selectedDrawing.length > 0 ? selectedDrawing : drawingOnSheet;
+
+  const handleFitDrawingToPage = () => {
+    const layout = layoutDrawingViewportOnSheet(page, nodes);
+    if (!layout || fitDrawingTargets.length === 0) return;
+    pushSnapshot();
+    for (const vp of fitDrawingTargets) {
+      updateViewport(page.id, vp.id, layout);
+    }
+  };
 
   return (
     <div className="flex flex-col border-b border-blue-200 bg-blue-50 text-xs" data-print-hide>
@@ -118,8 +146,23 @@ export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Pro
 
       <div className="border-l border-neutral-200 h-4" />
 
-      {/* Auto-fill from rack */}
-      {elevationPages.length > 0 && (
+      {hasDrawing && fitDrawingTargets.length > 0 && (
+        <button
+          type="button"
+          className="px-2 py-0.5 rounded border border-blue-300 bg-white text-blue-700 hover:bg-blue-50 text-xs transition-colors"
+          title={
+            selectedDrawing.length > 0
+              ? "Resize selected drawing view to fill the printable area"
+              : "Resize drawing view(s) to fill the printable area"
+          }
+          onClick={handleFitDrawingToPage}
+        >
+          Fit drawing to page
+        </button>
+      )}
+
+      {/* Auto-fill from drawing or rack elevations */}
+      {(hasDrawing || elevationPages.length > 0) && (
         <div className="flex items-center gap-1">
           <span className="text-neutral-500">Auto-Fill from:</span>
           <select
@@ -127,7 +170,9 @@ export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Pro
             defaultValue=""
             onChange={(e) => {
               const value = e.target.value;
-              if (value.startsWith("page|")) {
+              if (value === "drawing") {
+                handleAutoFillDrawing();
+              } else if (value.startsWith("page|")) {
                 handleAutoFillElevationPage(value.slice(5));
               } else {
                 const [pageId, rackId] = value.split("|");
@@ -136,7 +181,10 @@ export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Pro
               e.target.value = "";
             }}
           >
-            <option value="">— Pick rack or page —</option>
+            <option value="">— Pick source —</option>
+            {hasDrawing && (
+              <option value="drawing">{KGO_ES_DRAWING_TAB_LABEL} — full drawing</option>
+            )}
             {elevationPages.map((ep) =>
               ep.racks.length > 1 ? (
                 <option key={`page|${ep.id}`} value={`page|${ep.id}`}>
@@ -156,27 +204,37 @@ export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Pro
       )}
 
       {/* Add viewport manually */}
-      {elevationPages.length > 0 && (
+      {(hasDrawing || elevationPages.length > 0) && (
         <div className="flex items-center gap-1">
           <span className="text-neutral-500">Add View:</span>
           <select
             className="bg-white border border-neutral-200 rounded px-2 py-0.5 text-xs outline-none focus:border-blue-400"
             defaultValue=""
             onChange={(e) => {
-              const [kind, pageId, rackId] = e.target.value.split("|");
-              if (!kind || !pageId || !rackId) return;
-              addViewport(page.id, {
-                kind: kind as "rack-front" | "rack-rear" | "rack-side",
-                rackRefPageId: pageId,
-                rackRefId: rackId,
-                positionMm: { x: 20, y: 20 },
-                sizeMm: { w: 60, h: 80 },
-                showLabel: true,
-              });
+              const value = e.target.value;
+              if (!value) return;
+              if (value === "drawing") {
+                const vp = newDrawingViewportForSheet(page, nodes);
+                if (vp) addViewport(page.id, vp);
+              } else {
+                const [kind, pageId, rackId] = value.split("|");
+                if (!kind || !pageId || !rackId) return;
+                addViewport(page.id, {
+                  kind: kind as "rack-front" | "rack-rear" | "rack-side",
+                  rackRefPageId: pageId,
+                  rackRefId: rackId,
+                  positionMm: { x: 20, y: 20 },
+                  sizeMm: { w: 60, h: 80 },
+                  showLabel: true,
+                });
+              }
               e.target.value = "";
             }}
           >
             <option value="">— Pick view —</option>
+            {hasDrawing && (
+              <option value="drawing">{KGO_ES_DRAWING_TAB_LABEL} · Full drawing</option>
+            )}
             {elevationPages.flatMap((ep) =>
               ep.racks.flatMap((r) => [
                 <option key={`front|${ep.id}|${r.id}`} value={`rack-front|${ep.id}|${r.id}`}>{r.label} · Front</option>,

@@ -12,6 +12,8 @@ import { loadInterFont, drawElevation, drawSideView, hasInterItalic } from "./ra
 import { computeRackStats, formatStatsLine } from "./rackStats";
 import { computeCellRects, normalizeSizes, getFieldValue } from "./titleBlockLayout";
 import { useSchematicStore } from "./store";
+import { captureDrawingRegion } from "./drawingCapture";
+import { drawingRegionForViewport, isDrawingViewport, printViewportKindLabel } from "./drawingViewportUtils";
 
 const IN_TO_MM = 25.4;
 const PAGE_MARGIN_MM = PAGE_MARGIN_IN * IN_TO_MM; // 10.16mm
@@ -197,36 +199,46 @@ export async function exportPrintSheetPdf(opts: PrintSheetPdfOptions): Promise<v
     // Viewports
     for (const vp of sheet.viewports) {
       const { positionMm: pos, sizeMm: size } = vp;
-      const srcPage = elevationPages.find((p) => p.id === vp.rackRefPageId);
-      const rack = srcPage?.racks.find((r) => r.id === vp.rackRefId);
-      if (!srcPage || !rack) continue;
-
       const centerX = pos.x + size.w / 2;
 
-      // Rack face — face label is drawn below the viewport (not above the frame).
-      // Pass the full viewport rect so drawElevation/drawSideView can fit-with-aspect.
-      if (vp.kind === "rack-front") {
-        drawElevation(doc, rack, srcPage.placements, srcPage.accessories, deviceDataMap, "front", pos.x, pos.y, size.w, size.h, false, opts.schematicDefaults);
-      } else if (vp.kind === "rack-rear") {
-        drawElevation(doc, rack, srcPage.placements, srcPage.accessories, deviceDataMap, "rear", pos.x, pos.y, size.w, size.h, false, opts.schematicDefaults);
-      } else if (vp.kind === "rack-side") {
-        drawSideView(doc, rack, srcPage.placements, srcPage.accessories, deviceDataMap, pos.x, pos.y, size.w, size.h, false);
+      if (isDrawingViewport(vp)) {
+        const region = drawingRegionForViewport(vp, opts.nodes);
+        if (region) {
+          const widthPx = (size.w / IN_TO_MM) * 96;
+          const heightPx = (size.h / IN_TO_MM) * 96;
+          const dataUrl = await captureDrawingRegion(region, widthPx, heightPx);
+          if (dataUrl) {
+            doc.addImage(dataUrl, "PNG", pos.x, pos.y, size.w, size.h, undefined, "FAST");
+          }
+        }
+      } else {
+        const srcPage = elevationPages.find((p) => p.id === vp.rackRefPageId);
+        const rack = srcPage?.racks.find((r) => r.id === vp.rackRefId);
+        if (!srcPage || !rack) continue;
+
+        // Rack face — face label is drawn below the viewport (not above the frame).
+        if (vp.kind === "rack-front") {
+          drawElevation(doc, rack, srcPage.placements, srcPage.accessories, deviceDataMap, "front", pos.x, pos.y, size.w, size.h, false, opts.schematicDefaults);
+        } else if (vp.kind === "rack-rear") {
+          drawElevation(doc, rack, srcPage.placements, srcPage.accessories, deviceDataMap, "rear", pos.x, pos.y, size.w, size.h, false, opts.schematicDefaults);
+        } else if (vp.kind === "rack-side") {
+          drawSideView(doc, rack, srcPage.placements, srcPage.accessories, deviceDataMap, pos.x, pos.y, size.w, size.h, false);
+        }
       }
 
       // Chrome below viewport — mirrors PrintSheetRenderer.tsx typography exactly.
-      // UI uses CSS px (9px / 7px font, top offsets 2/14/26 px below viewport).
-      // PDF: convert px → pt for fonts, px → mm for positions, baseline:"top" so
-      // y is the cap-height top (matches HTML div top edge).
       if (vp.showLabel !== false) {
-        const kindLabel = vp.kind === "rack-front" ? "Front" : vp.kind === "rack-rear" ? "Rear" : "Side";
+        const kindLabel = printViewportKindLabel(vp);
         doc.setFont("Inter", hasInterItalic() ? "italic" : "normal");
-        doc.setFontSize(9 * PX_TO_PT); // = 6.75pt to match UI 9px
-        doc.setTextColor(153, 153, 153); // #999
+        doc.setFontSize(9 * PX_TO_PT);
+        doc.setTextColor(153, 153, 153);
         doc.text(kindLabel, centerX, pos.y + size.h + 2 * PX_TO_MM, { align: "center", baseline: "top", maxWidth: size.w });
       }
 
-      if (vp.showStats !== false) {
-        // Inline stats + caveat — match UI div positioning + sizing.
+      if (!isDrawingViewport(vp) && vp.showStats !== false) {
+        const srcPage = elevationPages.find((p) => p.id === vp.rackRefPageId);
+        const rack = srcPage?.racks.find((r) => r.id === vp.rackRefId);
+        if (!srcPage || !rack) continue;
         const rackPl = srcPage.placements.filter((p) => p.rackId === rack.id);
         const rackAcc = srcPage.accessories.filter((a) => a.rackId === rack.id);
         const stats = computeRackStats(rack, rackPl, rackAcc, deviceDataMap);
@@ -234,7 +246,7 @@ export async function exportPrintSheetPdf(opts: PrintSheetPdfOptions): Promise<v
 
         doc.setFont("Inter", "normal");
         doc.setFontSize(9 * PX_TO_PT);
-        doc.setTextColor(68, 68, 68); // #444
+        doc.setTextColor(68, 68, 68);
         doc.text(statsLine, centerX, pos.y + size.h + 14 * PX_TO_MM, { align: "center", baseline: "top", maxWidth: size.w });
 
         if (stats.unknownDepthCount > 0 || stats.unknownWeightCount > 0 || stats.unknownPowerCount > 0) {
@@ -243,7 +255,7 @@ export async function exportPrintSheetPdf(opts: PrintSheetPdfOptions): Promise<v
             stats.unknownWeightCount > 0 ? `${stats.unknownWeightCount} unknown weight` : null,
             stats.unknownPowerCount > 0 ? `${stats.unknownPowerCount} unknown power` : null,
           ].filter(Boolean).join(" · ");
-          doc.setFontSize(7 * PX_TO_PT); // = 5.25pt to match UI 7px
+          doc.setFontSize(7 * PX_TO_PT);
           doc.setTextColor(153, 153, 153);
           doc.text(caveat, centerX, pos.y + size.h + 26 * PX_TO_MM, { align: "center", baseline: "top", maxWidth: size.w });
         }

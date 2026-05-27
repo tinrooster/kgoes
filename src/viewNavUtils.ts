@@ -19,6 +19,67 @@ export function boundsFromSize(x: number, y: number, w: number, h: number): Cont
   return { minX: x, minY: y, maxX: x + w, maxY: y + h };
 }
 
+const DEFAULT_NODE_W = 180;
+const DEFAULT_NODE_H = 60;
+
+/** Axis-aligned bounds of all schematic nodes (accounts for room parenting). */
+export function computeSchematicContentBounds(
+  nodes: {
+    id: string;
+    position: { x: number; y: number };
+    parentId?: string;
+    measured?: { width?: number; height?: number };
+  }[],
+  padding = 40,
+): ContentBounds | null {
+  if (nodes.length === 0) return null;
+
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+
+  const absPos = (nodeId: string): { x: number; y: number } => {
+    const node = byId.get(nodeId);
+    if (!node) return { x: 0, y: 0 };
+    let x = node.position.x;
+    let y = node.position.y;
+    let parentId = node.parentId;
+    while (parentId) {
+      const parent = byId.get(parentId);
+      if (!parent) break;
+      x += parent.position.x;
+      y += parent.position.y;
+      parentId = parent.parentId;
+    }
+    return { x, y };
+  };
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const n of nodes) {
+    const { x, y } = absPos(n.id);
+    const w = n.measured?.width ?? DEFAULT_NODE_W;
+    const h = n.measured?.height ?? DEFAULT_NODE_H;
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + w);
+    maxY = Math.max(maxY, y + h);
+  }
+
+  return {
+    minX: minX - padding,
+    minY: minY - padding,
+    maxX: maxX + padding,
+    maxY: maxY + padding,
+  };
+}
+
+export function contentBoundsAspect(bounds: ContentBounds): number {
+  const w = Math.max(bounds.maxX - bounds.minX, 1);
+  const h = Math.max(bounds.maxY - bounds.minY, 1);
+  return w / h;
+}
+
 /** Compute pan (top-left offset) and zoom to fit content in a viewport element. */
 /** Rack elevation canvas bounds (matches RackRenderer layout constants). */
 export function rackPageContentBounds(

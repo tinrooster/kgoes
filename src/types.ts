@@ -689,14 +689,17 @@ export interface RackElevationPage {
 
 export interface PrintViewport {
   id: string;
-  kind: "rack-front" | "rack-rear" | "rack-side";
-  rackRefPageId: string;
-  rackRefId: string;
+  kind: "rack-front" | "rack-rear" | "rack-side" | "drawing";
+  /** Rack elevation page + rack id (rack viewports only). */
+  rackRefPageId?: string;
+  rackRefId?: string;
   positionMm: { x: number; y: number };
   sizeMm: { w: number; h: number };
   scale?: number;
   showLabel?: boolean;
   showStats?: boolean;
+  /** Optional crop in flow coordinates (drawing viewports). Omit to fit all nodes. */
+  drawingRegion?: { minX: number; minY: number; maxX: number; maxY: number };
 }
 
 export interface PrintSheetPage {

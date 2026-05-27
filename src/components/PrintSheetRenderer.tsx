@@ -7,8 +7,22 @@ import { computeRackStats, formatStatsLine } from "../rackStats";
 import { computeCellRects, normalizeSizes, getFieldValue } from "../titleBlockLayout";
 import { computeDragSnap, computeResizeSnap, type SheetGuide, type Rect } from "../printSheetSnap";
 import RackFaceSVG from "./RackFaceSVG";
+import DrawingViewportPreview from "./DrawingViewportPreview";
 import ViewNavBar from "./ViewNavBar";
-import { boundsFromSize, computeFitViewport, unionBounds, type ContentBounds } from "../viewNavUtils";
+import {
+  boundsFromSize,
+  computeFitViewport,
+  unionBounds,
+  type ContentBounds,
+} from "../viewNavUtils";
+import {
+  drawingRegionForViewport,
+  isDrawingViewport,
+  naturalAspectForViewport,
+  printViewportKindLabel,
+  layoutDrawingViewportOnSheet,
+  newDrawingViewportForSheet,
+} from "../drawingViewportUtils";
 import {
   hitTestItemRect,
   MARQUEE_BOX_STYLES,
@@ -169,6 +183,7 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
   const flushPendingSnapshot = useSchematicStore((s) => s.flushPendingSnapshot);
   const clearPendingUndoSnapshot = useSchematicStore((s) => s.clearPendingUndoSnapshot);
   const pushSnapshot = useSchematicStore((s) => s.pushSnapshot);
+  const saveToLocalStorage = useSchematicStore((s) => s.saveToLocalStorage);
   const titleBlock = useSchematicStore((s) => s.titleBlock);
   const titleBlockLayout = useSchematicStore((s) => s.titleBlockLayout);
   const panMode = useSchematicStore((s) => s.panMode);
@@ -490,10 +505,15 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
 
   const handleResizeMouseDown = useCallback((e: React.MouseEvent, vp: PrintViewport) => {
     e.stopPropagation();
-    const elevPage = elevationPages.find((p) => p.id === vp.rackRefPageId);
-    const rack = elevPage?.racks.find((r) => r.id === vp.rackRefId);
-    const face: "front" | "rear" | "side" = vp.kind === "rack-rear" ? "rear" : vp.kind === "rack-side" ? "side" : "front";
-    const aspect = rack ? getNaturalAspect(rack, face) : vp.sizeMm.w / vp.sizeMm.h;
+    let aspect = vp.sizeMm.w / vp.sizeMm.h;
+    if (isDrawingViewport(vp)) {
+      aspect = naturalAspectForViewport(vp, nodes);
+    } else {
+      const elevPage = elevationPages.find((p) => p.id === vp.rackRefPageId);
+      const rack = elevPage?.racks.find((r) => r.id === vp.rackRefId);
+      const face: "front" | "rear" | "side" = vp.kind === "rack-rear" ? "rear" : vp.kind === "rack-side" ? "side" : "front";
+      if (rack) aspect = getNaturalAspect(rack, face);
+    }
     setSelectedVpIds([vp.id]);
     selectedVpIdsRef.current = [vp.id];
     didMoveRef.current = false;
@@ -508,7 +528,7 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
       startSize: { ...vp.sizeMm },
       aspect,
     });
-  }, [elevationPages, setPendingUndoSnapshot]);
+  }, [elevationPages, nodes, setPendingUndoSnapshot]);
 
   const handleGroupResizeMouseDown = useCallback((e: React.MouseEvent, groupRect: Rect) => {
     e.stopPropagation();
@@ -563,7 +583,7 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
 
       for (const id of ids) {
         const start = dragging.starts[id];
-        updateViewport(page.id, id, { positionMm: { x: start.x + dxMm + snapDx, y: start.y + dyMm + snapDy } });
+        updateViewport(page.id, id, { positionMm: { x: start.x + dxMm + snapDx, y: start.y + dyMm + snapDy } }, { persist: false });
       }
     } else if (resizing) {
       const { dxMm, dyMm } = clientPxToMm(e.clientX - resizing.startClientX, e.clientY - resizing.startClientY);
@@ -605,7 +625,7 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
           else finalW = finalH * r.aspect;
         }
         setSnapGuides(snap.guides);
-        updateViewport(page.id, r.vpId, { sizeMm: { w: finalW, h: finalH } });
+        updateViewport(page.id, r.vpId, { sizeMm: { w: finalW, h: finalH } }, { persist: false });
       } else {
         // Group resize — uniform scale based on max relative delta of right/bottom edge.
         const r = resizing;
@@ -626,7 +646,7 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
           updateViewport(page.id, id, {
             positionMm: { x: r.groupStart.x + relX * finalGroupW, y: r.groupStart.y + relY * finalGroupH },
             sizeMm: { w: start.w * scale, h: start.h * scale },
-          });
+          }, { persist: false });
         }
         setSnapGuides([]);
       }
@@ -697,8 +717,12 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
       selectedVpIdsRef.current = [];
     }
     if (dragging || resizing) {
-      if (didMoveRef.current) flushPendingSnapshot();
-      else clearPendingUndoSnapshot();
+      if (didMoveRef.current) {
+        flushPendingSnapshot();
+        saveToLocalStorage();
+      } else {
+        clearPendingUndoSnapshot();
+      }
     }
     setDragging(null);
     setResizing(null);
@@ -716,13 +740,18 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
     setSelectedVpIds,
     flushPendingSnapshot,
     clearPendingUndoSnapshot,
+    saveToLocalStorage,
   ]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const raw = e.dataTransfer.getData("application/x-print-viewport");
     if (!raw) return;
-    const { pageId, rackId, kind } = JSON.parse(raw) as { pageId: string; rackId: string; kind: PrintViewport["kind"] };
+    const payload = JSON.parse(raw) as {
+      kind: PrintViewport["kind"];
+      pageId?: string;
+      rackId?: string;
+    };
     const rect = containerRef.current!.getBoundingClientRect();
     const { zoom: z, pan: p } = vpRef.current;
     const paperX = (e.clientX - rect.left - p.x) / z;
@@ -731,8 +760,22 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
     const dropYMm = (paperY / pageHPx) * pageHIn * IN_TO_MM;
     const defaultW = (pageWIn / 3) * IN_TO_MM;
     const defaultH = (pageHIn / 2) * IN_TO_MM;
-    addViewport(page.id, { kind, rackRefPageId: pageId, rackRefId: rackId, positionMm: { x: dropXMm - defaultW / 2, y: dropYMm - defaultH / 2 }, sizeMm: { w: defaultW, h: defaultH }, showLabel: true });
-  }, [page.id, pageWIn, pageHIn, pageWPx, pageHPx, addViewport]);
+    const positionMm = { x: dropXMm - defaultW / 2, y: dropYMm - defaultH / 2 };
+    const sizeMm = { w: defaultW, h: defaultH };
+    if (payload.kind === "drawing") {
+      const vp = newDrawingViewportForSheet(page, nodes);
+      if (vp) addViewport(page.id, vp);
+    } else if (payload.pageId && payload.rackId) {
+      addViewport(page.id, {
+        kind: payload.kind,
+        rackRefPageId: payload.pageId,
+        rackRefId: payload.rackId,
+        positionMm,
+        sizeMm,
+        showLabel: true,
+      });
+    }
+  }, [page, nodes, pageWIn, pageHIn, pageWPx, pageHPx, addViewport]);
 
   const resetSelectionSize = useCallback(() => {
     if (selectedVpIdsRef.current.length === 0) return;
@@ -740,15 +783,20 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
     for (const id of selectedVpIdsRef.current) {
       const v = page.viewports.find((vv) => vv.id === id);
       if (!v) continue;
-      const elevPage = elevationPages.find((p) => p.id === v.rackRefPageId);
-      const rack = elevPage?.racks.find((r) => r.id === v.rackRefId);
-      if (!rack) continue;
-      const face: "front" | "rear" | "side" = v.kind === "rack-rear" ? "rear" : v.kind === "rack-side" ? "side" : "front";
-      const aspect = getNaturalAspect(rack, face);
+      let aspect: number;
+      if (isDrawingViewport(v)) {
+        aspect = naturalAspectForViewport(v, nodes);
+      } else {
+        const elevPage = elevationPages.find((p) => p.id === v.rackRefPageId);
+        const rack = elevPage?.racks.find((r) => r.id === v.rackRefId);
+        if (!rack) continue;
+        const face: "front" | "rear" | "side" = v.kind === "rack-rear" ? "rear" : v.kind === "rack-side" ? "side" : "front";
+        aspect = getNaturalAspect(rack, face);
+      }
       // Keep height, snap width to natural aspect.
       updateViewport(page.id, id, { sizeMm: { w: v.sizeMm.h * aspect, h: v.sizeMm.h } });
     }
-  }, [page.viewports, page.id, elevationPages, updateViewport, pushSnapshot]);
+  }, [page.viewports, page.id, elevationPages, nodes, updateViewport, pushSnapshot]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if ((e.key === "Delete" || e.key === "Backspace") && selectedVpIdsRef.current.length > 0) {
@@ -829,16 +877,18 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
             const yPx = mmToPagePx(vp.positionMm.y);
             const wPx = mmToPagePx(vp.sizeMm.w);
             const hPx = mmToPagePx(vp.sizeMm.h);
-            const elevPage = elevationPages.find((p) => p.id === vp.rackRefPageId);
+            const isDrawing = isDrawingViewport(vp);
+            const elevPage = !isDrawing ? elevationPages.find((p) => p.id === vp.rackRefPageId) : undefined;
             const rack = elevPage?.racks.find((r) => r.id === vp.rackRefId);
             const isSelected = selectedVpIds.includes(vp.id);
             const isOnlySelected = isSelected && selectedVpIds.length === 1;
-            const kindLabel = vp.kind === "rack-front" ? "Front" : vp.kind === "rack-rear" ? "Rear" : "Side";
+            const kindLabel = printViewportKindLabel(vp);
             const face = vp.kind === "rack-rear" ? "rear" : vp.kind === "rack-side" ? "side" : "front";
+            const drawingRegion = isDrawing ? drawingRegionForViewport(vp, nodes) : null;
 
             const rackPlacements = rack && elevPage ? elevPage.placements.filter((p) => p.rackId === rack.id) : [];
             const rackAccessories = rack && elevPage ? elevPage.accessories.filter((a) => a.rackId === rack.id) : [];
-            const stats = rack && vp.showStats !== false
+            const stats = !isDrawing && rack && vp.showStats !== false
               ? computeRackStats(rack, rackPlacements, rackAccessories, deviceDataMap)
               : null;
             const statsLine = stats ? formatStatsLine(stats) : null;
@@ -857,7 +907,15 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
                   style={{ left: xPx, top: yPx, width: wPx, height: hPx, cursor: "move" }}
                   onMouseDown={(e) => handleVpMouseDown(e, vp)}
                 >
-                  {rack ? (
+                  {isDrawing ? (
+                    <div className="w-full h-full overflow-hidden border border-neutral-200 bg-white">
+                      <DrawingViewportPreview
+                        widthPx={wPx}
+                        heightPx={hPx}
+                        region={drawingRegion}
+                      />
+                    </div>
+                  ) : rack ? (
                     <RackFaceSVG
                       rack={rack}
                       placements={rackPlacements}
@@ -887,7 +945,24 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
                       onMouseDown={(e) => { e.stopPropagation(); handleResizeMouseDown(e, vp); }}
                     />
                   )}
-                  {isOnlySelected && (
+                  {isOnlySelected && isDrawing && (
+                    <button
+                      className="absolute bottom-0 left-0 w-5 h-5 bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center rounded-tr text-[10px] leading-none"
+                      style={{ zIndex: 11 }}
+                      title="Fit drawing to printable page area"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const layout = layoutDrawingViewportOnSheet(page, nodes);
+                        if (!layout) return;
+                        pushSnapshot();
+                        updateViewport(page.id, vp.id, layout);
+                      }}
+                    >
+                      ⊞
+                    </button>
+                  )}
+                  {isOnlySelected && !isDrawing && (
                     <button
                       className="absolute bottom-0 left-0 w-5 h-5 bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center rounded-tr text-[11px] leading-none"
                       style={{ zIndex: 11, paddingTop: 1 }}
@@ -1014,7 +1089,7 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
           {/* Empty state */}
           {page.viewports.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center text-neutral-400 text-sm pointer-events-none">
-              Drag a rack view from the sidebar, or use Auto-Fill in the toolbar
+              Drag a drawing or rack view from the sidebar, or use Auto-Fill in the toolbar
             </div>
           )}
         </div>

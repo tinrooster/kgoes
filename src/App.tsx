@@ -63,6 +63,7 @@ import PageTabs from "./components/PageTabs";
 import SchematicViewNav from "./components/SchematicViewNav";
 import RackPage from "./components/RackPage";
 import PrintSheetPage from "./components/PrintSheetPage";
+import DrawingCaptureHost from "./components/DrawingCaptureHost";
 import { computeSnap, enforceMinSpacing, detectOverlap, speculativeReparent, type GuideLine } from "./snapUtils";
 import type { ConnectionEdge, DeviceData, DeviceTemplate, SchematicFile, SchematicNode } from "./types";
 import { findAdaptersForSignalBridge, findAdaptersForConnectorBridge, areConnectorsCompatible } from "./connectorTypes";
@@ -1891,6 +1892,7 @@ export default function App() {
       <DeviceSwapDialog />
       <MobileGate />
       <ToastContainer />
+      <DrawingCaptureHost />
     </div>
   );
 }
