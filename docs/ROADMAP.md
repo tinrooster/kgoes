@@ -53,6 +53,6 @@ This file tracks rack/print/layout UX shipped in the KGO-ES / trackIT fork. Upst
 
 | Item | Notes |
 |------|--------|
-| EasySchematic write-back listener (numbering) | trackIT outbox shipped; ES postMessage handler TBD |
+| Register import from schematic (trackIT) | Numbers in `schematic_json` only until publish/reconcile |
 | VJF template polish | Grid generator in `vjfLayout.ts`; more card templates as needed |
 | Rack drag-and-drop layout | Long-term trackIT roadmap item — interactive rack diagram |
