@@ -71,6 +71,7 @@ import { DEVICE_TEMPLATES } from "./deviceLibrary";
 import { loadSharedSchematic, checkSession } from "./templateApi";
 import { refreshCloudCache } from "./cloudSync";
 import { useTheme } from "./hooks/useTheme";
+import { isTrackItPopupOpener } from "./trackitIntegration";
 
 /** Darkens the canvas area left of x=0 and above y=0, marking the printable origin. */
 function CanvasOriginOverlay() {
@@ -527,8 +528,9 @@ function SchematicCanvas() {
   // Snap guide lines shown during drag
   const [snapGuides, setSnapGuides] = useState<GuideLine[]>([]);
 
-  // Load saved state on mount
+  // Standalone ES restores browser autosave; trackIT popups wait for TRACKIT_LINK / LOAD.
   useEffect(() => {
+    if (isTrackItPopupOpener()) return;
     loadFromLocalStorage();
   }, [loadFromLocalStorage]);
 

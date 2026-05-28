@@ -185,7 +185,12 @@ function resolveEdgeStroke(data: ConnectionData | undefined): string {
   return `var(--color-${data.signalType ?? "custom"})`;
 }
 
-const STORAGE_KEY = "easyschematic-autosave";
+export const STORAGE_KEY = "easyschematic-autosave";
+
+/** Per trackIT plant_drawings row — avoids mixing drawings or the legacy demo autosave. */
+export function trackItAutosaveKey(drawingId: string): string {
+  return `easyschematic-trackit:${drawingId}`;
+}
 const TEMPLATES_KEY = "easyschematic-custom-templates";
 const TEMPLATE_META_KEY = "easyschematic-custom-template-meta";
 const CATEGORY_ORDER_KEY = "easyschematic-category-order";
@@ -757,6 +762,7 @@ interface SchematicState {
   // Persistence
   saveToLocalStorage: () => void;
   loadFromLocalStorage: () => boolean;
+  loadAutosaveFromKey: (storageKey: string) => boolean;
   exportToJSON: () => SchematicFile;
   importFromJSON: (data: SchematicFile) => void;
   importCsvData: (newNodes: SchematicNode[], newEdges: ConnectionEdge[]) => void;
@@ -4747,100 +4753,22 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       blob.cloudSchematicId = state.cloudSchematicId;
       blob.cloudSavedAt = state.cloudSavedAt ?? undefined;
     }
+    const autosaveKey = state.trackItLink?.drawingId
+      ? trackItAutosaveKey(state.trackItLink.drawingId)
+      : STORAGE_KEY;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(blob));
+      localStorage.setItem(autosaveKey, JSON.stringify(blob));
     } catch {
       // Storage full or unavailable — silently fail
     }
     scheduleTrackItAutosave();
   },
 
-  loadFromLocalStorage: () => {
+  loadAutosaveFromKey: (storageKey) => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(storageKey);
       if (!raw) {
-        // Load default demo schematic for first-time visitors
-        // Dynamically import to avoid bundling in the critical path
-        import("./defaultSchematic.json").then((mod) => {
-          // Only load if still empty (no race with user actions)
-          if (get().nodes.length > 0) return;
-          const data = migrateSchematic(mod.default) as SchematicFile;
-          snapNodesToGrid(data.nodes);
-          applyRoomLockState(data.nodes);
-          syncCounters(data.nodes, data.edges);
-          data.edges = removeOrphanedEdges(data.nodes, data.edges);
-          const colors = data.signalColors ?? {};
-          applySignalColors(colors);
-          saveSignalColors({ ...loadSignalColors(), ...colors });
-          set({
-            nodes: data.nodes,
-            edges: data.edges,
-            isDemo: true,
-            schematicName: data.name ?? "Demo Schematic",
-            ownedGear: data.ownedGear ?? [],
-            signalColors: data.signalColors,
-            signalLineStyles: data.signalLineStyles,
-            printPaperId: data.printPaperId ?? "arch-d",
-            printOrientation: data.printOrientation ?? "landscape",
-            printScale: data.printScale ?? 1.0,
-            printCustomWidthIn: data.printCustomWidthIn ?? 24,
-            printCustomHeightIn: data.printCustomHeightIn ?? 36,
-            printOriginOffsetX: data.printOriginOffsetX ?? 0,
-            printOriginOffsetY: data.printOriginOffsetY ?? 0,
-            titleBlock: data.titleBlock ?? { showName: "", venue: "", designer: "", engineer: "", date: "", drawingTitle: "", company: "", revision: "", logo: "", customFields: [] },
-            titleBlockLayout: data.titleBlockLayout ?? createDefaultLayout(),
-            hiddenSignalTypes: data.hiddenSignalTypes?.length ? [...data.hiddenSignalTypes].sort().join(",") : "",
-            hiddenPinSignalTypes: data.hiddenPinSignalTypes?.length ? [...data.hiddenPinSignalTypes].sort().join(",") : "",
-            hideUnconnectedPorts: data.hideUnconnectedPorts ?? false,
-            showPortCounts: data.showPortCounts ?? false,
-            templateHiddenSignals: data.templateHiddenSignals ?? {},
-            templatePresets: data.templatePresets ?? {},
-            favoriteTemplates: data.favoriteTemplates ?? [],
-            reportLayouts: data.reportLayouts ?? {},
-            globalReportHeaderLayout: data.globalReportHeaderLayout ?? null,
-            globalReportFooterLayout: data.globalReportFooterLayout ?? null,
-            scrollConfig: resolveScrollConfig(data),
-            cableNamingScheme: data.cableNamingScheme ?? "type-prefix",
-            labelCase: resolveLabelCase(data.labelCase),
-            currency: data.currency ?? "USD",
-            panMode: (data.panMode === "pan-first" ? "pan-first" : "select-first") as PanMode,
-            showLineJumps: data.showLineJumps ?? true,
-            showFacePlateDetail: data.showFacePlateDetail ?? false,
-            autoRoute: data.autoRoute ?? true,
-            edgeHitboxSize: data.edgeHitboxSize ?? 10,
-            showCableIdLabels: data.showCableIdLabels ?? data.showConnectionLabels ?? true,
-            showConnectionLabels: data.showCableIdLabels ?? data.showConnectionLabels ?? true,
-            showCustomLabels: data.showCustomLabels ?? true,
-            cableIdGap: data.cableIdGap ?? 4,
-            cableIdMidOffset: data.cableIdMidOffset ?? 0,
-            cableIdLabelMode: data.cableIdLabelMode ?? "endpoint",
-            stubLabelShowPort: data.stubLabelShowPort ?? DEFAULT_STUB_LABEL_SHOW_PORT,
-            stubLabelShowRoom: data.stubLabelShowRoom ?? DEFAULT_STUB_LABEL_SHOW_ROOM,
-            stubLabelPageMode: data.stubLabelPageMode ?? DEFAULT_STUB_LABEL_PAGE_MODE,
-            useShortNames: data.useShortNames ?? false,
-            wrapDeviceLabels: data.wrapDeviceLabels ?? false,
-            hideAdapters: data.hideAdapters ?? false,
-            categoryOrder: data.categoryOrder ?? null,
-            showOwnedGearPane: data.showOwnedGearPane ?? false,
-            libraryActiveTab: data.showOwnedGearPane ? (data.libraryActiveTab ?? "devices") : "devices",
-            colorKeyEnabled: data.colorKeyEnabled ?? false,
-            colorKeyCorner: data.colorKeyCorner ?? "bottom-left",
-            colorKeyColumns: data.colorKeyColumns ?? 1,
-            colorKeyPage: data.colorKeyPage ?? "all",
-            colorKeyOverrides: data.colorKeyOverrides ?? undefined,
-            pages: data.pages ?? [],
-            cableCosts: data.cableCosts ?? undefined,
-            roomDistances: data.roomDistances ?? undefined,
-            distanceSettings: data.distanceSettings ?? undefined,
-      trackItNumbering: data.trackItNumbering ?? null,
-      activeTrackItReservationId:
-        pickDefaultActiveBlock(data.trackItNumbering?.blocks ?? [])?.reservationId ?? null,
-            loadSeq: get().loadSeq + 1,
-          });
-          if (data.pages?.length) syncRackCounters(data.pages);
-          hydrated = true;
-          get().saveToLocalStorage();
-        });
+        hydrated = true;
         return false;
       }
       const parsed = JSON.parse(raw);
@@ -4924,9 +4852,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         cableCosts: data.cableCosts ?? undefined,
         roomDistances: data.roomDistances ?? undefined,
         distanceSettings: data.distanceSettings ?? undefined,
-      trackItNumbering: data.trackItNumbering ?? null,
-      activeTrackItReservationId:
-        pickDefaultActiveBlock(data.trackItNumbering?.blocks ?? [])?.reservationId ?? null,
+        trackItNumbering: data.trackItNumbering ?? null,
+        activeTrackItReservationId:
+          pickDefaultActiveBlock(data.trackItNumbering?.blocks ?? [])?.reservationId ?? null,
+        trackItLink: data.trackItLink ?? null,
+        isDemo: false,
         // Restore cloud identity from autosave (not part of SchematicFile)
         cloudSchematicId: parsed.cloudSchematicId ?? null,
         cloudSavedAt: parsed.cloudSavedAt ?? null,
@@ -4940,6 +4870,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       return false;
     }
   },
+
+  loadFromLocalStorage: () => get().loadAutosaveFromKey(STORAGE_KEY),
 
   exportToJSON: () => {
     const state = get();

@@ -3,7 +3,7 @@
  * See trackIT: docs/easyschematic-writeback-protocol.md
  */
 
-import { applyTrackItLink } from "./trackitIntegration";
+import { applyTrackItLink, beginBlankTrackItDrawing } from "./trackitIntegration";
 import { mergeNumberingSnapshot, upsertTrackItBlock } from "./trackitNumberingMerge";
 import { useSchematicStore } from "./store";
 import type { SchematicFile, TrackItNumberBlock, TrackItNumberingState, TrackItLinkContext } from "./types";
@@ -182,13 +182,30 @@ export function startTrackItBridge(): void {
 
     if (event.data.type === "TRACKIT_LOAD_SCHEMATIC") {
       const file = event.data.payload;
-      if (file?.nodes && file?.edges) {
-        useSchematicStore.getState().importFromJSON(file);
-        if (file.trackItLink?.drawingId) {
-          useSchematicStore.getState().setTrackItLink(file.trackItLink);
+      if (!file) return;
+      const nodes = file.nodes ?? [];
+      const edges = file.edges ?? [];
+      const store = useSchematicStore.getState();
+      const link = file.trackItLink ?? store.trackItLink;
+
+      if (nodes.length === 0 && edges.length === 0) {
+        if (link?.drawingId) {
+          beginBlankTrackItDrawing(link);
         }
-        useSchematicStore.getState().addToast("Schematic loaded from trackIT", "success");
+        return;
       }
+
+      store.importFromJSON({ ...file, nodes, edges, trackItLink: link ?? undefined });
+      if (link?.drawingId) {
+        store.setTrackItLink(link);
+      }
+      const activeLinkName =
+        link?.drawingName?.trim() ?? store.trackItLink?.drawingName?.trim() ?? null;
+      if (activeLinkName) {
+        store.setSchematicName(activeLinkName);
+      }
+      useSchematicStore.setState({ isDemo: false });
+      store.addToast("Schematic loaded from trackIT", "success");
       return;
     }
 

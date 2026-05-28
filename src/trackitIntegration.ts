@@ -3,7 +3,7 @@
  * See trackIT: docs/easyschematic-writeback-protocol.md
  */
 
-import { useSchematicStore } from "./store";
+import { trackItAutosaveKey, useSchematicStore } from "./store";
 import type { SchematicFile, TrackItLinkContext } from "./types";
 
 export type { TrackItLinkContext };
@@ -19,14 +19,19 @@ export function notifyTrackItParentSaved(file: SchematicFile): void {
   }
 }
 
-export function isTrackItLinked(): boolean {
-  const link = useSchematicStore.getState().trackItLink;
-  if (link?.drawingId) return true;
+/** Opened from trackIT Plant — do not restore the legacy global demo autosave on mount. */
+export function isTrackItPopupOpener(): boolean {
   try {
     return !!(typeof window !== "undefined" && window.opener && !window.opener.closed);
   } catch {
     return false;
   }
+}
+
+export function isTrackItLinked(): boolean {
+  const link = useSchematicStore.getState().trackItLink;
+  if (link?.drawingId) return true;
+  return isTrackItPopupOpener();
 }
 
 /** Push current schematic JSON to trackIT opener (Plant drawing panel). */
@@ -52,9 +57,48 @@ export function scheduleTrackItAutosave(): void {
   }, 60_000);
 }
 
+export function loadTrackItDrawingAutosave(drawingId: string): boolean {
+  return useSchematicStore.getState().loadAutosaveFromKey(trackItAutosaveKey(drawingId));
+}
+
+/** Empty canvas for a linked plant drawing (no legacy demo / other drawing content). */
+export function beginBlankTrackItDrawing(link: TrackItLinkContext): void {
+  const store = useSchematicStore.getState();
+  store.newSchematic();
+  store.setTrackItLink(link);
+  const drawingName = link.drawingName?.trim();
+  if (drawingName) {
+    store.setSchematicName(drawingName);
+  }
+  useSchematicStore.setState({ isDemo: false });
+}
+
 export function applyTrackItLink(link: TrackItLinkContext): void {
-  useSchematicStore.getState().setTrackItLink(link);
-  useSchematicStore.getState().addToast(
+  if (!link?.drawingId) return;
+  const store = useSchematicStore.getState();
+  const switched = store.trackItLink?.drawingId !== link.drawingId;
+
+  if (switched) {
+    const loaded = loadTrackItDrawingAutosave(link.drawingId);
+    if (!loaded) {
+      beginBlankTrackItDrawing(link);
+    } else {
+      store.setTrackItLink(link);
+      const drawingName = link.drawingName?.trim();
+      if (drawingName) {
+        store.setSchematicName(drawingName);
+      }
+      useSchematicStore.setState({ isDemo: false });
+    }
+  } else {
+    store.setTrackItLink(link);
+    const drawingName = link.drawingName?.trim();
+    if (drawingName) {
+      store.setSchematicName(drawingName);
+    }
+  }
+
+  store.addToast(
     `Linked to trackIT DWG ${link.dwgNumber} — Ctrl+S saves to the drawing (not just a local file)`,
     "info",
     6000,
