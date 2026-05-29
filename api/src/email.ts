@@ -1,20 +1,11 @@
 import PostalMime from "postal-mime";
 
-interface EmailMessage {
-  readonly from: string;
-  readonly to: string;
-  readonly headers: Headers;
-  readonly raw: ReadableStream;
-  readonly rawSize: number;
-  forward(rcptTo: string, headers?: Headers): Promise<void>;
-}
-
 interface EmailEnv {
   easyschematic_db: D1Database;
   SUPPORT_FORWARD_EMAIL: string;
 }
 
-export async function handleEmail(message: EmailMessage, env: EmailEnv) {
+export async function handleEmail(message: ForwardableEmailMessage, env: EmailEnv) {
   const rawEmail = new Response(message.raw);
   const arrayBuffer = await rawEmail.arrayBuffer();
 
