@@ -4,6 +4,7 @@ import { ReactFlowProvider } from "@xyflow/react";
 import "./index.css";
 import ErrorBoundary from "./components/ErrorBoundary.tsx";
 import BootError from "./components/BootError.tsx";
+import { refreshDevBuildHash } from "./buildVersion";
 import { startTrackItBridge } from "./trackitBridge";
 
 const App = lazy(() =>
@@ -15,6 +16,10 @@ const App = lazy(() =>
 );
 
 startTrackItBridge();
+
+if (import.meta.env.DEV) {
+  void refreshDevBuildHash();
+}
 
 function Root() {
   return (
