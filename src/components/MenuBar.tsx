@@ -35,7 +35,7 @@ import { useSidebarStore } from "../sidebarStore";
 import { useTheme } from "../hooks/useTheme";
 import { isTrackItDrawingLinked, saveToTrackItParent } from "../trackitIntegration";
 import TrackItModeBadge from "./TrackItModeBadge";
-import { getAppVersionLabel } from "../buildVersion";
+import { useAppBuildInfo } from "../buildVersion";
 
 // ─── Menu data types ─────────────────────────────────────────────
 
@@ -56,6 +56,8 @@ interface MenuSeparatorDef {
 interface MenuCaptionDef {
   type: "caption";
   label: string;
+  /** Version footer — normal case, not section heading style */
+  footer?: boolean;
 }
 
 type MenuEntry = MenuItemDef | MenuSeparatorDef | MenuCaptionDef;
@@ -66,10 +68,14 @@ function MenuSeparator() {
   return <div className="h-px bg-[var(--color-border)] my-1" />;
 }
 
-function MenuCaption({ label }: { label: string }) {
+function MenuCaption({ label, footer }: { label: string; footer?: boolean }) {
   return (
     <div
-      className="px-2 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] select-none pointer-events-none"
+      className={
+        footer
+          ? "px-3 py-0.5 text-[10px] text-[var(--color-text-muted)] select-none pointer-events-none"
+          : "px-2 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] select-none pointer-events-none"
+      }
       role="presentation"
     >
       {label}
@@ -117,7 +123,9 @@ function MenuDropdown({ items, onClose }: { items: MenuEntry[]; onClose: () => v
     <div className="absolute top-full left-0 mt-0.5 min-w-[220px] bg-white border border-[var(--color-border)] rounded-lg shadow-lg p-1 z-50">
       {items.map((entry, i) => {
         if (entry.type === "separator") return <MenuSeparator key={i} />;
-        if (entry.type === "caption") return <MenuCaption key={i} label={entry.label} />;
+        if (entry.type === "caption") {
+          return <MenuCaption key={i} label={entry.label} footer={entry.footer} />;
+        }
         return (
           <MenuItem
             key={i}
@@ -193,6 +201,9 @@ export default function MenuBar() {
   const cloudSavedAt = useSchematicStore((s) => s.cloudSavedAt);
   const fileHandle = useSchematicStore((s) => s.fileHandle);
   const isOnline = useSchematicStore((s) => s.isOnline);
+  const helpMenuActive = openMenu === "Help" || showAboutDialog;
+  const { version: appVersion, commit: appCommit } = useAppBuildInfo(helpMenuActive);
+
   const quickToolbarVisible = useSidebarStore((s) => s.quickToolbarVisible);
   const setQuickToolbarVisible = useSidebarStore((s) => s.setQuickToolbarVisible);
   const panelsVisible = useSidebarStore((s) => s.panelsVisible);
@@ -798,7 +809,12 @@ export default function MenuBar() {
         onClick: () => setShowAboutDialog(true),
       },
       { type: "separator" },
-      { type: "caption", label: getAppVersionLabel() },
+      { type: "caption", label: `Version ${appVersion}`, footer: true },
+      {
+        type: "caption",
+        label: appCommit ? `Commit ${appCommit}` : "Commit —",
+        footer: true,
+      },
     ],
   };
 
@@ -829,7 +845,9 @@ export default function MenuBar() {
           <div className="pb-2 px-2">
             {items.map((entry, i) => {
               if (entry.type === "separator") return <div key={i} className="h-px bg-[var(--color-border)] my-1 mx-2" />;
-              if (entry.type === "caption") return <MenuCaption key={i} label={entry.label} />;
+              if (entry.type === "caption") {
+          return <MenuCaption key={i} label={entry.label} footer={entry.footer} />;
+        }
               return (
                 <button
                   key={i}

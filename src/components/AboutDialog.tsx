@@ -14,7 +14,7 @@ import {
   KGO_ES_UPSTREAM_NAME,
   KGO_ES_UPSTREAM_REPO_URL,
 } from "../branding";
-import { getAppVersionLabel } from "../buildVersion";
+import { getAppVersionLabel, useAppBuildInfo } from "../buildVersion";
 import { DEVICE_TEMPLATES } from "../deviceLibraryRuntime";
 
 const PRIMARY_LINKS = [
@@ -33,6 +33,7 @@ const UPSTREAM_LINKS = [
 export default function AboutDialog({ onClose }: { onClose: () => void }) {
   const [copied, setCopied] = useState(false);
 
+  const { version, commit } = useAppBuildInfo(true);
   const versionLabel = getAppVersionLabel();
 
   const copyDebugInfo = async () => {
@@ -74,8 +75,9 @@ export default function AboutDialog({ onClose }: { onClose: () => void }) {
             <div className="text-base font-semibold text-[var(--color-text-heading)]">
               {KGO_ES_NAME}
             </div>
-            <div className="text-xs text-[var(--color-text-muted)] mt-0.5">
-              {versionLabel}
+            <div className="text-xs text-[var(--color-text-muted)] mt-0.5 space-y-0.5">
+              <div>Version {version}</div>
+              <div>{commit ? `Commit ${commit}` : "Commit —"}</div>
             </div>
           </div>
 

@@ -66,4 +66,16 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_HASH__: JSON.stringify(gitHash),
   },
+  server: {
+    configureServer(server) {
+      server.middlewares.use('/__kgoes-build-info.json', (_req, res) => {
+        let hash = gitHash
+        try {
+          hash = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
+        } catch { /* ignore */ }
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify({ version: pkg.version, hash }))
+      })
+    },
+  },
 })
