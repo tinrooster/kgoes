@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import {
   ReactFlow,
   Background,
-  Controls,
   MiniMap,
   BackgroundVariant,
   ConnectionLineType,
@@ -638,6 +637,7 @@ function SchematicCanvas() {
   const autoRoute = useSchematicStore((s) => s.autoRoute);
   const edgeHitboxSize = useSchematicStore((s) => s.edgeHitboxSize);
   const panMode = useSchematicStore((s) => s.panMode);
+  const canvasInteractive = useSchematicStore((s) => s.canvasInteractive);
   const routingParamVersion = useSchematicStore((s) => s.routingParamVersion);
 
   // When a device's port list changes (add/remove/reorder), React Flow won't
@@ -808,7 +808,8 @@ function SchematicCanvas() {
     // eslint-disable-next-line react-hooks/immutability -- intentional mutable ref flag
     isClickConnectMode.current = false;
     setConnectPreview(null);
-  }, []);
+    rfStore.setState({ connectionClickStartHandle: null });
+  }, [rfStore]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -900,6 +901,7 @@ function SchematicCanvas() {
   const onDrop = useCallback(
     (event: DragEvent) => {
       event.preventDefault();
+      if (!useSchematicStore.getState().canvasInteractive) return;
 
       // Handle note drops
       const noteData = event.dataTransfer.getData("application/easyschematic-note");
@@ -983,6 +985,7 @@ function SchematicCanvas() {
   // Quick-add from toolbar search: drop the selected device at viewport center.
   useEffect(() => {
     const onQuickAdd = (event: Event) => {
+      if (!useSchematicStore.getState().canvasInteractive) return;
       const detail = (event as CustomEvent<{ template?: DeviceTemplate }>).detail;
       const template = detail?.template;
       if (!template) return;
@@ -1033,6 +1036,11 @@ function SchematicCanvas() {
   // Shared helper: start preview line tracking from a handle
   const startPreviewTracking = useCallback(
     (event: MouseEvent | TouchEvent, nodeId: string, handleId: string | null, handleType: string) => {
+      // onClickConnectStart and onConnectStart both fire on pointer-down; tear down any
+      // previous tracker so orphaned mousemove handlers cannot resurrect the preview line.
+      clickConnectCleanupRef.current?.();
+      clickConnectCleanupRef.current = null;
+
       const fromSource = handleType === "source";
 
       // Get exact handle position from React Flow internals (flow space)
@@ -1187,6 +1195,9 @@ function SchematicCanvas() {
   const onConnectStart = useCallback(
     (event: MouseEvent | TouchEvent, params: { nodeId: string | null; handleId: string | null; handleType: "source" | "target" | null }) => {
       if (!params.nodeId || !params.handleType) return;
+      // Drag overrides click-to-connect (both handlers fire on the same pointer-down).
+      // eslint-disable-next-line react-hooks/immutability -- intentional mutable ref flag
+      isClickConnectMode.current = false;
       startPreviewTracking(event, params.nodeId, params.handleId, params.handleType);
     },
     [startPreviewTracking],
@@ -1228,9 +1239,8 @@ function SchematicCanvas() {
   // Clicking empty space cancels click-to-connect; double-click opens quick-add
   const onPaneClick = useCallback(
     (event: React.MouseEvent) => {
-      if (isClickConnectMode.current) {
+      if (isClickConnectMode.current || clickConnectFromRef.current) {
         clearClickConnect();
-        rfStore.setState({ connectionClickStartHandle: null });
         return;
       }
 
@@ -1242,6 +1252,10 @@ function SchematicCanvas() {
         Math.abs(event.clientX - last.x) < 10 &&
         Math.abs(event.clientY - last.y) < 10
       ) {
+        if (!useSchematicStore.getState().canvasInteractive) {
+          lastPaneClickRef.current = { time: 0, x: 0, y: 0 };
+          return;
+        }
         const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
         setQuickAddPos(pos);
         lastPaneClickRef.current = { time: 0, x: 0, y: 0 };
@@ -1249,7 +1263,7 @@ function SchematicCanvas() {
       }
       lastPaneClickRef.current = { time: now, x: event.clientX, y: event.clientY };
     },
-    [clearClickConnect, rfStore, screenToFlowPosition],
+    [clearClickConnect, screenToFlowPosition],
   );
 
   const onNodeDragStart = useCallback(() => {
@@ -1568,7 +1582,6 @@ function SchematicCanvas() {
         }
 
         clearClickConnect();
-        rfStore.setState({ connectionClickStartHandle: null });
       }}
       onNodeDoubleClick={(event, node) => {
         if (node.type !== "room") return;
@@ -1604,9 +1617,18 @@ function SchematicCanvas() {
       edgeTypes={edgeTypes}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      selectionOnDrag={isMobile ? false : (panMode === "pan-first" ? shiftHeld : !spaceHeld)}
+      selectionOnDrag={
+        canvasInteractive
+          ? (isMobile ? false : (panMode === "pan-first" ? shiftHeld : !spaceHeld))
+          : false
+      }
       selectionMode={selectionMode}
       panOnDrag={isMobile ? [0] : (panMode === "pan-first" ? (shiftHeld ? [1] : [0, 1]) : (spaceHeld ? [0, 1] : [1]))}
+      nodesDraggable={canvasInteractive}
+      nodesConnectable={canvasInteractive}
+      elementsSelectable={canvasInteractive}
+      connectOnClick={canvasInteractive}
+      edgesReconnectable={canvasInteractive}
       fitView
       minZoom={minZoom}
       elevateNodesOnSelect={false}
@@ -1619,8 +1641,6 @@ function SchematicCanvas() {
       zoomOnScroll={false}
       zoomOnDoubleClick={false}
       connectionMode={ConnectionMode.Loose}
-      connectOnClick
-      edgesReconnectable
       reconnectRadius={12}
       connectionRadius={30}
       defaultEdgeOptions={{ type: "smoothstep", interactionWidth: edgeHitboxSize }}
@@ -1692,15 +1712,18 @@ function SchematicCanvas() {
       )}
       {!printView && <CanvasOriginOverlay />}
       <Background variant={BackgroundVariant.Dots} gap={GRID_SIZE} size={1} color={isDark ? "#374151" : "#d4d4d4"} />
-      <Controls position="bottom-right" />
       <AutoRouteChip />
       <AutoRouteConfirmDialog />
       <MiniMap
         position="bottom-left"
+        className="view-nav-minimap"
         pannable
         zoomable
-        style={{ bottom: 44, left: 12 }}
-        nodeColor={(node) => node.type === "room" ? (isDark ? "#334155" : "#e5e7eb") : "#3b82f6"}
+        style={{ bottom: "var(--view-nav-bar-offset)", left: 8 }}
+        bgColor={isDark ? "rgba(15, 23, 42, 0.22)" : "rgba(255, 255, 255, 0.18)"}
+        maskColor={isDark ? "rgba(15, 23, 42, 0.38)" : "rgba(240, 240, 240, 0.28)"}
+        nodeStrokeWidth={1}
+        nodeColor={(node) => node.type === "room" ? (isDark ? "#475569" : "#cbd5e1") : "#3b82f6"}
       />
       <SchematicViewNav />
       <RoutingDebugOverlay />
