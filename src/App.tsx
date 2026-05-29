@@ -1721,7 +1721,9 @@ function SchematicCanvas() {
         zoomable
         style={{ bottom: "var(--view-nav-bar-offset)" }}
         bgColor={isDark ? "rgba(15, 23, 42, 0.22)" : "rgba(255, 255, 255, 0.18)"}
-        maskColor={isDark ? "rgba(15, 23, 42, 0.38)" : "rgba(240, 240, 240, 0.28)"}
+        maskColor={isDark ? "rgba(15, 23, 42, 0.38)" : "rgba(148, 163, 184, 0.48)"}
+        maskStrokeColor={isDark ? "rgba(96, 165, 250, 0.78)" : "rgba(37, 99, 235, 0.9)"}
+        maskStrokeWidth={1.75}
         nodeStrokeWidth={1}
         nodeColor={(node) => node.type === "room" ? (isDark ? "#475569" : "#cbd5e1") : "#3b82f6"}
       />
