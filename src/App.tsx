@@ -1719,7 +1719,7 @@ function SchematicCanvas() {
         className="view-nav-minimap"
         pannable
         zoomable
-        style={{ bottom: "var(--view-nav-bar-offset)", left: 8 }}
+        style={{ bottom: "var(--view-nav-bar-offset)" }}
         bgColor={isDark ? "rgba(15, 23, 42, 0.22)" : "rgba(255, 255, 255, 0.18)"}
         maskColor={isDark ? "rgba(15, 23, 42, 0.38)" : "rgba(240, 240, 240, 0.28)"}
         nodeStrokeWidth={1}

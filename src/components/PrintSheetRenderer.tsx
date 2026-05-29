@@ -9,11 +9,10 @@ import { computeDragSnap, computeResizeSnap, type SheetGuide, type Rect } from "
 import RackFaceSVG from "./RackFaceSVG";
 import DrawingViewportPreview from "./DrawingViewportPreview";
 import ViewNavBar from "./ViewNavBar";
+import { stepViewZoom } from "../viewZoomUtils";
 import {
   boundsFromSize,
   computeFitViewport,
-  unionBounds,
-  type ContentBounds,
 } from "../viewNavUtils";
 import {
   drawingRegionForViewport,
@@ -250,7 +249,7 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
   const zoomInView = useCallback(() => {
     const el = containerRef.current;
     const { zoom: z, pan: p } = vpRef.current;
-    const newZ = Math.min(4, z * 1.25);
+    const newZ = stepViewZoom(z, "in");
     if (!el) {
       setViewport(newZ, p);
       return;
@@ -264,7 +263,7 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
   const zoomOutView = useCallback(() => {
     const el = containerRef.current;
     const { zoom: z, pan: p } = vpRef.current;
-    const newZ = Math.max(0.1, z / 1.25);
+    const newZ = stepViewZoom(z, "out");
     if (!el) {
       setViewport(newZ, p);
       return;
@@ -375,31 +374,6 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
     },
     [pageWPx, pageHPx, pageWIn, pageHIn],
   );
-
-  const fitSelectionView = useCallback(() => {
-    const el = containerRef.current;
-    const ids = selectedVpIdsRef.current;
-    if (!el || ids.length === 0) return;
-    let bounds: ContentBounds | null = null;
-    for (const id of ids) {
-      const vp = page.viewports.find((v) => v.id === id);
-      if (!vp) continue;
-      const b = boundsFromSize(
-        mmToPagePx(vp.positionMm.x),
-        mmToPagePx(vp.positionMm.y),
-        mmToPagePx(vp.sizeMm.w),
-        mmToPagePx(vp.sizeMm.h),
-      );
-      bounds = bounds ? unionBounds(bounds, b) : b;
-    }
-    if (!bounds) return;
-    const { zoom: z, pan } = computeFitViewport(el.clientWidth, el.clientHeight, bounds, {
-      maxZoom: 2.5,
-      minZoom: 0.1,
-      padding: 40,
-    });
-    setViewport(z, pan);
-  }, [page.viewports, setViewport]);
 
   type DragState = {
     startClientX: number;
@@ -1096,13 +1070,10 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
       </div>
 
       <ViewNavBar
-        className="bottom-4 left-4"
         zoom={zoom}
         onZoomIn={zoomInView}
         onZoomOut={zoomOutView}
         onFitAll={fitView}
-        onFitSelection={fitSelectionView}
-        selectionDisabled={selectedVpIds.length === 0}
       />
     </div>
   );

@@ -3,6 +3,7 @@ import { create } from "zustand";
 export const QUICK_TOOLBAR_PREFS_KEY = "kgo-es-quick-toolbar";
 
 export type QuickToolbarActionId =
+  | "lockCanvas"
   | "hideUnconnected"
   | "hideAdapters"
   | "hideCableIds"
@@ -16,6 +17,11 @@ export const QUICK_TOOLBAR_ACTIONS: {
   label: string;
   title?: string;
 }[] = [
+  {
+    id: "lockCanvas",
+    label: "Lock canvas",
+    title: "Disable selection and editing — pan and zoom still work",
+  },
   { id: "hideUnconnected", label: "Hide unconnected", title: "Hide ports with no cable attached" },
   { id: "hideAdapters", label: "Hide adapters" },
   { id: "hideCableIds", label: "Hide cable IDs", title: "trackIT / assigned cable numbers on connections" },
@@ -26,12 +32,14 @@ export const QUICK_TOOLBAR_ACTIONS: {
 ];
 
 export const DEFAULT_QUICK_TOOLBAR_ENABLED: QuickToolbarActionId[] = [
+  "lockCanvas",
   "hideUnconnected",
   "hideCustomLabels",
   "hideCableIds",
 ];
 
 export const DEFAULT_QUICK_TOOLBAR_ORDER: QuickToolbarActionId[] = [
+  "lockCanvas",
   "hideUnconnected",
   "hideCustomLabels",
   "hideCableIds",
@@ -66,9 +74,17 @@ function loadPrefs(): Pick<QuickToolbarPrefs, "enabled" | "order"> {
     const order = (parsed.order ?? DEFAULT_QUICK_TOOLBAR_ORDER).filter((id): id is QuickToolbarActionId =>
       valid.has(id as QuickToolbarActionId),
     );
+    let enabledOut = enabled.length ? enabled : [...DEFAULT_QUICK_TOOLBAR_ENABLED];
+    let orderOut = order.length ? order : [...DEFAULT_QUICK_TOOLBAR_ORDER];
+    if (!orderOut.includes("lockCanvas")) {
+      orderOut = ["lockCanvas", ...orderOut];
+    }
+    if (raw && !enabledOut.includes("lockCanvas")) {
+      enabledOut = ["lockCanvas", ...enabledOut];
+    }
     return {
-      enabled: enabled.length ? enabled : [...DEFAULT_QUICK_TOOLBAR_ENABLED],
-      order: order.length ? order : [...DEFAULT_QUICK_TOOLBAR_ORDER],
+      enabled: enabledOut,
+      order: orderOut,
     };
   } catch {
     return {

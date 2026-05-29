@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useSchematicStore } from "../store";
-import { computeFitViewport, rackPageContentBounds, type ContentBounds } from "../viewNavUtils";
+import { computeFitViewport, rackPageContentBounds } from "../viewNavUtils";
+import { stepViewZoom } from "../viewZoomUtils";
 import ViewNavBar from "./ViewNavBar";
 import type { RackData, RackDevicePlacement, RackAccessory, RackDepthConflict, DeviceData, RackElevationPage, RackCrossLink } from "../types";
 import { getConnectedPortIds, isShelfThrowdownInSlot, resolveHalfRackSide } from "../rackMount";
@@ -1610,28 +1611,10 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
     setViewport(z, pan);
   }, [page.racks, maxRackHeightU, setViewport]);
 
-  const fitSelectionView = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    let bounds: ContentBounds | null = null;
-    if (selectedPlacementId) {
-      const pl = page.placements.find((p) => p.id === selectedPlacementId);
-      const rack = pl ? page.racks.find((r) => r.id === pl.rackId) : undefined;
-      if (rack) bounds = rackPageContentBounds([rack], maxRackHeightU);
-    }
-    if (!bounds) return;
-    const { zoom: z, pan } = computeFitViewport(el.clientWidth, el.clientHeight, bounds, {
-      maxZoom: 2.5,
-      minZoom: 0.25,
-      padding: 32,
-    });
-    setViewport(z, pan);
-  }, [page.placements, page.racks, maxRackHeightU, selectedPlacementId, setViewport]);
-
   const zoomInView = useCallback(() => {
     const el = containerRef.current;
     const { zoom: z, pan: p } = vpRef.current;
-    const newZ = Math.min(4, z * 1.25);
+    const newZ = stepViewZoom(z, "in");
     if (!el) {
       setViewport(newZ, p);
       return;
@@ -1645,7 +1628,7 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
   const zoomOutView = useCallback(() => {
     const el = containerRef.current;
     const { zoom: z, pan: p } = vpRef.current;
-    const newZ = Math.max(0.25, z / 1.25);
+    const newZ = stepViewZoom(z, "out");
     if (!el) {
       setViewport(newZ, p);
       return;
@@ -2652,8 +2635,6 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
         onZoomIn={zoomInView}
         onZoomOut={zoomOutView}
         onFitAll={fitAllView}
-        onFitSelection={fitSelectionView}
-        selectionDisabled={!selectedPlacementId}
       />
 
       {/* Shelf-delete confirm dialog (occupants present) */}

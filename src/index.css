@@ -59,26 +59,44 @@ html, body, #root {
   background: var(--color-bg) !important;
 }
 
+/* View nav cluster — shared left edge for minimap + zoom toolbar */
+:root {
+  --view-nav-cluster-left: 8px;
+  --view-nav-minimap-width: 130px;
+  --view-nav-minimap-height: 88px;
+  --view-nav-bar-offset: 26px;
+}
+
+.view-nav-bar {
+  left: var(--view-nav-cluster-left);
+  bottom: 4px;
+  width: var(--view-nav-minimap-width);
+  box-sizing: border-box;
+  justify-content: space-evenly;
+}
+
+.react-flow__panel.view-nav-minimap {
+  left: var(--view-nav-cluster-left) !important;
+  margin: 0 !important;
+}
+
 .react-flow__minimap {
-  background: var(--color-surface) !important;
-  border: 1px solid var(--color-border) !important;
-  border-radius: 6px !important;
+  background: color-mix(in srgb, var(--color-surface) 42%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent) !important;
+  border-radius: 4px !important;
+  opacity: 0.78;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05) !important;
+  width: var(--view-nav-minimap-width) !important;
+  margin: 0 !important;
 }
 
-.react-flow__controls {
-  border: 1px solid var(--color-border) !important;
-  border-radius: 6px !important;
-  overflow: hidden;
+.react-flow__minimap svg {
+  width: var(--view-nav-minimap-width) !important;
+  height: var(--view-nav-minimap-height) !important;
 }
 
-.react-flow__controls button {
-  background: var(--color-surface) !important;
-  color: var(--color-text) !important;
-  border-color: var(--color-border) !important;
-}
-
-.react-flow__controls button:hover {
-  background: var(--color-surface-hover) !important;
+.dark .react-flow__minimap {
+  background: color-mix(in srgb, var(--color-surface) 38%, transparent) !important;
 }
 
 /* Restore list styles inside note nodes (Tailwind preflight strips them) */

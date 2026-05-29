@@ -35,6 +35,8 @@ export default function QuickSettingsToolbar() {
   const showInstallationInfo = useSchematicStore((s) => s.showInstallationInfo);
   const setShowInstallationInfo = useSchematicStore((s) => s.setShowInstallationInfo);
   const expandRightPanel = useSidebarStore((s) => s.expandRightPanel);
+  const canvasInteractive = useSchematicStore((s) => s.canvasInteractive);
+  const toggleCanvasInteractive = useSchematicStore((s) => s.toggleCanvasInteractive);
 
   const [deviceQuery, setDeviceQuery] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -83,6 +85,8 @@ export default function QuickSettingsToolbar() {
 
   const isActive = (id: QuickToolbarActionId): boolean => {
     switch (id) {
+      case "lockCanvas":
+        return !canvasInteractive;
       case "hideUnconnected":
         return hideUnconnectedPorts;
       case "hideAdapters":
@@ -104,6 +108,9 @@ export default function QuickSettingsToolbar() {
 
   const toggle = (id: QuickToolbarActionId): void => {
     switch (id) {
+      case "lockCanvas":
+        toggleCanvasInteractive();
+        break;
       case "hideUnconnected":
         setHideUnconnectedPorts(!hideUnconnectedPorts);
         break;

@@ -648,6 +648,11 @@ interface SchematicState {
   panMode: PanMode;
   setPanMode: (mode: PanMode) => void;
 
+  /** When false, nodes/edges cannot be selected, moved, or connected (viewport pan/zoom still works). */
+  canvasInteractive: boolean;
+  setCanvasInteractive: (interactive: boolean) => void;
+  toggleCanvasInteractive: () => void;
+
   // ISO 4217 currency code for cost display in reports (#158).
   currency: string;
   setCurrency: (code: string) => void;
@@ -1365,6 +1370,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   autoRouteConfirmPending: false,
   edgeHitboxSize: 10,
   panMode: DEFAULT_PAN_MODE,
+  canvasInteractive: true,
   debugEdges: false,
   debugShowLabels: true,
   debugShowObstacles: true,
@@ -3885,6 +3891,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     set({ panMode: mode });
     get().saveToLocalStorage();
   },
+
+  setCanvasInteractive: (interactive) => set({ canvasInteractive: interactive }),
+
+  toggleCanvasInteractive: () => set({ canvasInteractive: !get().canvasInteractive }),
 
   setCurrency: (code) => {
     set({ currency: code });
