@@ -158,7 +158,7 @@ function refForPort(p: Port): NewPortRef {
 }
 
 function hydrateBasePorts(template: DeviceTemplate): Port[] {
-  return template.ports.map((p) => ({
+  return (template.ports ?? []).map((p) => ({
     ...p,
     id: basePortId(p.id),
     templatePortId: p.id,

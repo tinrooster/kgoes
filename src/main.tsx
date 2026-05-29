@@ -3,9 +3,16 @@ import { createRoot } from "react-dom/client";
 import { ReactFlowProvider } from "@xyflow/react";
 import "./index.css";
 import ErrorBoundary from "./components/ErrorBoundary.tsx";
+import BootError from "./components/BootError.tsx";
 import { startTrackItBridge } from "./trackitBridge";
 
-const App = lazy(() => import("./App.tsx"));
+const App = lazy(() =>
+  import("./App.tsx").catch((err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[KGO-ES] App chunk failed to load:", err);
+    return { default: () => <BootError message={message} /> };
+  }),
+);
 
 startTrackItBridge();
 

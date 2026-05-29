@@ -124,7 +124,12 @@ function OpButton({
   );
 }
 
-export default function AlignmentMenu() {
+export default function AlignmentMenu({
+  variant = "menubar",
+}: {
+  /** menubar = title bar; toolbar = Quick settings strip */
+  variant?: "menubar" | "toolbar";
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const alignSelectedNodes = useSchematicStore((s) => s.alignSelectedNodes);
@@ -150,19 +155,31 @@ export default function AlignmentMenu() {
 
   const handleClick = (op: AlignOperation) => {
     alignSelectedNodes(op);
+    setOpen(false);
   };
+
+  const triggerClass =
+    variant === "toolbar"
+      ? "px-2 py-1 text-[11px] rounded border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer whitespace-nowrap"
+      : "px-2.5 py-1 text-xs rounded bg-white text-[var(--color-text)] hover:text-[var(--color-text-heading)] hover:bg-[var(--color-surface-hover)] border border-[var(--color-border)] transition-colors cursor-pointer";
+
+  const panelPos =
+    variant === "toolbar" ? "left-0" : "right-0";
 
   return (
     <div className="relative" ref={ref}>
       <button
+        type="button"
         onClick={() => setOpen(!open)}
-        title="Align & Distribute"
-        className="px-2.5 py-1 text-xs rounded bg-white text-[var(--color-text)] hover:text-[var(--color-text-heading)] hover:bg-[var(--color-surface-hover)] border border-[var(--color-border)] transition-colors cursor-pointer"
+        title="Align & Distribute selected devices"
+        className={triggerClass}
       >
         Align
       </button>
       {open && (
-        <div className="absolute top-full right-0 mt-1 bg-white border border-[var(--color-border)] rounded-lg shadow-lg p-1.5 z-50 w-44">
+        <div
+          className={`absolute top-full ${panelPos} mt-1 bg-white border border-[var(--color-border)] rounded-lg shadow-lg p-1.5 z-50 w-44`}
+        >
           <div className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide px-2 py-1">
             Align
           </div>

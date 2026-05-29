@@ -27,7 +27,6 @@ import DeviceLibrary from "./components/DeviceLibrary";
 import DeviceEditor from "./components/DeviceEditor";
 import SignalColorPanel from "./components/SignalColorPanel";
 import TrackItNumberingPanel from "./components/TrackItNumberingPanel";
-import TrackItLinkedBanner from "./components/TrackItLinkedBanner";
 import ShowInfoPanel from "./components/ShowInfoPanel";
 import ViewOptionsPanel from "./components/ViewOptionsPanel";
 import QuickSettingsToolbar from "./components/QuickSettingsToolbar";
@@ -67,7 +66,7 @@ import DrawingCaptureHost from "./components/DrawingCaptureHost";
 import { computeSnap, enforceMinSpacing, detectOverlap, speculativeReparent, type GuideLine } from "./snapUtils";
 import type { ConnectionEdge, DeviceData, DeviceTemplate, SchematicFile, SchematicNode } from "./types";
 import { findAdaptersForSignalBridge, findAdaptersForConnectorBridge, areConnectorsCompatible } from "./connectorTypes";
-import { DEVICE_TEMPLATES } from "./deviceLibrary";
+import { DEVICE_TEMPLATES } from "./deviceLibraryRuntime";
 import { loadSharedSchematic, checkSession } from "./templateApi";
 import { refreshCloudCache } from "./cloudSync";
 import { useTheme } from "./hooks/useTheme";
@@ -1850,7 +1849,6 @@ export default function App() {
       <div data-print-hide>
         <MenuBar />
       </div>
-      <TrackItLinkedBanner />
       <BetaBanner />
       <DemoBanner />
       <PendingSubmissionBanner />

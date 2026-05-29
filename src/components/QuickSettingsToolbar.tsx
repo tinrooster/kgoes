@@ -10,6 +10,7 @@ import {
   useQuickToolbarStore,
   type QuickToolbarActionId,
 } from "../quickToolbarPrefs";
+import AlignmentMenu from "./AlignmentMenu";
 
 /**
  * User-configurable quick settings bar (hide/show toggles for common view options).
@@ -166,6 +167,8 @@ export default function QuickSettingsToolbar() {
       >
         More…
       </button>
+      <div className="w-px h-5 bg-[var(--color-border)] mx-1" />
+      <AlignmentMenu variant="toolbar" />
       <div className="w-px h-5 bg-[var(--color-border)] mx-1" />
       <div ref={deviceSearchRef} className="relative flex items-center gap-1">
         <input

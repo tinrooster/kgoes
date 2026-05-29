@@ -55,7 +55,7 @@ function isTrackItInbound(data: unknown): data is TrackItInboundMessage {
 function ackToOpener(eventId: string): void {
   try {
     if (window.opener && !window.opener.closed) {
-      window.opener.postMessage({ type: "EASYSCHEMATIC_NUMBERING_ACK", eventId }, "*");
+      window.opener.postMessage({ type: "KGO_ES_NUMBERING_ACK", eventId }, "*");
     }
   } catch {
     // cross-origin opener
@@ -65,7 +65,7 @@ function ackToOpener(eventId: string): void {
 function notifyReady(): void {
   try {
     if (window.opener && !window.opener.closed) {
-      window.opener.postMessage({ type: "EASYSCHEMATIC_READY" }, "*");
+      window.opener.postMessage({ type: "KGO_ES_READY" }, "*");
     }
   } catch {
     // ignore

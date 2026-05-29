@@ -15,7 +15,7 @@ import {
   KGO_ES_UPSTREAM_REPO_URL,
 } from "../branding";
 import { getAppVersionLabel } from "../buildVersion";
-import { DEVICE_TEMPLATES } from "../deviceLibrary";
+import { DEVICE_TEMPLATES } from "../deviceLibraryRuntime";
 
 const PRIMARY_LINKS = [
   { label: "KGO-ES on GitHub", href: KGO_ES_REPO_URL },

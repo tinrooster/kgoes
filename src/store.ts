@@ -49,11 +49,12 @@ import { areConnectorsCompatible, needsAdapter, findAdaptersForConnectorBridge, 
 import { inferRackHeightU, inferRackForm, shelfFootprintMm, shelfInnerWidthMm } from "./rackUtils";
 import {
   rackDeviceDefinitionKey,
+  applyGenericThrowdownDimensionsIfMissing,
   resolveMountingClass,
   resolveRackHeightU,
   type RackMetadataPatch,
 } from "./rackMount";
-import { DEVICE_TEMPLATES } from "./deviceLibrary";
+import { DEVICE_TEMPLATES } from "./deviceLibraryRuntime";
 import { createDefaultLayout } from "./titleBlockLayout";
 import { sanitizeNoteHtml } from "./sanitizeHtml";
 import { getTemplateById } from "./templateApi";
@@ -165,6 +166,48 @@ function mergeRackDefaultsIntoNodes(
     const key = rackDeviceDefinitionKey(data);
     const patch = key ? defaults[key] : undefined;
     if (!patch) return n;
+    return { ...n, data: { ...data, ...patch } } as DeviceNode;
+  });
+}
+
+/** Fill missing rack/dimension fields from library templates after import or autosave load. */
+function applyTemplateRackDefaultsToNodes(
+  nodes: SchematicNode[],
+  extraTemplates: DeviceTemplate[] = [],
+): SchematicNode[] {
+  return nodes.map((n) => {
+    if (n.type !== "device") return n;
+    const data = n.data as DeviceData;
+    if (data.rackMetadataSource === "explicit" || !data.templateId) return n;
+
+    const tpl = getTemplateById(data.templateId, extraTemplates);
+    if (!tpl) return n;
+
+    const patch: Partial<DeviceData> = {};
+    if (data.mountingClass == null && tpl.mountingClass) patch.mountingClass = tpl.mountingClass;
+    if (data.rackForm == null && tpl.rackForm) patch.rackForm = tpl.rackForm;
+    if (data.rackHeightU == null && tpl.rackHeightU != null) {
+      patch.rackHeightU = tpl.rackHeightU;
+      patch.rackMetadataSource = tpl.rackMetadataSource ?? "library";
+    }
+    if (data.heightMm == null && tpl.heightMm != null) patch.heightMm = tpl.heightMm;
+    if (data.widthMm == null && tpl.widthMm != null) patch.widthMm = tpl.widthMm;
+    if (data.depthMm == null && tpl.depthMm != null) patch.depthMm = tpl.depthMm;
+    if (data.weightKg == null && tpl.weightKg != null) patch.weightKg = tpl.weightKg;
+
+    if (Object.keys(patch).length === 0) return n;
+    return { ...n, data: { ...data, ...patch } } as DeviceNode;
+  });
+}
+
+/** After template merge, apply typical throwdown mm for shelf-class devices still missing footprint. */
+function applyGenericThrowdownDefaultsToNodes(nodes: SchematicNode[]): SchematicNode[] {
+  return nodes.map((n) => {
+    if (n.type !== "device") return n;
+    const data = n.data as DeviceData;
+    if (data.rackMetadataSource === "explicit") return n;
+    const patch = applyGenericThrowdownDimensionsIfMissing(data);
+    if (Object.keys(patch).length === 0) return n;
     return { ...n, data: { ...data, ...patch } } as DeviceNode;
   });
 }
@@ -825,6 +868,67 @@ function nextPlacementId(): string {
 let accessoryIdCounter = 0;
 function nextAccessoryId(): string {
   return `ra-${++accessoryIdCounter}`;
+}
+
+/** Shelf/throwdown gear in a U slot should mount on a shelf accessory, not as a full-width panel. */
+function reconcileShelfPlacementsForPages(
+  pages: SchematicPage[],
+  deviceDataMap: Map<string, DeviceData>,
+): SchematicPage[] {
+  return pages.map((page) => {
+    if (page.type !== "rack-elevation") return page;
+
+    let accessories = [...page.accessories];
+    let placements = [...page.placements];
+    let changed = false;
+
+    for (const p of page.placements) {
+      if (p.mountedOnShelfId) continue;
+      const device = deviceDataMap.get(p.deviceNodeId);
+      if (!device || resolveMountingClass(device) !== "shelf") continue;
+
+      const rack = page.racks.find((r) => r.id === p.rackId);
+      if (!rack) continue;
+
+      const innerWMm = shelfInnerWidthMm();
+      const deviceW = device.widthMm ?? innerWMm;
+      const centeredX = Math.max(0, (innerWMm - deviceW) / 2);
+
+      let shelf = accessories.find(
+        (a) =>
+          a.rackId === p.rackId &&
+          a.face === p.face &&
+          a.type === "shelf" &&
+          a.uPosition === p.uPosition,
+      );
+      if (!shelf) {
+        const deviceU = resolveRackHeightU(device).heightU;
+        shelf = {
+          id: nextAccessoryId(),
+          rackId: p.rackId,
+          type: "shelf",
+          uPosition: p.uPosition,
+          heightU: Math.max(1, Math.min(rack.heightU, deviceU)),
+          face: p.face,
+        };
+        accessories = [...accessories, shelf];
+        changed = true;
+      }
+
+      placements = placements.map((pl) => {
+        if (pl.id !== p.id) return pl;
+        const { halfRackSide: _h, ...rest } = pl;
+        return {
+          ...rest,
+          mountedOnShelfId: shelf!.id,
+          shelfOffsetMm: pl.shelfOffsetMm ?? { x: centeredX, y: 0 },
+        };
+      });
+      changed = true;
+    }
+
+    return changed ? { ...page, accessories, placements } : page;
+  });
 }
 
 let printSheetIdCounter = 0;
@@ -1538,9 +1642,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       hiddenPorts = preset.hiddenPorts?.map((id) => idMap.get(id) ?? id).filter((id) => cloned.some((p) => p.id === id));
       color = preset.color ?? template.color;
     } else {
-      ports = clonePorts(template.ports);
+      const templatePorts = template.ports ?? [];
+      ports = clonePorts(templatePorts);
       // Stamp templatePortId so sync can reconcile even if port IDs drift.
-      ports.forEach((p, i) => { p.templatePortId = template.ports[i].id; });
+      ports.forEach((p, i) => { p.templatePortId = templatePorts[i].id; });
     }
 
     // Initialize expansion slots from template (recursively handles sub-slots)
@@ -1594,7 +1699,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...(template.isVenueProvided ? { isVenueProvided: true } : {}),
         ...(template.deviceType === "cable-accessory" ? { isCableAccessory: true } : {}),
         ...(template.deviceType === "cable-accessory" &&
-          template.ports.some((p) => p.isMulticable && p.connectorType === "none")
+          (template.ports ?? []).some((p) => p.isMulticable && p.connectorType === "none")
           ? { integratedWithCable: true }
           : {}),
         ...(installedSlots && installedSlots.length > 0 ? { slots: installedSlots } : {}),
@@ -2263,7 +2368,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       return n;
     });
 
-    if (sourceData.templateId) {
+    if (updateDefinition && sourceData.templateId) {
       const tpl = state.customTemplates.find((t) => t.id === sourceData.templateId);
       if (tpl) {
         get().updateCustomTemplate(sourceData.templateId, { ...tpl, facePlateLayout: layoutClone });
@@ -2306,7 +2411,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       return n;
     });
 
-    if (sourceData.templateId) {
+    if (updateDefinition && sourceData.templateId) {
       const tpl = state.customTemplates.find((t) => t.id === sourceData.templateId);
       if (tpl) {
         get().updateCustomTemplate(sourceData.templateId, { ...tpl, ...patchClone });
@@ -4621,6 +4726,9 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const deviceNode = state.nodes.find((n) => n.id === deviceNodeId && n.type === "device");
     if (!deviceNode) return;
 
+    const device = deviceNode.data as DeviceData;
+    const deviceMc = resolveMountingClass(device);
+
     const deviceDataMap = new Map<string, DeviceData>();
     for (const n of state.nodes) {
       if (n.type === "device") deviceDataMap.set(n.id, n.data as DeviceData);
@@ -4629,15 +4737,53 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const updatedPages = state.pages.map((page): SchematicPage => {
       if (page.type !== "rack-elevation") return page;
 
+      let accessories = [...page.accessories];
       let placements = page.placements.map((p) => {
         if (p.deviceNodeId !== deviceNodeId) return p;
-        const mc = resolveMountingClass(deviceNode.data as DeviceData);
-        if (mc === "rack-full") {
-          const { halfRackSide: _removed, ...rest } = p;
+        if (deviceMc === "rack-full") {
+          const { halfRackSide: _removed, mountedOnShelfId: _shelf, shelfOffsetMm: _off, rotated: _rot, ...rest } = p;
           return rest as RackDevicePlacement;
         }
         return p;
       });
+
+      if (deviceMc === "shelf") {
+        const innerWMm = shelfInnerWidthMm();
+        const deviceW = device.widthMm ?? innerWMm;
+        const centeredX = Math.max(0, (innerWMm - deviceW) / 2);
+        placements = placements.map((p) => {
+          if (p.deviceNodeId !== deviceNodeId || p.mountedOnShelfId) return p;
+          const rack = page.racks.find((r) => r.id === p.rackId);
+          if (!rack) return p;
+
+          let shelf = accessories.find(
+            (a) =>
+              a.rackId === p.rackId &&
+              a.face === p.face &&
+              a.type === "shelf" &&
+              a.uPosition === p.uPosition,
+          );
+          if (!shelf) {
+            const deviceU = resolveRackHeightU(device).heightU;
+            shelf = {
+              id: nextAccessoryId(),
+              rackId: p.rackId,
+              type: "shelf",
+              uPosition: p.uPosition,
+              heightU: Math.max(1, Math.min(rack.heightU, deviceU)),
+              face: p.face,
+            };
+            accessories = [...accessories, shelf];
+          }
+
+          const { halfRackSide: _h, ...rest } = p;
+          return {
+            ...rest,
+            mountedOnShelfId: shelf.id,
+            shelfOffsetMm: p.shelfOffsetMm ?? { x: centeredX, y: 0 },
+          };
+        });
+      }
 
       const halfKeys = new Set<string>();
       for (const p of placements) {
@@ -4668,7 +4814,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         });
       }
 
-      return { ...page, placements };
+      return { ...page, accessories, placements };
     });
 
     set({ pages: updatedPages });
@@ -4787,6 +4933,13 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       );
       let nodes = mergeFacePlateLayoutsIntoNodes(data.nodes, facePlateDefinitionLayouts);
       nodes = mergeRackDefaultsIntoNodes(nodes, deviceDefinitionRackMetadata);
+      nodes = applyTemplateRackDefaultsToNodes(nodes, get().customTemplates);
+      nodes = applyGenericThrowdownDefaultsToNodes(nodes);
+      const deviceDataMap = new Map<string, DeviceData>();
+      for (const n of nodes) {
+        if (n.type === "device") deviceDataMap.set(n.id, n.data as DeviceData);
+      }
+      const pages = reconcileShelfPlacementsForPages(data.pages ?? [], deviceDataMap);
       // Always apply colors — if file has none, reset to defaults
       const colors = data.signalColors ?? {};
       applySignalColors(colors);
@@ -4848,7 +5001,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         colorKeyColumns: data.colorKeyColumns ?? 1,
         colorKeyPage: data.colorKeyPage ?? "all",
         colorKeyOverrides: data.colorKeyOverrides ?? undefined,
-        pages: data.pages ?? [],
+        pages,
         cableCosts: data.cableCosts ?? undefined,
         roomDistances: data.roomDistances ?? undefined,
         distanceSettings: data.distanceSettings ?? undefined,
@@ -4862,7 +5015,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         cloudSavedAt: parsed.cloudSavedAt ?? null,
         loadSeq: get().loadSeq + 1,
       });
-      if (data.pages?.length) syncRackCounters(data.pages);
+      if (pages.length) syncRackCounters(pages);
       hydrated = true;
       return true;
     } catch {
@@ -5108,6 +5261,17 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     );
     nodes = mergeFacePlateLayoutsIntoNodes(nodes, facePlateDefinitionLayouts);
     nodes = mergeRackDefaultsIntoNodes(nodes, deviceDefinitionRackMetadata);
+    const importTemplateExtras = [
+      ...get().customTemplates,
+      ...(data.customTemplates ?? []),
+    ];
+    nodes = applyTemplateRackDefaultsToNodes(nodes, importTemplateExtras);
+    nodes = applyGenericThrowdownDefaultsToNodes(nodes);
+    const importDeviceDataMap = new Map<string, DeviceData>();
+    for (const n of nodes) {
+      if (n.type === "device") importDeviceDataMap.set(n.id, n.data as DeviceData);
+    }
+    const importPages = reconcileShelfPlacementsForPages(data.pages ?? [], importDeviceDataMap);
     // Sanitize note HTML to prevent XSS from malicious schematic files
     for (const node of nodes) {
       if (node.type === "note" && node.data && "html" in node.data) {
@@ -5191,7 +5355,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       colorKeyColumns: data.colorKeyColumns ?? 1,
       colorKeyPage: data.colorKeyPage ?? "all",
       colorKeyOverrides: data.colorKeyOverrides ?? undefined,
-      pages: data.pages ?? [],
+      pages: importPages,
       activePage: "schematic",
       cableCosts: data.cableCosts ?? undefined,
       roomDistances: data.roomDistances ?? undefined,

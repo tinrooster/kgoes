@@ -18,7 +18,7 @@ function onDragStart(event: DragEvent, template: DeviceTemplate) {
 }
 
 function getUniqueSignalTypes(template: DeviceTemplate): string[] {
-  const types = new Set(template.ports.map((p) => p.signalType));
+  const types = new Set((template.ports ?? []).map((p) => p.signalType));
   return [...types];
 }
 
@@ -1081,7 +1081,7 @@ export default function DeviceLibrary() {
 
   const matchesSignalFilter = useCallback((t: DeviceTemplate) => {
     if (selectedSignalTypes.size === 0) return true;
-    return t.ports.some((p) => selectedSignalTypes.has(p.signalType));
+    return (t.ports ?? []).some((p) => selectedSignalTypes.has(p.signalType));
   }, [selectedSignalTypes]);
 
   // Cross-filtered dropdown options
@@ -1104,7 +1104,7 @@ export default function DeviceLibrary() {
     if (selectedCategories.size > 0) source = source.filter((t) => t.category && selectedCategories.has(t.category));
     if (selectedBrands.size > 0) source = source.filter((t) => t.manufacturer && selectedBrands.has(t.manufacturer));
     const types = new Set<string>();
-    for (const t of source) for (const p of t.ports) types.add(p.signalType);
+    for (const t of source) for (const p of t.ports ?? []) types.add(p.signalType);
     return [...types].sort((a, b) => (SIGNAL_LABELS[a as keyof typeof SIGNAL_LABELS] ?? a).localeCompare(SIGNAL_LABELS[b as keyof typeof SIGNAL_LABELS] ?? b));
   }, [libraryTemplates, selectedCategories, selectedBrands]);
 

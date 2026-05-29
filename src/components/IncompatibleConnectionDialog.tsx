@@ -3,7 +3,7 @@ import { useSchematicStore } from "../store";
 import { findAdaptersForSignalBridge, findAdaptersForConnectorBridge } from "../connectorTypes";
 import { SIGNAL_LABELS, CONNECTOR_LABELS } from "../types";
 import type { DeviceTemplate } from "../types";
-import { DEVICE_TEMPLATES } from "../deviceLibrary";
+import { DEVICE_TEMPLATES } from "../deviceLibraryRuntime";
 
 export default function IncompatibleConnectionDialog() {
   const pending = useSchematicStore((s) => s.pendingIncompatibleConnection);

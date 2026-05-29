@@ -6,19 +6,27 @@ const API_URL =
 
 let cached: DeviceTemplate[] | null = null;
 
+/** Frames/chassis may have no on-device ports; JSON must still expose ports: []. */
+function normalizeBundledTemplate(t: DeviceTemplate): DeviceTemplate {
+  return {
+    ...t,
+    ports: Array.isArray(t.ports) ? t.ports : [],
+  };
+}
+
 export function getBundledTemplates(): DeviceTemplate[] {
-  return fallbackData as DeviceTemplate[];
+  return (fallbackData as DeviceTemplate[]).map(normalizeBundledTemplate);
 }
 
 /** Bundled templates as a floor under whatever the API returned. Used so a freshly-added
  *  card in src/devices/* shows up in slot pickers and lookups even before its row lands
  *  in D1. D1 wins on ID conflict (lets prod overrides shadow bundled defaults). */
 function effectiveTemplates(): DeviceTemplate[] {
-  const bundled = fallbackData as DeviceTemplate[];
+  const bundled = getBundledTemplates();
   if (!cached) return bundled;
   const cachedIds = new Set(cached.map((t) => t.id).filter((id): id is string => !!id));
   const bundledFloor = bundled.filter((t) => t.id && !cachedIds.has(t.id));
-  return [...cached, ...bundledFloor];
+  return [...cached.map(normalizeBundledTemplate), ...bundledFloor];
 }
 
 /** Look up a card template by ID from cached API data, bundled fallback, or caller-supplied extras (user's custom templates). */

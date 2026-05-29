@@ -12,9 +12,10 @@ export function scoreTemplate(template: DeviceTemplate, query: string): number {
   const manufacturer = template.manufacturer?.toLowerCase() ?? "";
   const modelNumber = template.modelNumber?.toLowerCase() ?? "";
   const searchTerms = template.searchTerms?.map((t) => t.toLowerCase()) ?? [];
-  const signalLabels = [...new Set(template.ports.map((p) => (SIGNAL_LABELS[p.signalType] ?? p.signalType).toLowerCase()))];
-  const signalTypes = [...new Set(template.ports.map((p) => p.signalType.toLowerCase().replace(/-/g, " ")))];
-  const portLabels = template.ports.map((p) => p.label.toLowerCase());
+  const ports = template.ports ?? [];
+  const signalLabels = [...new Set(ports.map((p) => (SIGNAL_LABELS[p.signalType] ?? p.signalType).toLowerCase()))];
+  const signalTypes = [...new Set(ports.map((p) => p.signalType.toLowerCase().replace(/-/g, " ")))];
+  const portLabels = ports.map((p) => p.label.toLowerCase());
 
   // Score each word, then combine
   let totalScore = 0;

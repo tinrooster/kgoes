@@ -28,6 +28,47 @@ export const MOUNTING_LABELS: Record<MountingClass, string> = {
   "not-rackable": "Not rackable",
 };
 
+/**
+ * Typical mini-converter / throwdown footprint when nothing better is known
+ * (≈ AJA FiDO-class: ~117 mm wide, ~22 mm tall, shallow depth, 1U shelf slot).
+ */
+export const GENERIC_THROWDOWN_DIMENSIONS = {
+  rackHeightU: 1,
+  mountingClass: "shelf" as MountingClass,
+  rackForm: "shelf-only" as const,
+  heightMm: 22,
+  widthMm: 117,
+  depthMm: 100,
+} as const;
+
+export function formatGenericThrowdownDimensions(): string {
+  const g = GENERIC_THROWDOWN_DIMENSIONS;
+  return `${g.widthMm}×${g.heightMm}×${g.depthMm} mm, ${g.rackHeightU}U shelf`;
+}
+
+/** Fill only missing shelf/throwdown fields; does not overwrite user values. */
+export function applyGenericThrowdownDimensionsIfMissing(
+  device: DeviceData,
+): Partial<DeviceData> {
+  if (resolveMountingClass(device) !== "shelf") return {};
+
+  const g = GENERIC_THROWDOWN_DIMENSIONS;
+  const patch: Partial<DeviceData> = {};
+  if (device.rackHeightU == null) patch.rackHeightU = g.rackHeightU;
+  if (device.mountingClass == null) patch.mountingClass = g.mountingClass;
+  if (device.rackForm == null) patch.rackForm = g.rackForm;
+  if (device.heightMm == null) patch.heightMm = g.heightMm;
+  if (device.widthMm == null) patch.widthMm = g.widthMm;
+  if (device.depthMm == null) patch.depthMm = g.depthMm;
+
+  if (Object.keys(patch).length === 0) return {};
+
+  if (device.rackMetadataSource !== "explicit") {
+    patch.rackMetadataSource = "estimated";
+  }
+  return patch;
+}
+
 export function mountingClassToRackForm(mc: MountingClass): RackForm | "oversize" {
   switch (mc) {
     case "rack-full":
@@ -210,6 +251,12 @@ export function getRackMountSummary(device: DeviceData): RackMountSummary {
   };
 }
 
+/** True when shelf/throwdown mounting is set but footprint mm are incomplete for rack view. */
+export function shelfThrowdownDimensionsMissing(device: DeviceData): boolean {
+  if (resolveMountingClass(device) !== "shelf") return false;
+  return device.heightMm == null || device.widthMm == null;
+}
+
 export function validateRackDimensions(device: DeviceData): string[] {
   const warnings: string[] = [];
   const { heightU } = resolveRackHeightU(device);
@@ -222,6 +269,11 @@ export function validateRackDimensions(device: DeviceData): string[] {
   const mc = resolveMountingClass(device);
   if ((mc === "rack-full" || mc === "rack-half") && device.heightMm == null && device.rackHeightU == null) {
     warnings.push(`Set rack U and height mm for accurate ${heightU}U placement.`);
+  }
+  if (shelfThrowdownDimensionsMissing(device)) {
+    warnings.push(
+      `Shelf / throwdown is missing footprint mm — Apply will use typical throwdown size (${formatGenericThrowdownDimensions()}).`,
+    );
   }
   return warnings;
 }

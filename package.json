@@ -2,7 +2,7 @@
   "name": "easyschematic",
   "private": true,
   "license": "AGPL-3.0",
-  "version": "0.40.0",
+  "version": "0.41.0",
   "type": "module",
   "description": "Browser-based AV signal flow diagram tool for designing audio/video system schematics",
   "homepage": "https://easyschematic.live",
@@ -35,7 +35,8 @@
     "preview": "vite preview",
     "postinstall": "patch-package",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "validate:devices": "tsx scripts/validate-device-library.ts"
   },
   "overrides": {
     "serialize-javascript": "^7.0.5",

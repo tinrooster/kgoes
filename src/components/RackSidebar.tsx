@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSchematicStore } from "../store";
 import type { DeviceData, RackElevationPage, RackType, RackData, RoomData } from "../types";
 import { RACK_TYPE_LABELS } from "../types";
-import { getRackMountSummary } from "../rackMount";
+import { getRackMountSummary, shelfThrowdownDimensionsMissing } from "../rackMount";
 import { aggregateRackStats, computeRackStats, formatStatsLine } from "../rackStats";
 import { getDevicesInRoom } from "../rackLink";
 import { resolveDeviceLabel } from "../displayName";
@@ -263,7 +263,8 @@ export default function RackSidebar({ page }: RackSidebarProps) {
             const resolved = resolveDeviceLabel(data, { useShortNames, wrapDeviceLabels: false });
             const summary = getRackMountSummary(data);
             const shelfHint = summary.mountingClass === "shelf";
-            const badge = `${summary.heightU}U · ${summary.mountingClass === "rack-half" ? "½" : summary.mountingClass === "shelf" ? "shelf" : "full"}${summary.source === "estimated" ? "*" : ""}`;
+            const dimsMissing = shelfThrowdownDimensionsMissing(data);
+            const badge = `${summary.heightU}U · ${summary.mountingClass === "rack-half" ? "½" : summary.mountingClass === "shelf" ? "shelf" : "full"}${summary.source === "estimated" ? "*" : ""}${dimsMissing ? " ⚠" : ""}`;
             return (
               <div
                 key={node.id}
@@ -281,7 +282,13 @@ export default function RackSidebar({ page }: RackSidebarProps) {
                     deviceData: data,
                   });
                 }}
-                title={shelfHint ? `Shelf / throwdown — auto-shelf on drop · ${data.label}` : `${data.label} — right-click for actions`}
+                title={
+                  dimsMissing
+                    ? `Shelf / throwdown — set height and width (mm) in Device Properties · ${data.label}`
+                    : shelfHint
+                      ? `Shelf / throwdown — auto-shelf on drop · ${data.label}`
+                      : `${data.label} — right-click for actions`
+                }
               >
                 <span className="truncate">{resolved.text}</span>
                 <span className={`ml-1 shrink-0 text-[10px] ${summary.source === "estimated" ? "text-amber-600" : "text-neutral-400"}`}>

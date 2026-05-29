@@ -23,7 +23,6 @@ import TitleBlockDialog from "./TitleBlockDialog";
 import AboutDialog from "./AboutDialog";
 import PreferencesDialog from "./PreferencesDialog";
 import RoomDistancesDialog from "./RoomDistancesDialog";
-import AlignmentMenu from "./AlignmentMenu";
 import UserMenuButton from "./UserMenuButton";
 import SchematicBrowser from "./SchematicBrowser";
 import LoginDialog from "./LoginDialog";
@@ -34,7 +33,8 @@ import CsvImportWizard from "./CsvImportWizard";
 import SignalColorPanel from "./SignalColorPanel";
 import { useSidebarStore } from "../sidebarStore";
 import { useTheme } from "../hooks/useTheme";
-import { isTrackItLinked, saveToTrackItParent } from "../trackitIntegration";
+import { isTrackItDrawingLinked, saveToTrackItParent } from "../trackitIntegration";
+import TrackItModeBadge from "./TrackItModeBadge";
 import { getAppVersionLabel } from "../buildVersion";
 
 // ─── Menu data types ─────────────────────────────────────────────
@@ -277,14 +277,14 @@ export default function MenuBar() {
     }
   }, []);
 
-  const trackItLinked = isTrackItLinked();
+  const trackItLinked = isTrackItDrawingLinked();
 
   // Save: reuse existing handle/cloud, or prompt for first save
   const handleSave = useCallback(async () => {
     const store = useSchematicStore.getState();
 
     // trackIT popup: push JSON to parent drawing (primary save — no local file picker)
-    if (isTrackItLinked()) {
+    if (isTrackItDrawingLinked()) {
       saveToTrackItParent();
       if (store.fileHandle) {
         try {
@@ -903,9 +903,10 @@ export default function MenuBar() {
               autoFocus
             />
           ) : (
-            <span className="flex items-center gap-1.5">
+            <span className="flex items-center gap-2 max-w-full">
+              <TrackItModeBadge />
               <span
-                className="text-sm font-semibold text-[var(--color-text-heading)] cursor-pointer hover:text-blue-600 transition-colors"
+                className="text-sm font-semibold text-[var(--color-text-heading)] cursor-pointer hover:text-blue-600 transition-colors truncate"
                 onDoubleClick={() => {
                   setNameValue(schematicName);
                   setEditingName(true);
@@ -970,8 +971,6 @@ export default function MenuBar() {
             </svg>
           </button>
           <div className="w-px h-5 bg-[var(--color-border)] mx-1" />
-          <AlignmentMenu />
-          <div className="w-px h-5 bg-[var(--color-border)] mx-1" />
           <button
             onClick={toggleTheme}
             title={isDark ? "Switch to light mode" : "Switch to dark mode"}
@@ -994,11 +993,14 @@ export default function MenuBar() {
       </div>
 
       {/* Mobile header bar */}
-      <div className="flex md:hidden h-10 bg-[var(--color-surface)] border-b border-[var(--color-border)] items-center px-3 shrink-0 select-none justify-between">
-        <img src="/favicon.svg" alt="" className="w-5 h-5" />
-        <span className="text-sm font-semibold text-[var(--color-text-heading)] truncate mx-3 flex-1 text-center">
-          {schematicName}
-        </span>
+      <div className="flex md:hidden h-10 bg-[var(--color-surface)] border-b border-[var(--color-border)] items-center px-3 shrink-0 select-none justify-between gap-2">
+        <img src="/favicon.svg" alt="" className="w-5 h-5 shrink-0" />
+        <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5">
+          <TrackItModeBadge />
+          <span className="text-sm font-semibold text-[var(--color-text-heading)] truncate">
+            {schematicName}
+          </span>
+        </div>
         <button
           onClick={() => setMobileMenuOpen(true)}
           className="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors text-[var(--color-text)]"

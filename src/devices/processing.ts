@@ -98,6 +98,10 @@ export const templates: DeviceTemplate[] = [
     widthMm: 117,
     depthMm: 102,
     weightKg: 0.4,
+    rackHeightU: 1,
+    mountingClass: "shelf",
+    rackForm: "shelf-only",
+    rackMetadataSource: "library",
     ports: [
       port("SDI In 1", "sdi", "input"),
       port("SDI In 2", "sdi", "input"),
@@ -123,6 +127,10 @@ export const templates: DeviceTemplate[] = [
     widthMm: 117,
     depthMm: 102,
     weightKg: 0.4,
+    rackHeightU: 1,
+    mountingClass: "shelf",
+    rackForm: "shelf-only",
+    rackMetadataSource: "library",
     ports: [
       port("Fiber In 1", "fiber", "input"),
       port("Fiber In 2", "fiber", "input"),
@@ -148,6 +156,10 @@ export const templates: DeviceTemplate[] = [
     widthMm: 117,
     depthMm: 44,
     weightKg: 0.2,
+    rackHeightU: 1,
+    mountingClass: "shelf",
+    rackForm: "shelf-only",
+    rackMetadataSource: "library",
     ports: [
       port("SDI In", "sdi", "input"),
       port("Fiber Out", "fiber", "output"),
@@ -168,6 +180,10 @@ export const templates: DeviceTemplate[] = [
     widthMm: 117,
     depthMm: 44,
     weightKg: 0.2,
+    rackHeightU: 1,
+    mountingClass: "shelf",
+    rackForm: "shelf-only",
+    rackMetadataSource: "library",
     ports: [
       port("Fiber In", "fiber", "input"),
       port("SDI Out 1", "sdi", "output"),

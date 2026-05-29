@@ -1,3 +1,8 @@
+/**
+ * Build-time / seed catalog — aggregates live `src/devices/*.ts` modules.
+ * The running app loads `deviceLibrary.fallback.json` via `deviceLibraryRuntime.ts`
+ * so one broken template file does not black-screen the UI.
+ */
 import type { DeviceTemplate } from "./types";
 import { templates as sources } from "./devices/sources";
 import { templates as switching } from "./devices/switching";
@@ -23,6 +28,20 @@ import { templates as codecs } from "./devices/codecs";
 import { templates as vjf } from "./devices/vjf";
 import { templates as expansionCards } from "./devices/expansion-cards";
 import { templates as storageMedia } from "./devices/storage-media";
+import { templates as kgoBroadcast } from "./devices/kgo-broadcast";
+import { templates as kgoDaletBrio } from "./devices/kgo-da-brio";
+
+import { templates as kgoImNexioAmp } from "./devices/kgo-im-nexio-amp";
+
+import { templates as kgoAjAjaFs1 } from "./devices/kgo-aj-aja-fs1";
+
+import { templates as kgoBmMultiview4 } from "./devices/kgo-bm-multiview-4";
+
+import { templates as kgoLkLumantekEzSh } from "./devices/kgo-lk-lumantek-ez-sh";
+
+import { templates as kgoEvEvertz7700frC } from "./devices/kgo-ev-evertz-7700fr-c";
+
+import { templates as kgoCrRCore } from "./devices/kgo-cr-r-core";
 
 import { DEVICE_TYPE_TO_CATEGORY } from "./deviceTypeCategories";
 export { DEVICE_TYPE_TO_CATEGORY };
@@ -50,9 +69,39 @@ export const DEVICE_TEMPLATES: DeviceTemplate[] = [
   ...cloudServices,
   ...codecs,
   ...vjf,
+  ...kgoBroadcast.filter(t => t.deviceType !== "expansion-card"),
+  ...kgoDaletBrio,
+  ...kgoImNexioAmp.filter(t => t.deviceType !== "expansion-card"),
+
+  ...kgoAjAjaFs1.filter(t => t.deviceType !== "expansion-card"),
+
+  ...kgoBmMultiview4.filter(t => t.deviceType !== "expansion-card"),
+
+  ...kgoLkLumantekEzSh.filter(t => t.deviceType !== "expansion-card"),
+
+  ...kgoEvEvertz7700frC.filter(t => t.deviceType !== "expansion-card"),
+
+  ...kgoCrRCore.filter(t => t.deviceType !== "expansion-card"),
+
 ];
 
-export const CARD_TEMPLATES: DeviceTemplate[] = [...expansionCards, ...storageMedia];
+export const CARD_TEMPLATES: DeviceTemplate[] = [
+  ...expansionCards,
+  ...storageMedia,
+  ...kgoBroadcast.filter(t => t.deviceType === "expansion-card"),
+  ...kgoImNexioAmp.filter(t => t.deviceType === "expansion-card"),
+
+  ...kgoAjAjaFs1.filter(t => t.deviceType === "expansion-card"),
+
+  ...kgoBmMultiview4.filter(t => t.deviceType === "expansion-card"),
+
+  ...kgoLkLumantekEzSh.filter(t => t.deviceType === "expansion-card"),
+
+  ...kgoEvEvertz7700frC.filter(t => t.deviceType === "expansion-card"),
+
+  ...kgoCrRCore.filter(t => t.deviceType === "expansion-card"),
+
+];
 
 for (const t of [...DEVICE_TEMPLATES, ...CARD_TEMPLATES]) {
   (t as { category?: string }).category = DEVICE_TYPE_TO_CATEGORY[t.deviceType] ?? "Other";

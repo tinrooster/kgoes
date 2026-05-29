@@ -1,6 +1,6 @@
 /**
  * trackIT popup integration — save back to plant_drawings via postMessage.
- * See trackIT: docs/easyschematic-writeback-protocol.md
+ * See trackIT: docs/kgo-es-writeback-protocol.md
  */
 
 import { trackItAutosaveKey, useSchematicStore } from "./store";
@@ -8,11 +8,56 @@ import type { SchematicFile, TrackItLinkContext } from "./types";
 
 export type { TrackItLinkContext };
 
+export type TrackItEditorMode = "standalone" | "popup-awaiting-link" | "linked";
+
+const TRACKIT_AUTOSAVE_MS = 60_000;
+
+let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+let pagehideHookInstalled = false;
+
+/** How this KGO-ES session relates to trackIT (drives banner + save targets). */
+export function getTrackItEditorMode(): TrackItEditorMode {
+  if (useSchematicStore.getState().trackItLink?.drawingId) return "linked";
+  if (isTrackItPopupOpener()) return "popup-awaiting-link";
+  return "standalone";
+}
+
+/** Linked to a plant_drawings row (save/autosave target is defined). */
+export function isTrackItDrawingLinked(): boolean {
+  return getTrackItEditorMode() === "linked";
+}
+
+/** Opened from trackIT popup — use trackIT-oriented layout even before link arrives. */
+export function isTrackItPopupSession(): boolean {
+  const mode = getTrackItEditorMode();
+  return mode === "linked" || mode === "popup-awaiting-link";
+}
+
+/** @deprecated Prefer isTrackItDrawingLinked() or isTrackItPopupSession(). */
+export function isTrackItLinked(): boolean {
+  return isTrackItDrawingLinked();
+}
+
+/** Autosave to trackIT runs only after at least one device (node) is on the canvas. */
+export function hasTrackItAutosaveContent(): boolean {
+  return useSchematicStore.getState().nodes.length > 0;
+}
+
+export function canRunTrackItAutosave(): boolean {
+  return isTrackItDrawingLinked() && hasTrackItAutosaveContent();
+}
+
 /** Push saved schematic JSON to trackIT opener (Plant drawing panel). */
-export function notifyTrackItParentSaved(file: SchematicFile): void {
+export function notifyTrackItParentSaved(
+  file: SchematicFile,
+  opts?: { silent?: boolean },
+): void {
   try {
     if (window.opener && !window.opener.closed) {
-      window.opener.postMessage({ type: "EASYSCHEMATIC_SAVED", payload: file }, "*");
+      window.opener.postMessage(
+        { type: "KGO_ES_SAVED", payload: file, silent: opts?.silent === true },
+        "*",
+      );
     }
   } catch {
     // cross-origin opener
@@ -28,33 +73,71 @@ export function isTrackItPopupOpener(): boolean {
   }
 }
 
-export function isTrackItLinked(): boolean {
-  const link = useSchematicStore.getState().trackItLink;
-  if (link?.drawingId) return true;
-  return isTrackItPopupOpener();
-}
-
 /** Push current schematic JSON to trackIT opener (Plant drawing panel). */
 export function saveToTrackItParent(opts?: { silent?: boolean }): boolean {
-  if (!isTrackItLinked()) return false;
-  const file = useSchematicStore.getState().exportToJSON();
-  notifyTrackItParentSaved(file);
+  if (!isTrackItDrawingLinked()) {
+    if (!opts?.silent && isTrackItPopupOpener()) {
+      useSchematicStore
+        .getState()
+        .addToast("Waiting for trackIT drawing link…", "info", 3500);
+    }
+    return false;
+  }
+  if (opts?.silent && !canRunTrackItAutosave()) {
+    return false;
+  }
+
+  const store = useSchematicStore.getState();
+  const file = store.exportToJSON();
+  notifyTrackItParentSaved(file, { silent: opts?.silent });
   useSchematicStore.setState({ trackItLastPushedAt: new Date().toISOString() });
+
   if (!opts?.silent) {
-    useSchematicStore.getState().addToast("Saved to trackIT drawing", "success", 2800);
+    const deviceCount = store.nodes.length;
+    if (deviceCount === 0) {
+      store.addToast("Empty layout saved to trackIT drawing", "success", 2800);
+    } else {
+      store.addToast("Saved to trackIT drawing", "success", 2800);
+    }
   }
   return true;
 }
 
-let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+function installTrackItAutosavePagehideHook(): void {
+  if (pagehideHookInstalled || typeof window === "undefined") return;
+  pagehideHookInstalled = true;
+  window.addEventListener("pagehide", () => {
+    flushTrackItAutosave();
+  });
+}
 
-/** Debounced push to trackIT while editing (does not replace explicit Ctrl+S). */
+/** Push pending debounced save immediately (e.g. popup close). */
+export function flushTrackItAutosave(): void {
+  if (autosaveTimer) {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+  }
+  if (!canRunTrackItAutosave()) return;
+  saveToTrackItParent({ silent: true });
+}
+
+/** Debounced push to trackIT while editing (after first device; does not replace Ctrl+S). */
 export function scheduleTrackItAutosave(): void {
-  if (!isTrackItLinked()) return;
+  if (!isTrackItDrawingLinked()) return;
+  installTrackItAutosavePagehideHook();
+  if (!hasTrackItAutosaveContent()) {
+    if (autosaveTimer) {
+      clearTimeout(autosaveTimer);
+      autosaveTimer = null;
+    }
+    return;
+  }
   if (autosaveTimer) clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
+    autosaveTimer = null;
+    if (!canRunTrackItAutosave()) return;
     saveToTrackItParent({ silent: true });
-  }, 60_000);
+  }, TRACKIT_AUTOSAVE_MS);
 }
 
 export function loadTrackItDrawingAutosave(drawingId: string): boolean {
@@ -98,9 +181,5 @@ export function applyTrackItLink(link: TrackItLinkContext): void {
     }
   }
 
-  store.addToast(
-    `Linked to trackIT DWG ${link.dwgNumber} — Ctrl+S saves to the drawing (not just a local file)`,
-    "info",
-    6000,
-  );
+  store.addToast(`Linked to trackIT DWG ${link.dwgNumber}`, "success", 3500);
 }

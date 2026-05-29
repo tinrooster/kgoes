@@ -35,6 +35,10 @@ import type { MountingClass } from "../rackMount";
 import {
   getRackMountSummary,
   validateRackDimensions,
+  shelfThrowdownDimensionsMissing,
+  GENERIC_THROWDOWN_DIMENSIONS,
+  applyGenericThrowdownDimensionsIfMissing,
+  formatGenericThrowdownDimensions,
   heightMmFromRackU,
   buildExplicitRackMetadata,
   rackDeviceDefinitionKey,
@@ -191,6 +195,8 @@ export default function DeviceEditor() {
   const [rackHeightU, setRackHeightU] = useState<number | undefined>(undefined);
   const [mountingClass, setMountingClass] = useState<MountingClass>("rack-full");
   const [syncMmFromU, setSyncMmFromU] = useState(true);
+  const shelfDimsMissing =
+    mountingClass === "shelf" && (heightMm == null || widthMm == null);
   const [applyRackPrompt, setApplyRackPrompt] = useState<ApplyRackMetadataPrompt | null>(null);
   const pendingSaveRef = useRef<DeviceData | null>(null);
   const pendingApplyMetaRef = useRef<{
@@ -369,6 +375,21 @@ export default function DeviceEditor() {
 
     // Preserve existing metadata fields from the node
     const existing = node?.data;
+    const throwdownDefaults = applyGenericThrowdownDimensionsIfMissing({
+      label: label.trim() || "Untitled",
+      deviceType: deviceType.trim() || "custom",
+      ports: finalPorts,
+      mountingClass,
+      rackHeightU,
+      heightMm,
+      widthMm,
+      depthMm,
+    });
+    const effRackHeightU = rackHeightU ?? throwdownDefaults.rackHeightU;
+    const effHeightMm = heightMm ?? throwdownDefaults.heightMm;
+    const effWidthMm = widthMm ?? throwdownDefaults.widthMm;
+    const effDepthMm = depthMm ?? throwdownDefaults.depthMm;
+    const effMountingClass = mountingClass;
     const data: DeviceData = {
       label: label.trim() || "Untitled",
       ...(shortName.trim() ? { shortName: shortName.trim() } : {}),
@@ -404,11 +425,14 @@ export default function DeviceEditor() {
       ...(voltage ? { voltage } : {}),
       ...(thermalBtuh != null ? { thermalBtuh } : {}),
       ...(unitCost != null ? { unitCost } : {}),
-      ...(heightMm != null ? { heightMm } : {}),
-      ...(widthMm != null ? { widthMm } : {}),
-      ...(depthMm != null ? { depthMm } : {}),
+      ...(effHeightMm != null ? { heightMm: effHeightMm } : {}),
+      ...(effWidthMm != null ? { widthMm: effWidthMm } : {}),
+      ...(effDepthMm != null ? { depthMm: effDepthMm } : {}),
       ...(weightKg != null ? { weightKg } : {}),
-      ...buildExplicitRackMetadata(rackHeightU, mountingClass, heightMm),
+      ...(throwdownDefaults.rackMetadataSource
+        ? { rackMetadataSource: throwdownDefaults.rackMetadataSource }
+        : {}),
+      ...buildExplicitRackMetadata(effRackHeightU, effMountingClass, effHeightMm),
       ...(isCableAccessory ? { isCableAccessory: true } : {}),
       ...(integratedWithCable ? { integratedWithCable: true } : {}),
       ...(isVenueProvided ? { isVenueProvided: true } : {}),
@@ -421,9 +445,9 @@ export default function DeviceEditor() {
       })()),
       ...(() => { const t = searchTermsRaw.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 20); return t.length > 0 ? { searchTerms: t } : {}; })(),
     };
-    const rackPatch = buildExplicitRackMetadata(rackHeightU, mountingClass, heightMm);
+    const rackPatch = buildExplicitRackMetadata(effRackHeightU, effMountingClass, effHeightMm);
     const defKey = existing ? rackDeviceDefinitionKey({ ...existing, ...data }) : null;
-    const rackChanged = rackMetadataChanged(existing, rackHeightU, mountingClass);
+    const rackChanged = rackMetadataChanged(existing, effRackHeightU, effMountingClass);
 
     pendingSaveRef.current = data;
 
@@ -1279,6 +1303,28 @@ export default function DeviceEditor() {
                   {warnings.map((w) => (
                     <p key={w} className="text-[10px] text-amber-700">{w}</p>
                   ))}
+                  {shelfDimsMissing && (
+                    <div className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 space-y-1.5">
+                      <p>
+                        Missing footprint mm for shelf / throwdown. Apply will use typical size (
+                        {formatGenericThrowdownDimensions()}), or fill dimensions below.
+                      </p>
+                      <button
+                        type="button"
+                        className="text-blue-700 hover:underline font-medium"
+                        onClick={() => {
+                          const g = GENERIC_THROWDOWN_DIMENSIONS;
+                          setRackHeightU(g.rackHeightU);
+                          setMountingClass(g.mountingClass);
+                          if (heightMm == null) setHeightMm(g.heightMm);
+                          if (widthMm == null) setWidthMm(g.widthMm);
+                          if (depthMm == null) setDepthMm(g.depthMm);
+                        }}
+                      >
+                        Use typical throwdown dimensions
+                      </button>
+                    </div>
+                  )}
                 </>
               );
             })()}
@@ -1309,7 +1355,25 @@ export default function DeviceEditor() {
                 <select
                   className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-1 text-xs outline-none focus:border-blue-500"
                   value={mountingClass}
-                  onChange={(e) => setMountingClass(e.target.value as MountingClass)}
+                  onChange={(e) => {
+                    const mc = e.target.value as MountingClass;
+                    setMountingClass(mc);
+                    if (mc !== "shelf") return;
+                    const patch = applyGenericThrowdownDimensionsIfMissing({
+                      label,
+                      deviceType,
+                      ports: [],
+                      mountingClass: mc,
+                      rackHeightU,
+                      heightMm,
+                      widthMm,
+                      depthMm,
+                    });
+                    if (patch.rackHeightU != null && rackHeightU == null) setRackHeightU(patch.rackHeightU);
+                    if (patch.heightMm != null && heightMm == null) setHeightMm(patch.heightMm);
+                    if (patch.widthMm != null && widthMm == null) setWidthMm(patch.widthMm);
+                    if (patch.depthMm != null && depthMm == null) setDepthMm(patch.depthMm);
+                  }}
                 >
                   <option value="rack-full">Full rack panel</option>
                   <option value="rack-half">Half rack</option>
@@ -1339,9 +1403,15 @@ export default function DeviceEditor() {
           </div>
 
           {/* Physical Dimensions */}
-          <details className="text-xs" open>
+          <details
+            className={`text-xs rounded ${shelfDimsMissing ? "border border-amber-300 bg-amber-50/50 px-2" : ""}`}
+            open={shelfDimsMissing || undefined}
+          >
             <summary className="cursor-pointer text-[var(--color-text-secondary)] hover:text-[var(--color-text)] select-none py-1">
               Physical dimensions (mm)
+              {shelfDimsMissing ? (
+                <span className="ml-1 text-amber-700 font-medium">— required for throwdown</span>
+              ) : null}
             </summary>
             <div className="pt-1 pl-2 grid grid-cols-4 gap-3">
               <div>

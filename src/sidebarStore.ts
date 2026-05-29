@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { isTrackItLinked } from "./trackitIntegration";
+import { isTrackItPopupSession } from "./trackitIntegration";
 
 export const SIDEBAR_PREFS_KEY = "easyschematic-sidebar-prefs";
 export const LIBRARY_BROWSE_MODE_KEY = "easyschematic-library-browse-mode";
@@ -28,7 +28,7 @@ export interface SidebarPrefs {
 }
 
 function trackItSessionDefaults(): Partial<SidebarPrefs> {
-  if (!isTrackItLinked()) return {};
+  if (!isTrackItPopupSession()) return {};
   return {
     leftExpanded: false,
     rightTrackItExpanded: true,
