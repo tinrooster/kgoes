@@ -35,7 +35,8 @@ export const templates: DeviceTemplate[] = [
     heightMm: 88.9,
     depthMm: 406.4,
   
-    rackForm: "2U",
+    rackForm: "full",
+    rackHeightU: 2,
     color: "#222222",
   
     ports: [

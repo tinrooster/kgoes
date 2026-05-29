@@ -35,7 +35,8 @@ export const templates: DeviceTemplate[] = [
     weightKg: 2.54,
     powerDrawW: 70,
     voltage: "-40.5 to -57 VDC",
-    rackForm: "1U",
+    rackForm: "full",
+    rackHeightU: 1,
     color: "#2a2a2a",
   
     ports: [

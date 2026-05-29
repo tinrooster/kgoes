@@ -30,7 +30,8 @@ export const templates: DeviceTemplate[] = [
     heightMm: 44.45,
     depthMm: 304.8,
   
-    rackForm: "1U",
+    rackForm: "full",
+    rackHeightU: 1,
     color: "#1c1c1c",
   
     ports: [
@@ -44,7 +45,7 @@ export const templates: DeviceTemplate[] = [
       port("COMM-2W", "analog-audio", "bidirectional"),
       port("COMM-4W", "analog-audio", "bidirectional"),
     ],
-  },,
+  },
 
   {
     id: "kgo-ts-0002-0000-4000-8000-000000000002",
@@ -71,7 +72,8 @@ export const templates: DeviceTemplate[] = [
     heightMm: 44.45,
     depthMm: 304.8,
   
-    rackForm: "1U",
+    rackForm: "full",
+    rackHeightU: 1,
     color: "#1c1c1c",
   
     ports: [

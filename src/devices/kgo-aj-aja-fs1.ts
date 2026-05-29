@@ -32,15 +32,15 @@ export const templates: DeviceTemplate[] = [
       port("SDI Out 1", "sdi", "output", "bnc"),
       port("SDI Out 2", "sdi", "output", "bnc"),
   
-      port("Component In Y/G", "analog-video", "input", "bnc"),
-      port("Component In Pb/B", "analog-video", "input", "bnc"),
-      port("Component In Pr/R", "analog-video", "input", "bnc"),
-      port("Component Out Y/G", "analog-video", "output", "bnc"),
-      port("Component Out Pb/B", "analog-video", "output", "bnc"),
-      port("Component Out Pr/R", "analog-video", "output", "bnc"),
+      port("Component In Y/G", "component-video", "input", "bnc"),
+      port("Component In Pb/B", "component-video", "input", "bnc"),
+      port("Component In Pr/R", "component-video", "input", "bnc"),
+      port("Component Out Y/G", "component-video", "output", "bnc"),
+      port("Component Out Pb/B", "component-video", "output", "bnc"),
+      port("Component Out Pr/R", "component-video", "output", "bnc"),
   
-      port("Composite/S-Video In", "analog-video", "input", "bnc"),
-      port("Composite/S-Video Out", "analog-video", "output", "bnc"),
+      port("Composite/S-Video In", "composite", "input", "bnc"),
+      port("Composite/S-Video Out", "composite", "output", "bnc"),
   
       port("Genlock In", "genlock", "input", "bnc"),
   
@@ -57,9 +57,10 @@ export const templates: DeviceTemplate[] = [
       port("Analog Audio Out 1-8", "analog-audio", "output", "db25"),
     ],
     voltage: "100-240 VAC, 50/60 Hz",
-    rackForm: "1RU",
+    rackForm: "full",
+    rackHeightU: 1,
     color: "black",
-  },,
+  },
 
   {
     id: "kgo-aj-0002-0000-4000-8000-000000000002",
@@ -101,15 +102,15 @@ export const templates: DeviceTemplate[] = [
       port("HDMI In", "hdmi", "input", "hdmi"),
       port("HDMI Out", "hdmi", "output", "hdmi"),
   
-      port("Component/RGB In Y/G", "analog-video", "input", "bnc"),
-      port("Component/RGB In Pb/B", "analog-video", "input", "bnc"),
-      port("Component/RGB In Pr/R", "analog-video", "input", "bnc"),
-      port("Component/RGB Out Y/G", "analog-video", "output", "bnc"),
-      port("Component/RGB Out Pb/B", "analog-video", "output", "bnc"),
-      port("Component/RGB Out Pr/R", "analog-video", "output", "bnc"),
+      port("Component/RGB In Y/G", "component-video", "input", "bnc"),
+      port("Component/RGB In Pb/B", "component-video", "input", "bnc"),
+      port("Component/RGB In Pr/R", "component-video", "input", "bnc"),
+      port("Component/RGB Out Y/G", "component-video", "output", "bnc"),
+      port("Component/RGB Out Pb/B", "component-video", "output", "bnc"),
+      port("Component/RGB Out Pr/R", "component-video", "output", "bnc"),
   
-      port("Composite In", "analog-video", "input", "bnc"),
-      port("Composite Out", "analog-video", "output", "bnc"),
+      port("Composite In", "composite", "input", "bnc"),
+      port("Composite Out", "composite", "output", "bnc"),
   
       port("AES/EBU Audio In 1-8", "aes", "input", "db25"),
       port("AES/EBU Audio Out 1-8", "aes", "output", "db25"),
@@ -124,7 +125,8 @@ export const templates: DeviceTemplate[] = [
       port("AC Power In 1", "power", "input"),
       port("AC Power In 2", "power", "input"),
     ],
-    rackForm: "1RU",
+    rackForm: "full",
+    rackHeightU: 1,
     color: "black",
   },
 

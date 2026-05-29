@@ -35,7 +35,6 @@ import type { MountingClass } from "../rackMount";
 import {
   getRackMountSummary,
   validateRackDimensions,
-  shelfThrowdownDimensionsMissing,
   GENERIC_THROWDOWN_DIMENSIONS,
   applyGenericThrowdownDimensionsIfMissing,
   formatGenericThrowdownDimensions,

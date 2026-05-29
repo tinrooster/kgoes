@@ -33,7 +33,8 @@ export const templates: DeviceTemplate[] = [
     heightMm: 44.45,
     depthMm: 355.6,
   
-    rackForm: "1U",
+    rackForm: "full",
+    rackHeightU: 1,
     color: "#1a1a1a",
   
     ports: [
@@ -53,7 +54,7 @@ export const templates: DeviceTemplate[] = [
   
       port("24V-OUT", "power", "output"),
     ],
-  },,
+  },
 
   {
     id: "kgo-mr-0002-0000-4000-8000-000000000002",
@@ -88,7 +89,8 @@ export const templates: DeviceTemplate[] = [
     heightMm: 44.45,
     depthMm: 355.6,
   
-    rackForm: "1U",
+    rackForm: "full",
+    rackHeightU: 1,
     color: "#1a1a1a",
   
     ports: [

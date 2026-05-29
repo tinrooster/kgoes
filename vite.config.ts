@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type ViteDevServer } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
@@ -60,22 +60,23 @@ export default defineConfig({
         ],
       },
     }),
+    {
+      name: 'kgoes-build-info',
+      configureServer(server: ViteDevServer) {
+        server.middlewares.use('/__kgoes-build-info.json', (_req, res) => {
+          let hash = gitHash
+          try {
+            hash = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
+          } catch { /* ignore */ }
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ version: pkg.version, hash }))
+        })
+      },
+    },
   ],
   cacheDir,
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_HASH__: JSON.stringify(gitHash),
-  },
-  server: {
-    configureServer(server) {
-      server.middlewares.use('/__kgoes-build-info.json', (_req, res) => {
-        let hash = gitHash
-        try {
-          hash = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
-        } catch { /* ignore */ }
-        res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify({ version: pkg.version, hash }))
-      })
-    },
   },
 })

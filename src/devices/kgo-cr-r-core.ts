@@ -111,7 +111,8 @@ export const templates: DeviceTemplate[] = [
       "Calrec 2U engine",
       "Calrec remote production processor", "kgo-es-deviceadd"],
     heightMm: 88.9,
-    rackForm: "2RU",
+    rackForm: "full",
+    rackHeightU: 2,
     ports: [
       port("Hydra2 Network 1", "ethernet", "bidirectional", "rj45"),
       port("Hydra2 Network 2", "ethernet", "bidirectional", "rj45"),
@@ -171,7 +172,8 @@ export const templates: DeviceTemplate[] = [
       "Calrec Hydra2 I/O",
       "Calrec stagebox", "kgo-es-deviceadd"],
     heightMm: 133.35,
-    rackForm: "3RU",
+    rackForm: "full",
+    rackHeightU: 3,
     slotFamily: CALREC_MODULAR_IO_SLOT_FAMILY,
     slots: Array.from({ length: 20 }, (_, i) => ({
       id: `slot-${i + 1}`,
