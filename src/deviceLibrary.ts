@@ -43,6 +43,14 @@ import { templates as kgoEvEvertz7700frC } from "./devices/kgo-ev-evertz-7700fr-
 
 import { templates as kgoCrRCore } from "./devices/kgo-cr-r-core";
 
+import { templates as kgoTrOrionIdu } from "./devices/kgo-tr-orion-idu";
+
+import { templates as kgoTsTouchstarS750 } from "./devices/kgo-ts-touchstar-s750";
+
+import { templates as kgoMrMrcMrx4000 } from "./devices/kgo-mr-mrc-mrx4000";
+
+import { templates as kgoErHdEncoder } from "./devices/kgo-er-hd-encoder";
+
 import { DEVICE_TYPE_TO_CATEGORY } from "./deviceTypeCategories";
 export { DEVICE_TYPE_TO_CATEGORY };
 
@@ -83,6 +91,14 @@ export const DEVICE_TEMPLATES: DeviceTemplate[] = [
 
   ...kgoCrRCore.filter(t => t.deviceType !== "expansion-card"),
 
+  ...kgoTrOrionIdu.filter(t => t.deviceType !== "expansion-card"),
+
+  ...kgoTsTouchstarS750.filter(t => t.deviceType !== "expansion-card"),
+
+  ...kgoMrMrcMrx4000.filter(t => t.deviceType !== "expansion-card"),
+
+  ...kgoErHdEncoder.filter(t => t.deviceType !== "expansion-card"),
+
 ];
 
 export const CARD_TEMPLATES: DeviceTemplate[] = [
@@ -100,6 +116,14 @@ export const CARD_TEMPLATES: DeviceTemplate[] = [
   ...kgoEvEvertz7700frC.filter(t => t.deviceType === "expansion-card"),
 
   ...kgoCrRCore.filter(t => t.deviceType === "expansion-card"),
+
+  ...kgoTrOrionIdu.filter(t => t.deviceType === "expansion-card"),
+
+  ...kgoTsTouchstarS750.filter(t => t.deviceType === "expansion-card"),
+
+  ...kgoMrMrcMrx4000.filter(t => t.deviceType === "expansion-card"),
+
+  ...kgoErHdEncoder.filter(t => t.deviceType === "expansion-card"),
 
 ];
 
