@@ -12,6 +12,8 @@ import {
   type PortDirection,
   type PortNetworkConfig,
   type PortCapabilities,
+  type RfPortMetadata,
+  type RfInstallationMetadata,
   type AuxRow,
   type DeviceData,
   type DeviceNode,
@@ -28,6 +30,7 @@ import { isValidIpv4, isValidSubnetMask, isValidVlan, findDuplicateIps } from ".
 import IpInput from "./IpInput";
 import FacePlateEditor from "./FacePlateEditor";
 import ApplyRackMetadataDialog, { type ApplyRackMetadataPrompt } from "./ApplyRackMetadataDialog";
+import { RfInstallationEditor, RfPortMetadataEditor } from "./RfMetadataEditor";
 import type { FacePlateLayout } from "../types";
 import { AUX_FIELD_GROUPS, normalizeAuxRows, resolveAuxiliaryLine, trimTrailingEmpty } from "../auxiliaryData";
 import { deriveThermalBtuh } from "../thermal";
@@ -94,6 +97,7 @@ interface PortDraft {
   poeDrawW?: number;
   linkSpeed?: string;
   flipped?: boolean;
+  rf?: RfPortMetadata;
   // Passthrough-only fields
   rearConnectorType?: ConnectorType;
   rearGender?: Gender;
@@ -213,6 +217,7 @@ export default function DeviceEditor() {
 
   // Search terms — raw string kept as-is so commas can be typed freely; parsed to array at save
   const [searchTermsRaw, setSearchTermsRaw] = useState("");
+  const [rfInstallation, setRfInstallation] = useState<RfInstallationMetadata | undefined>(undefined);
 
   // Auxiliary data rows — each row carries its own header/footer slot.
   const [auxiliaryData, setAuxiliaryData] = useState<AuxRow[]>([]);
@@ -290,6 +295,7 @@ export default function DeviceEditor() {
         frontConnectorType: p.frontConnectorType,
         frontGender: p.frontGender,
         inheritsSignal: p.inheritsSignal,
+        rf: p.rf ? { ...p.rf } : undefined,
       })),
     );
     setShowAllPorts(node.data.showAllPorts ?? false);
@@ -323,6 +329,7 @@ export default function DeviceEditor() {
     setAdapterVisibility(node.data.adapterVisibility ?? "default");
     setAuxiliaryData(normalizeAuxRows(node.data.auxiliaryData));
     setSearchTermsRaw((node.data.searchTerms ?? []).join(", "));
+    setRfInstallation(node.data.rfInstallation ? { ...node.data.rfInstallation } : undefined);
   }, [node]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -451,6 +458,7 @@ export default function DeviceEditor() {
         return trimmed.some((r) => r.text.trim()) ? { auxiliaryData: trimmed } : {};
       })()),
       ...(() => { const t = searchTermsRaw.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 20); return t.length > 0 ? { searchTerms: t } : {}; })(),
+      ...(rfInstallation ? { rfInstallation } : {}),
     };
     const rackPatch = buildExplicitRackMetadata(effRackHeightU, effMountingClass, effHeightMm);
     const defKey = existing ? rackDeviceDefinitionKey({ ...existing, ...data }) : null;
@@ -483,7 +491,7 @@ export default function DeviceEditor() {
 
     pendingApplyMetaRef.current = null;
     finishSave(false);
-  }, [editingNodeId, ports, label, shortName, useShortName, wrapLabel, hostname, deviceType, manufacturer, modelNumber, designation, rackLocation, frameSlot, deviceTypeCode, managementIp, vlanSummary, showInstallationBlock, referenceUrl, category, color, headerColor, node, finishSave, showAllPorts, hiddenPorts, dhcpServer, powerDrawW, powerCapacityW, voltage, thermalBtuh, poeBudgetW, poeDrawW, unitCost, heightMm, widthMm, depthMm, weightKg, rackHeightU, mountingClass, isCableAccessory, integratedWithCable, isVenueProvided, adapterVisibility, auxiliaryData, searchTermsRaw]);
+  }, [editingNodeId, ports, label, shortName, useShortName, wrapLabel, hostname, deviceType, manufacturer, modelNumber, designation, rackLocation, frameSlot, deviceTypeCode, managementIp, vlanSummary, showInstallationBlock, referenceUrl, category, color, headerColor, node, finishSave, showAllPorts, hiddenPorts, dhcpServer, powerDrawW, powerCapacityW, voltage, thermalBtuh, poeBudgetW, poeDrawW, unitCost, heightMm, widthMm, depthMm, weightKg, rackHeightU, mountingClass, isCableAccessory, integratedWithCable, isVenueProvided, adapterVisibility, auxiliaryData, searchTermsRaw, rfInstallation]);
 
   // Ctrl+Enter anywhere in the editor → Apply & Close
   const onCtrlEnter = useCallback((e: React.KeyboardEvent) => {
@@ -1282,6 +1290,13 @@ export default function DeviceEditor() {
               onKeyDown={(e) => e.stopPropagation()}
             />
           </div>
+
+          {deviceType.startsWith("rf-") && (
+            <RfInstallationEditor
+              rfInstallation={rfInstallation}
+              onChange={setRfInstallation}
+            />
+          )}
 
           {/* Rack elevation */}
           <div className="border border-[var(--color-border)] rounded-md p-3 space-y-2">
@@ -2374,6 +2389,7 @@ function PortRow({
   const rowRef = useRef<HTMLDivElement>(null);
   const [showSection, setShowSection] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
+  const [showRf, setShowRf] = useState(Boolean(port.rf && Object.keys(port.rf).length > 0));
 
   const handleDragStart = (e: DragEvent) => {
     e.dataTransfer.setData(MIME, port.id);
@@ -2649,6 +2665,20 @@ function PortRow({
           {port.notes ? "N" : "N"}
         </button>
 
+        {port.signalType === "rf" && (
+          <button
+            onClick={() => setShowRf(!showRf)}
+            className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 ${
+              port.rf && Object.keys(port.rf).length > 0
+                ? "bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
+            }`}
+            title="RF port metadata (band, frequency, polarization, power, VSWR)"
+          >
+            RF
+          </button>
+        )}
+
         {/* Flip badge */}
         <button
           onClick={() => onUpdate({ flipped: !port.flipped || undefined })}
@@ -2715,6 +2745,13 @@ function PortRow({
             Done
           </button>
         </div>
+      )}
+
+      {showRf && port.signalType === "rf" && (
+        <RfPortMetadataEditor
+          rf={port.rf}
+          onChange={(rf) => onUpdate({ rf })}
+        />
       )}
 
       {/* Passthrough rear/front connector block */}

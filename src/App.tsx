@@ -577,6 +577,7 @@ function SchematicCanvas() {
   const debugEdges = useSchematicStore((s) => s.debugEdges);
   const printView = useSchematicStore((s) => s.printView);
   const hiddenSignalTypesStr = useSchematicStore((s) => s.hiddenSignalTypes);
+  const hiddenRfPathRolesStr = useSchematicStore((s) => s.hiddenRfPathRoles);
   const hideAdapters = useSchematicStore((s) => s.hideAdapters);
   const adapterVisibilityDigest = useSchematicStore((s) =>
     s.nodes.filter((n) => n.type === "device" && (n.data as DeviceData).deviceType === "adapter")
@@ -609,6 +610,14 @@ function SchematicCanvas() {
       const hidden = new Set(hiddenSignalTypesStr.split(","));
       list = list.filter((e) => !hidden.has(e.data?.signalType ?? ""));
     }
+    if (hiddenRfPathRolesStr) {
+      const hiddenRoles = new Set(hiddenRfPathRolesStr.split(","));
+      list = list.filter((e) => {
+        if (e.data?.signalType !== "rf") return true;
+        const role = e.data?.rfPathRole;
+        return !role || !hiddenRoles.has(role);
+      });
+    }
     if (!selectedRackPort) return list;
     const { deviceNodeId, portId } = selectedRackPort;
     const edgeTouchesPort = (e: ConnectionEdge) => {
@@ -632,7 +641,7 @@ function SchematicCanvas() {
         className: hit ? "rack-port-highlight-edge" : e.className,
       };
     });
-  }, [edges, hiddenSignalTypesStr, selectedRackPort]);
+  }, [edges, hiddenSignalTypesStr, hiddenRfPathRolesStr, selectedRackPort]);
 
   const autoRoute = useSchematicStore((s) => s.autoRoute);
   const edgeHitboxSize = useSchematicStore((s) => s.edgeHitboxSize);

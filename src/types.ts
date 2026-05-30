@@ -143,6 +143,28 @@ export type PortDirection = "input" | "output" | "bidirectional" | "passthrough"
 
 export type Gender = "male" | "female";
 
+/** RF carrier polarization — aligned with trackIT EsRfPolarization. */
+export type RfPolarization = "horizontal" | "vertical" | "lhcp" | "rhcp" | "slant" | "other";
+
+/** RF port metadata for broadcast/transmission paths (band, power, VSWR). */
+export interface RfPortMetadata {
+  band?: string;
+  centerFrequencyMhz?: number;
+  polarization?: RfPolarization;
+  txPowerDbm?: number;
+  vswr?: number;
+}
+
+/** Antenna / tower installation metadata on RF-capable devices. */
+export interface RfInstallationMetadata {
+  azimuthDeg?: number;
+  tiltDeg?: number;
+  beamwidthDeg?: number;
+}
+
+/** TX/RX/bidirectional role for RF connection line styling and visibility. */
+export type RfPathRole = "tx" | "rx" | "bidirectional";
+
 export interface Port {
   id: string;
   label: string;
@@ -187,6 +209,8 @@ export interface Port {
   linkSpeed?: string;
   /** Stable link back to the template port this was cloned from — used for template-sync reconciliation. */
   templatePortId?: string;
+  /** RF transmission metadata when signalType is rf. */
+  rf?: RfPortMetadata;
 }
 
 export interface SlotDefinition {
@@ -307,6 +331,8 @@ export interface DeviceData {
   searchTerms?: string[];
   /** Custom face-plate connector layout (overrides auto-layout) */
   facePlateLayout?: FacePlateLayout;
+  /** Antenna azimuth/tilt/beamwidth for tower stack drawings. */
+  rfInstallation?: RfInstallationMetadata;
 }
 
 /** One row of auxiliary data shown on a device node. */
@@ -461,6 +487,8 @@ export interface ConnectionData {
   directAttach?: boolean;
   /** Visual line style — solid (default), dashed, dotted, or dash-dot */
   lineStyle?: LineStyle;
+  /** RF path role — drives default line style and visibility toggles for tower drawings. */
+  rfPathRole?: RfPathRole;
   /** Per-connection color override (CSS color). Falls back to signal-type color. Ignored for direct-attach. */
   color?: string;
 }
@@ -506,6 +534,7 @@ export interface DeviceTemplate {
   panelLayoutPreset?: "vjf-2x32" | "patch-1u-24";
   auxiliaryData?: AuxRow[];      // Aux rows shown on the node (each row carries its own header/footer slot)
   facePlateLayout?: FacePlateLayout; // Custom face-plate connector positions
+  rfInstallation?: RfInstallationMetadata;
 }
 
 export interface CustomTemplateGroup {
@@ -736,6 +765,8 @@ export interface SchematicFile {
   titleBlockLayout?: TitleBlockLayout;
   hiddenSignalTypes?: SignalType[];
   hiddenPinSignalTypes?: SignalType[];
+  /** Comma-separated rfPathRole values hidden on canvas (tx, rx, bidirectional). */
+  hiddenRfPathRoles?: RfPathRole[];
   /** @deprecated Replaced in schema v27 by the {{deviceType}} auxiliary row. Kept on the file
    *  shape so the migration can honor the user's prior suppression intent. */
   hideDeviceTypes?: boolean;

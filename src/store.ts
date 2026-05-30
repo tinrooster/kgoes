@@ -35,7 +35,8 @@ import type {
   CustomTemplateMeta,
 } from "./types";
 import type { ReactFlowInstance } from "@xyflow/react";
-import type { SignalType, ScrollConfig, LineStyle, LabelCaseMode, DistanceSettings, PanMode, StubLabelPageMode } from "./types";
+import type { SignalType, ScrollConfig, LineStyle, LabelCaseMode, DistanceSettings, PanMode, StubLabelPageMode, RfPathRole } from "./types";
+import { applyRfPathDefaults } from "./rfPath";
 import { defaultStubPlacement } from "./stubPlacement";
 import { getPortAbsolutePositions } from "./snapUtils";
 import { DEFAULT_SCROLL_CONFIG, DEFAULT_LABEL_CASE, DEFAULT_DISTANCE_SETTINGS, DEFAULT_PAN_MODE, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_SHOW_ROOM, DEFAULT_STUB_LABEL_PAGE_MODE } from "./types";
@@ -618,11 +619,13 @@ interface SchematicState {
   // View options
   hiddenSignalTypes: string;
   hiddenPinSignalTypes: string;
+  hiddenRfPathRoles: string;
   hideUnconnectedPorts: boolean;
   showInstallationInfo: boolean;
   templateHiddenSignals: Record<string, SignalType[]>;
   toggleSignalTypeVisibility: (type: SignalType) => void;
   togglePinSignalTypeVisibility: (type: SignalType) => void;
+  toggleRfPathRoleVisibility: (role: RfPathRole) => void;
   setHideUnconnectedPorts: (hide: boolean) => void;
   setShowInstallationInfo: (show: boolean) => void;
   showPortCounts: boolean;
@@ -1438,6 +1441,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   globalReportFooterLayout: null,
   hiddenSignalTypes: "",
   hiddenPinSignalTypes: "",
+  hiddenRfPathRoles: "",
   hideUnconnectedPorts: false,
   showInstallationInfo: true,
   showPortCounts: false,
@@ -1630,11 +1634,15 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     // Check if either port is direct-attach (adapter plugs directly into device)
     const isDirectAttach = sourcePort?.directAttach || targetPort?.directAttach;
 
-    const newEdgeData: ConnectionData = {
-      signalType: sourcePort?.signalType ?? "custom",
-      ...(connectorMismatch ? { connectorMismatch: true } : {}),
-      ...(isDirectAttach ? { directAttach: true } : {}),
-    };
+    const newEdgeData: ConnectionData = applyRfPathDefaults(
+      {
+        signalType: sourcePort?.signalType ?? "custom",
+        ...(connectorMismatch ? { connectorMismatch: true } : {}),
+        ...(isDirectAttach ? { directAttach: true } : {}),
+      },
+      sourcePort,
+      targetPort,
+    );
     const newEdge: ConnectionEdge = {
       id: nextEdgeId(),
       source: connection.source,
@@ -1727,6 +1735,9 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...(template.rackForm ? { rackForm: template.rackForm } : {}),
         ...(template.facePlateLayout
           ? { facePlateLayout: JSON.parse(JSON.stringify(template.facePlateLayout)) as DeviceData["facePlateLayout"] }
+          : {}),
+        ...(template.rfInstallation
+          ? { rfInstallation: { ...template.rfInstallation } }
           : {}),
         ...(template.hostname ? { hostname: template.hostname } : {}),
         ...(hiddenPorts && hiddenPorts.length > 0 ? { hiddenPorts } : {}),
@@ -3878,6 +3889,16 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     get().saveToLocalStorage();
   },
 
+  toggleRfPathRoleVisibility: (role) => {
+    const current = get().hiddenRfPathRoles;
+    const set_ = new Set(current ? current.split(",").filter(Boolean) : []);
+    if (set_.has(role)) set_.delete(role);
+    else set_.add(role);
+    const next = [...set_].sort().join(",");
+    set({ hiddenRfPathRoles: next });
+    get().saveToLocalStorage();
+  },
+
   setHideUnconnectedPorts: (hide) => {
     set({ hideUnconnectedPorts: hide });
     get().saveToLocalStorage();
@@ -3924,7 +3945,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   },
 
   showAllSignalTypes: () => {
-    set({ hiddenSignalTypes: "", hiddenPinSignalTypes: "" });
+    set({ hiddenSignalTypes: "", hiddenPinSignalTypes: "", hiddenRfPathRoles: "" });
     get().saveToLocalStorage();
   },
 
@@ -4988,6 +5009,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       titleBlockLayout: state.titleBlockLayout,
       hiddenSignalTypes: state.hiddenSignalTypes ? state.hiddenSignalTypes.split(",") as SignalType[] : undefined,
       hiddenPinSignalTypes: state.hiddenPinSignalTypes ? state.hiddenPinSignalTypes.split(",") as SignalType[] : undefined,
+      hiddenRfPathRoles: state.hiddenRfPathRoles ? state.hiddenRfPathRoles.split(",") as RfPathRole[] : undefined,
       hideUnconnectedPorts: state.hideUnconnectedPorts || undefined,
       showInstallationInfo: state.showInstallationInfo === false ? false : undefined,
       showPortCounts: state.showPortCounts || undefined,
@@ -5109,6 +5131,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         titleBlockLayout: data.titleBlockLayout ?? createDefaultLayout(),
         hiddenSignalTypes: data.hiddenSignalTypes?.length ? [...data.hiddenSignalTypes].sort().join(",") : "",
         hiddenPinSignalTypes: data.hiddenPinSignalTypes?.length ? [...data.hiddenPinSignalTypes].sort().join(",") : "",
+        hiddenRfPathRoles: data.hiddenRfPathRoles?.length ? [...data.hiddenRfPathRoles].sort().join(",") : "",
         hideUnconnectedPorts: data.hideUnconnectedPorts ?? false,
         showPortCounts: data.showPortCounts ?? false,
         templateHiddenSignals: data.templateHiddenSignals ?? {},
@@ -5193,6 +5216,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       titleBlockLayout: state.titleBlockLayout,
       hiddenSignalTypes: state.hiddenSignalTypes ? state.hiddenSignalTypes.split(",") as SignalType[] : undefined,
       hiddenPinSignalTypes: state.hiddenPinSignalTypes ? state.hiddenPinSignalTypes.split(",") as SignalType[] : undefined,
+      hiddenRfPathRoles: state.hiddenRfPathRoles ? state.hiddenRfPathRoles.split(",") as RfPathRole[] : undefined,
       hideUnconnectedPorts: state.hideUnconnectedPorts || undefined,
       showInstallationInfo: state.showInstallationInfo === false ? false : undefined,
       showPortCounts: state.showPortCounts || undefined,
@@ -5463,6 +5487,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       titleBlockLayout: data.titleBlockLayout ?? createDefaultLayout(),
       hiddenSignalTypes: data.hiddenSignalTypes?.length ? [...data.hiddenSignalTypes].sort().join(",") : "",
       hiddenPinSignalTypes: data.hiddenPinSignalTypes?.length ? [...data.hiddenPinSignalTypes].sort().join(",") : "",
+      hiddenRfPathRoles: data.hiddenRfPathRoles?.length ? [...data.hiddenRfPathRoles].sort().join(",") : "",
       hideUnconnectedPorts: data.hideUnconnectedPorts ?? false,
       showInstallationInfo: data.showInstallationInfo ?? true,
       showPortCounts: data.showPortCounts ?? false,
@@ -5566,6 +5591,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         titleBlockLayout: createDefaultLayout(),
         hiddenSignalTypes: "",
         hiddenPinSignalTypes: "",
+        hiddenRfPathRoles: "",
         hideUnconnectedPorts: false,
         showPortCounts: false,
         templateHiddenSignals: {},

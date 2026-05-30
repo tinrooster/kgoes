@@ -1,4 +1,4 @@
-import type { ConnectorType, Gender, Port, SignalType } from "../types";
+import type { ConnectorType, Gender, Port, RfPortMetadata, SignalType } from "../types";
 import { DEFAULT_CONNECTOR } from "../connectorTypes";
 
 let portIdCounter = 0;
@@ -145,4 +145,20 @@ export function patchPanelPorts(
     for (const p of front) p.gender = opts.gender;
   }
   return [...rear, ...front];
+}
+
+/** RF transmission port with optional band/frequency metadata. */
+export function rfPort(
+  label: string,
+  direction: Port["direction"],
+  opts?: {
+    connectorType?: ConnectorType;
+    rf?: RfPortMetadata;
+    section?: string;
+  },
+): Port {
+  const p = port(label, "rf", direction, opts?.connectorType ?? "f-connector");
+  if (opts?.rf) p.rf = { ...opts.rf };
+  if (opts?.section) p.section = opts.section;
+  return p;
 }

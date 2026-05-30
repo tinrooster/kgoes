@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useCallback } from "react";
-import { SIGNAL_LABELS, SIGNAL_COLORS, LINE_STYLE_DASHARRAY, type SignalType, type LineStyle, type Port } from "../types";
+import { SIGNAL_LABELS, SIGNAL_COLORS, LINE_STYLE_DASHARRAY, type SignalType, type LineStyle, type Port, type RfPathRole } from "../types";
+import { ALL_RF_PATH_ROLES, DEFAULT_RF_PATH_LINE_STYLE, RF_PATH_ROLE_LABELS } from "../rfPath";
 import { useSchematicStore } from "../store";
 import { useSidebarStore } from "../sidebarStore";
 import { DEFAULT_SIGNAL_COLORS, loadSignalColors } from "../signalColors";
@@ -22,11 +23,13 @@ export default function ViewOptionsPanel({ mobile, onClose }: { mobile?: boolean
   const collapsed = mobile ? false : !rightExpanded;
   const hiddenSignalTypesStr = useSchematicStore((s) => s.hiddenSignalTypes);
   const hiddenPinSignalTypesStr = useSchematicStore((s) => s.hiddenPinSignalTypes);
+  const hiddenRfPathRolesStr = useSchematicStore((s) => s.hiddenRfPathRoles);
   const hideUnconnectedPorts = useSchematicStore((s) => s.hideUnconnectedPorts);
   const showPortCounts = useSchematicStore((s) => s.showPortCounts);
   const setShowPortCounts = useSchematicStore((s) => s.setShowPortCounts);
   const toggleSignalTypeVisibility = useSchematicStore((s) => s.toggleSignalTypeVisibility);
   const togglePinSignalTypeVisibility = useSchematicStore((s) => s.togglePinSignalTypeVisibility);
+  const toggleRfPathRoleVisibility = useSchematicStore((s) => s.toggleRfPathRoleVisibility);
   const setHideUnconnectedPorts = useSchematicStore((s) => s.setHideUnconnectedPorts);
   const showLineJumps = useSchematicStore((s) => s.showLineJumps);
   const setShowLineJumps = useSchematicStore((s) => s.setShowLineJumps);
@@ -91,7 +94,14 @@ export default function ViewOptionsPanel({ mobile, onClose }: { mobile?: boolean
     [hiddenPinSignalTypesStr],
   );
 
-  const anyHidden = hiddenSet.size > 0 || hiddenPinSet.size > 0;
+  const hiddenRfPathSet = useMemo(
+    () => (hiddenRfPathRolesStr ? new Set(hiddenRfPathRolesStr.split(",")) : new Set<string>()),
+    [hiddenRfPathRolesStr],
+  );
+
+  const showRfPathControls = usedSignalTypes.has("rf");
+
+  const anyHidden = hiddenSet.size > 0 || hiddenPinSet.size > 0 || hiddenRfPathSet.size > 0;
   const hasCustomizations = !!(signalColors && Object.keys(signalColors).length > 0) ||
     !!(signalLineStyles && Object.keys(signalLineStyles).length > 0);
 
@@ -309,6 +319,42 @@ export default function ViewOptionsPanel({ mobile, onClose }: { mobile?: boolean
               </div>
             );
           })
+        )}
+
+        {showRfPathControls && (
+          <>
+            <div className="border-t border-[var(--color-border)] my-2" />
+            <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1">
+              RF Paths
+            </div>
+            {ALL_RF_PATH_ROLES.map((role) => {
+              const hidden = hiddenRfPathSet.has(role);
+              const ls = DEFAULT_RF_PATH_LINE_STYLE[role];
+              return (
+                <label
+                  key={role}
+                  className="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-[var(--color-surface-hover)] cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!hidden}
+                    onChange={() => toggleRfPathRoleVisibility(role as RfPathRole)}
+                    className="w-3 h-3 accent-blue-500 cursor-pointer"
+                  />
+                  <svg width="16" height="6" className="block shrink-0">
+                    <line
+                      x1="0" y1="3" x2="16" y2="3"
+                      stroke={SIGNAL_COLORS.rf}
+                      strokeWidth="2"
+                      strokeDasharray={LINE_STYLE_DASHARRAY[ls] ?? "none"}
+                      opacity={hidden ? 0.3 : 1}
+                    />
+                  </svg>
+                  <span className="text-xs text-[var(--color-text)]">{RF_PATH_ROLE_LABELS[role]}</span>
+                </label>
+              );
+            })}
+          </>
         )}
 
         {/* Divider */}
