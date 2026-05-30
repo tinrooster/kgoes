@@ -37,12 +37,13 @@ import type {
   CustomTemplateMeta,
 } from "./types";
 import type { ReactFlowInstance } from "@xyflow/react";
-import type { SignalType, ScrollConfig, LineStyle, LabelCaseMode, DistanceSettings, PanMode, StubLabelPageMode, RfPathRole } from "./types";
+import type { SignalType, ScrollConfig, LineStyle, LabelCaseMode, DistanceSettings, PanMode, StubLabelPageMode, RfPathRole, MeasurementSystem } from "./types";
 import { applyRfPathDefaults } from "./rfPath";
 import { defaultFlyEndpointData, defaultFlyPlacement } from "./flyFormat";
 import { defaultStubPlacement } from "./stubPlacement";
 import { getPortAbsolutePositions } from "./snapUtils";
 import { DEFAULT_SCROLL_CONFIG, DEFAULT_LABEL_CASE, DEFAULT_DISTANCE_SETTINGS, DEFAULT_PAN_MODE, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_SHOW_ROOM, DEFAULT_STUB_LABEL_PAGE_MODE } from "./types";
+import { distanceUnitFromMeasurementSystem, measurementSystemFromDistanceUnit, parseMeasurementSystem } from "./measurementUnits";
 import { pairKey } from "./roomDistance";
 import type { Orientation } from "./printConfig";
 import { computeAlignment, resolveAlignmentOverlaps, type AlignOperation } from "./alignUtils";
@@ -311,6 +312,20 @@ function resolveLabelCase(v: unknown): LabelCaseMode {
 
 /** Guard: don't persist empty state before initial load completes */
 let hydrated = false;
+
+/** Allow trackIT popup sessions to persist edits before TRACKIT_LINK arrives. */
+export function markSchematicStorageHydrated(): void {
+  hydrated = true;
+}
+
+/** True when a per-drawing trackIT autosave blob exists in localStorage. */
+export function hasTrackItDrawingAutosave(drawingId: string): boolean {
+  try {
+    return !!localStorage.getItem(trackItAutosaveKey(drawingId));
+  } catch {
+    return false;
+  }
+}
 
 // Re-exported from gridConstants so existing `import { GRID_SIZE } from "./store"`
 // call sites keep working. Utility modules that the store also depends on (e.g.
@@ -739,6 +754,8 @@ interface SchematicState {
   setStubLabelPageMode: (mode: StubLabelPageMode) => void;
   useShortNames: boolean;
   setUseShortNames: (use: boolean) => void;
+  measurementSystem: MeasurementSystem;
+  setMeasurementSystem: (system: MeasurementSystem) => void;
   wrapDeviceLabels: boolean;
   setWrapDeviceLabels: (wrap: boolean) => void;
   patchStubLabelData: (nodeId: string, patch: Partial<import("./types").StubLabelData>) => void;
@@ -1553,6 +1570,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   stubLabelShowRoom: DEFAULT_STUB_LABEL_SHOW_ROOM,
   stubLabelPageMode: DEFAULT_STUB_LABEL_PAGE_MODE,
   useShortNames: false,
+  measurementSystem: "metric" as MeasurementSystem,
   wrapDeviceLabels: false,
   cableIdMap: {},
   cloudSchematicId: null,
@@ -1828,6 +1846,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...(template.rfInstallation
           ? { rfInstallation: { ...template.rfInstallation } }
           : {}),
+        ...(template.dishDiameterM != null ? { dishDiameterM: template.dishDiameterM } : {}),
         ...(template.hostname ? { hostname: template.hostname } : {}),
         ...(hiddenPorts && hiddenPorts.length > 0 ? { hiddenPorts } : {}),
         ...(template.isVenueProvided ? { isVenueProvided: true } : {}),
@@ -4174,6 +4193,18 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     get().saveToLocalStorage();
   },
 
+  setMeasurementSystem: (system) => {
+    const measurementSystem = parseMeasurementSystem(system);
+    const unit = distanceUnitFromMeasurementSystem(measurementSystem);
+    const merged: DistanceSettings = {
+      ...DEFAULT_DISTANCE_SETTINGS,
+      ...(get().distanceSettings ?? {}),
+      unit,
+    };
+    set({ measurementSystem, distanceSettings: merged });
+    get().saveToLocalStorage();
+  },
+
   setWrapDeviceLabels: (wrap) => {
     set({ wrapDeviceLabels: wrap });
     get().saveToLocalStorage();
@@ -5400,6 +5431,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       stubLabelShowRoom: state.stubLabelShowRoom !== DEFAULT_STUB_LABEL_SHOW_ROOM ? state.stubLabelShowRoom : undefined,
       stubLabelPageMode: state.stubLabelPageMode !== DEFAULT_STUB_LABEL_PAGE_MODE ? state.stubLabelPageMode : undefined,
       useShortNames: state.useShortNames || undefined,
+      measurementSystem: state.measurementSystem !== "metric" ? state.measurementSystem : undefined,
       wrapDeviceLabels: state.wrapDeviceLabels || undefined,
       hideAdapters: state.hideAdapters || undefined,
       autoRoute: state.autoRoute === false ? false : undefined,
@@ -5522,6 +5554,9 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         stubLabelShowRoom: data.stubLabelShowRoom ?? DEFAULT_STUB_LABEL_SHOW_ROOM,
         stubLabelPageMode: data.stubLabelPageMode ?? DEFAULT_STUB_LABEL_PAGE_MODE,
         useShortNames: data.useShortNames ?? false,
+        measurementSystem: data.measurementSystem
+          ? parseMeasurementSystem(data.measurementSystem)
+          : measurementSystemFromDistanceUnit(data.distanceSettings?.unit),
         wrapDeviceLabels: data.wrapDeviceLabels ?? false,
         hideAdapters: data.hideAdapters ?? false,
         autoRoute: data.autoRoute ?? true,
@@ -5607,6 +5642,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       stubLabelShowRoom: state.stubLabelShowRoom !== DEFAULT_STUB_LABEL_SHOW_ROOM ? state.stubLabelShowRoom : undefined,
       stubLabelPageMode: state.stubLabelPageMode !== DEFAULT_STUB_LABEL_PAGE_MODE ? state.stubLabelPageMode : undefined,
       useShortNames: state.useShortNames || undefined,
+      measurementSystem: state.measurementSystem !== "metric" ? state.measurementSystem : undefined,
       wrapDeviceLabels: state.wrapDeviceLabels || undefined,
       hideAdapters: state.hideAdapters || undefined,
       autoRoute: state.autoRoute === false ? false : undefined,
@@ -5640,11 +5676,17 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   },
 
   setTrackItLink: (trackItLink) => {
+    if (trackItLink?.measurementSystem) {
+      get().setMeasurementSystem(trackItLink.measurementSystem);
+    }
     set({ trackItLink });
     get().saveToLocalStorage();
   },
 
   setTrackItTowerContext: (trackItTowerContext) => {
+    if (trackItTowerContext?.measurementSystem) {
+      get().setMeasurementSystem(trackItTowerContext.measurementSystem);
+    }
     set({ trackItTowerContext });
   },
 
@@ -5882,6 +5924,9 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       stubLabelShowPort: data.stubLabelShowPort ?? DEFAULT_STUB_LABEL_SHOW_PORT,
       stubLabelPageMode: data.stubLabelPageMode ?? DEFAULT_STUB_LABEL_PAGE_MODE,
       useShortNames: data.useShortNames ?? false,
+      measurementSystem: data.measurementSystem
+        ? parseMeasurementSystem(data.measurementSystem)
+        : measurementSystemFromDistanceUnit(data.distanceSettings?.unit),
       wrapDeviceLabels: data.wrapDeviceLabels ?? false,
       hideAdapters: data.hideAdapters ?? false,
       autoRoute: data.autoRoute ?? true,

@@ -2,34 +2,54 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEVICE_TEMPLATES } from "../deviceLibraryRuntime";
 import { useSchematicStore } from "../store";
 import type { DeviceData, TowerDraftPage } from "../types";
-import { TowerDraftPlacementGlyph, TOWER_GLYPH_SIZE } from "../towerDraftGlyphs";
+import { TowerDraftPlacementGlyph, dishDiameterMFromData } from "../towerDraftGlyphs";
 import {
   ftAglToY,
   suggestPlacementOffsetX,
   TOWER_DRAFT_PX_PER_FT,
   TOWER_DRAFT_RULER_W,
-  towerDraftContentWidth,
   towerDraftGroundY,
   towerDraftPolylineDash,
   towerDraftTowerCenterX,
   yToFtAglWithSnap,
+  TOWER_DRAFT_ALL_FACES_COL_W,
+  TOWER_DRAFT_PAD_X,
 } from "../towerDraftUtils";
+import type { TowerElevationView, TowerFace } from "../towerDraftFaces";
+import {
+  activeViewFace,
+  placementCenterX,
+  placementVisibleInView,
+  resolvePlacementAzimuthDeg,
+  resolvePlacementTowerFace,
+  TOWER_FACE_LABELS,
+  TOWER_FACE_ORDER,
+  towerDraftContentWidthForView,
+  towerFaceAtContentX,
+  towerFaceColumnCenterX,
+} from "../towerDraftFaces";
+import { formatDistanceFromFt, formatHeightFtAgl, type MeasurementSystem } from "../measurementUnits";
 import ViewNavBar from "./ViewNavBar";
 import { stepViewZoom } from "../viewZoomUtils";
 import { resolveDeviceLabel } from "../displayName";
 import { draggedTowerDeviceNodeId, draggedTowerTemplateId } from "./TowerDraftSidebar";
 import type { TowerDraftDrawStyle } from "./TowerDraftToolbar";
+import type { TowerDraftContextMenuState } from "./TowerDraftContextMenu";
+import { snapOffsetXToMountLateral } from "../towerDraftMountLateral";
 
 interface TowerDraftRendererProps {
   page: TowerDraftPage;
   drawMode: boolean;
   snapFt: number;
   drawStyle: TowerDraftDrawStyle;
+  elevationView: TowerElevationView;
+  measurementSystem: MeasurementSystem;
   selectedPlacementId: string | null;
   selectedPolylineId: string | null;
   onSelectPlacement: (id: string | null) => void;
   onSelectPolyline: (id: string | null) => void;
   onClearSelection: () => void;
+  onOpenContextMenu: (menu: TowerDraftContextMenuState) => void;
   onDrawLineFinished?: () => void;
   onExitDrawMode?: () => void;
 }
@@ -39,11 +59,14 @@ export default function TowerDraftRenderer({
   drawMode,
   snapFt,
   drawStyle,
+  elevationView,
+  measurementSystem,
   selectedPlacementId,
   selectedPolylineId,
   onSelectPlacement,
   onSelectPolyline,
   onClearSelection,
+  onOpenContextMenu,
   onDrawLineFinished,
   onExitDrawMode,
 }: TowerDraftRendererProps) {
@@ -54,7 +77,6 @@ export default function TowerDraftRenderer({
   const addTowerDraftPlacement = useSchematicStore((s) => s.addTowerDraftPlacement);
   const updateTowerDraftPlacement = useSchematicStore((s) => s.updateTowerDraftPlacement);
   const addTowerDraftPolyline = useSchematicStore((s) => s.addTowerDraftPolyline);
-  const removeTowerDraftPlacement = useSchematicStore((s) => s.removeTowerDraftPlacement);
   const setEditingNodeId = useSchematicStore((s) => s.setEditingNodeId);
   const towerDraftFocusRequest = useSchematicStore((s) => s.towerDraftFocusRequest);
   const requestTowerDraftFocus = useSchematicStore((s) => s.requestTowerDraftFocus);
@@ -64,6 +86,7 @@ export default function TowerDraftRenderer({
 
   const svgRef = useRef<SVGSVGElement>(null);
   const contentGroupRef = useRef<SVGGElement>(null);
+  const suppressPlacementClickRef = useRef(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 40, y: 20 });
   const [draggingPlacementId, setDraggingPlacementId] = useState<string | null>(null);
@@ -75,16 +98,13 @@ export default function TowerDraftRenderer({
     y: number;
     lines: string[];
   } | null>(null);
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    placementId: string;
-    deviceNodeId: string;
-  } | null>(null);
 
-  const contentW = towerDraftContentWidth();
+  const PLACEMENT_DRAG_THRESHOLD_PX = 5;
+
+  const contentW = towerDraftContentWidthForView(elevationView);
   const groundY = towerDraftGroundY(page.towerHeightFtAgl);
   const centerX = towerDraftTowerCenterX();
+  const viewFace = activeViewFace(elevationView);
   const towerType = page.towerType ?? "self_support";
 
   /** Map screen coords into the panned/zoomed content group (fixes click offset). */
@@ -124,25 +144,6 @@ export default function TowerDraftRenderer({
   }, [towerDraftFocusRequest, page.id, page.placements, page.towerHeightFtAgl, zoom, onSelectPlacement, requestTowerDraftFocus]);
 
   useEffect(() => {
-    if (!contextMenu) return;
-    const close = () => setContextMenu(null);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    const timer = window.setTimeout(() => {
-      document.addEventListener("mousedown", close);
-      document.addEventListener("contextmenu", close);
-      document.addEventListener("keydown", onKey);
-    }, 0);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("contextmenu", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [contextMenu]);
-
-  useEffect(() => {
     if (!drawMode) {
       setDraftPoints([]);
       setCursorContent(null);
@@ -170,12 +171,23 @@ export default function TowerDraftRenderer({
     (deviceNodeId: string, clientX: number, clientY: number) => {
       const { x, y } = clientToContent(clientX, clientY);
       const ft = yToFtAglWithSnap(y, page.towerHeightFtAgl, snapFt, page.guideBandsFt);
-      const preferredOffset = x - centerX;
-      const offsetX = suggestPlacementOffsetX(page.placements, ft, preferredOffset);
+      const dropFace =
+        elevationView === "all-faces"
+          ? towerFaceAtContentX(x)
+          : elevationView !== "profile"
+            ? elevationView
+            : undefined;
+      const colCenter =
+        dropFace && elevationView === "all-faces"
+          ? towerFaceColumnCenterX(dropFace)
+          : centerX;
+      const preferredOffset = x - colCenter;
+      const offsetX = snapOffsetXToMountLateral(suggestPlacementOffsetX(page.placements, ft, preferredOffset));
       const id = addTowerDraftPlacement(page.id, {
         deviceNodeId,
         mountHeightFtAgl: ft,
         offsetX,
+        ...(dropFace ? { towerFace: dropFace } : {}),
       });
       onSelectPlacement(id);
     },
@@ -183,9 +195,11 @@ export default function TowerDraftRenderer({
       addTowerDraftPlacement,
       centerX,
       clientToContent,
+      elevationView,
       onSelectPlacement,
       page.id,
       page.placements,
+      page.guideBandsFt,
       page.towerHeightFtAgl,
       snapFt,
     ],
@@ -252,27 +266,102 @@ export default function TowerDraftRenderer({
     const topY = ftAglToY(page.towerHeightFtAgl, page.towerHeightFtAgl);
     const legL = centerX - 18;
     const legR = centerX + 18;
-    if (towerType === "monopole") {
-      return <line x1={centerX} y1={topY} x2={centerX} y2={groundY} stroke="#64748b" strokeWidth={3} />;
-    }
-    return (
-      <g stroke="#64748b" strokeWidth={1.5} fill="none">
-        <line x1={legL} y1={topY} x2={legL - 24} y2={groundY} />
-        <line x1={legR} y1={topY} x2={legR + 12} y2={groundY} />
-        <line x1={legL} y1={topY} x2={legR} y2={topY} />
-        {towerType === "self_support" &&
-          [0.25, 0.5, 0.75].map((t) => {
+    const baseL = legL - 24;
+    const baseR = legR + 12;
+
+    const renderFaceColumn = (colCx: number, face: TowerFace, showLabel: boolean) => {
+      const faceW = 56;
+      const faceL = colCx - faceW / 2;
+      return (
+        <g key={face}>
+          <rect
+            x={faceL}
+            y={topY}
+            width={faceW}
+            height={groundY - topY}
+            fill="rgba(100, 116, 139, 0.14)"
+            stroke="#64748b"
+            strokeWidth={1.5}
+          />
+          {[0.25, 0.5, 0.75].map((t) => {
             const y = topY + (groundY - topY) * t;
             return (
-              <g key={t} stroke="#94a3b8" strokeWidth={0.8} strokeDasharray="4 3">
-                <line x1={legL - 8} y1={y - 12} x2={legR - 8} y2={y + 12} />
-                <line x1={legR - 8} y1={y - 12} x2={legL - 8} y2={y + 12} />
-              </g>
+              <line
+                key={t}
+                x1={faceL + 4}
+                y1={y}
+                x2={faceL + faceW - 4}
+                y2={y}
+                stroke="#94a3b8"
+                strokeWidth={0.6}
+                strokeDasharray="3 4"
+                opacity={0.35}
+              />
             );
           })}
+          {showLabel && (
+            <text
+              x={colCx}
+              y={topY - 8}
+              textAnchor="middle"
+              fontSize={9}
+              fontWeight={600}
+              fill="var(--color-text-muted)"
+            >
+              {face} · {TOWER_FACE_LABELS[face]}
+            </text>
+          )}
+        </g>
+      );
+    };
+
+    if (elevationView === "all-faces") {
+      const startX = TOWER_DRAFT_RULER_W + TOWER_DRAFT_PAD_X;
+      return (
+        <g>
+          {TOWER_FACE_ORDER.map((face, idx) => {
+            const colCx = startX + idx * TOWER_DRAFT_ALL_FACES_COL_W + TOWER_DRAFT_ALL_FACES_COL_W / 2;
+            return renderFaceColumn(colCx, face, true);
+          })}
+        </g>
+      );
+    }
+
+    if (elevationView !== "profile") {
+      return renderFaceColumn(centerX, elevationView, true);
+    }
+
+    if (towerType === "monopole") {
+      return (
+        <g>
+          <ellipse
+            cx={centerX}
+            cy={(topY + groundY) / 2}
+            rx={14}
+            ry={(groundY - topY) / 2}
+            fill="rgba(100, 116, 139, 0.12)"
+            stroke="none"
+          />
+          <line x1={centerX} y1={topY} x2={centerX} y2={groundY} stroke="#64748b" strokeWidth={3} />
+        </g>
+      );
+    }
+
+    return (
+      <g>
+        <polygon
+          points={`${legL},${topY} ${legR},${topY} ${baseR},${groundY} ${baseL},${groundY}`}
+          fill="rgba(100, 116, 139, 0.14)"
+          stroke="none"
+        />
+        <g stroke="#64748b" strokeWidth={1.5} fill="none">
+          <line x1={legL} y1={topY} x2={baseL} y2={groundY} />
+          <line x1={legR} y1={topY} x2={baseR} y2={groundY} />
+          <line x1={legL} y1={topY} x2={legR} y2={topY} />
+        </g>
       </g>
     );
-  }, [centerX, groundY, page.towerHeightFtAgl, towerType]);
+  }, [centerX, groundY, page.towerHeightFtAgl, towerType, elevationView]);
 
   const previewCursor = cursorContent ? snapPoint(cursorContent.x, cursorContent.y) : null;
   const lastDraft = draftPoints[draftPoints.length - 1];
@@ -360,7 +449,7 @@ export default function TowerDraftRenderer({
                     }
                   }}
                 >
-                  {band.label ?? `${band.ftAgl}′`}
+                  {band.label ?? formatDistanceFromFt(band.ftAgl, measurementSystem)}
                 </text>
               </g>
             );
@@ -443,20 +532,22 @@ export default function TowerDraftRenderer({
           {page.placements.map((pl) => {
             const node = nodes.find((n) => n.id === pl.deviceNodeId);
             const data = node?.data as DeviceData | undefined;
+            if (!placementVisibleInView(pl, data, elevationView, trackItTowerContext)) return null;
             const label = data ? resolveDeviceLabel(data, { useShortNames }).text : pl.deviceNodeId;
             const y = ftAglToY(pl.mountHeightFtAgl, page.towerHeightFtAgl);
-            const x = centerX + (pl.offsetX ?? 0);
+            const plFace = resolvePlacementTowerFace(pl, data, trackItTowerContext);
+            const colCenter = placementCenterX(pl, data, elevationView, trackItTowerContext);
+            const x = colCenter + (pl.offsetX ?? 0);
+            const glyphFace =
+              elevationView === "all-faces" ? plFace : viewFace;
             const selected = pl.id === selectedPlacementId;
             const hovered = pl.id === hoverPlacementId;
-            const azimuthDeg =
-              data?.rfInstallation?.azimuthDeg ??
-              (pl.plantLocationId
-                ? trackItTowerContext?.antennaLevels.find((l) => l.id === pl.plantLocationId)?.azimuthDeg
-                : undefined);
+            const azimuthDeg = resolvePlacementAzimuthDeg(pl, data, trackItTowerContext);
             const bandLabel = data?.ports?.find((p) => p.rf?.band)?.rf?.band ?? "";
+            const heightLabel = formatHeightFtAgl(pl.mountHeightFtAgl, measurementSystem);
             const tipLines = [
               label,
-              `${pl.mountHeightFtAgl}′ AGL`,
+              heightLabel,
               data?.deviceType ?? "",
               data?.designation?.trim() ? `Designation: ${data.designation}` : "",
               data?.modelNumber?.trim() ? data.modelNumber : "",
@@ -468,25 +559,40 @@ export default function TowerDraftRenderer({
               <g
                 key={pl.id}
                 transform={`translate(${x}, ${y})`}
-                style={{ cursor: drawMode ? "crosshair" : "grab" }}
+                style={{ cursor: drawMode ? "crosshair" : draggingPlacementId === pl.id ? "grabbing" : "pointer" }}
                 onClick={(ev) => {
                   if (drawMode) return;
                   ev.stopPropagation();
-                  onSelectPlacement(selected ? null : pl.id);
+                  if (suppressPlacementClickRef.current) {
+                    suppressPlacementClickRef.current = false;
+                    return;
+                  }
+                  onSelectPlacement(pl.id);
                   onSelectPolyline(null);
+                }}
+                onDoubleClick={(ev) => {
+                  if (drawMode) return;
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  onSelectPlacement(pl.id);
+                  onSelectPolyline(null);
+                  setEditingNodeId(pl.deviceNodeId);
                 }}
                 onContextMenu={(ev) => {
                   if (drawMode) return;
                   ev.preventDefault();
                   ev.stopPropagation();
-                  setContextMenu({
-                    x: ev.clientX,
-                    y: ev.clientY,
-                    placementId: pl.id,
-                    deviceNodeId: pl.deviceNodeId,
-                  });
                   onSelectPlacement(pl.id);
                   onSelectPolyline(null);
+                  onOpenContextMenu({
+                    kind: "placement",
+                    pageId: page.id,
+                    placementId: pl.id,
+                    deviceNodeId: pl.deviceNodeId,
+                    plantLocationId: pl.plantLocationId,
+                    screenX: ev.clientX,
+                    screenY: ev.clientY,
+                  });
                 }}
                 onMouseEnter={(ev) => {
                   if (drawMode) return;
@@ -505,13 +611,34 @@ export default function TowerDraftRenderer({
                   if (drawMode || ev.button !== 0) return;
                   ev.stopPropagation();
                   onSelectPlacement(pl.id);
-                  setDraggingPlacementId(pl.id);
+                  onSelectPolyline(null);
                   setHoverTip(null);
+                  const startClient = { x: ev.clientX, y: ev.clientY };
                   const startSvg = clientToContent(ev.clientX, ev.clientY);
-                  const startOffsetX = pl.offsetX ?? 0;
+                  const startColCenter = placementCenterX(pl, data, elevationView, trackItTowerContext);
                   const startFt = pl.mountHeightFtAgl;
+                  let dragging = false;
+                  let lastOffsetX = pl.offsetX ?? 0;
                   const onMove = (moveEv: MouseEvent) => {
+                    if (!dragging) {
+                      const dx = moveEv.clientX - startClient.x;
+                      const dy = moveEv.clientY - startClient.y;
+                      if (Math.hypot(dx, dy) < PLACEMENT_DRAG_THRESHOLD_PX) return;
+                      dragging = true;
+                      setDraggingPlacementId(pl.id);
+                    }
                     const cur = clientToContent(moveEv.clientX, moveEv.clientY);
+                    const dragFace =
+                      elevationView === "all-faces"
+                        ? towerFaceAtContentX(cur.x)
+                        : elevationView !== "profile"
+                          ? elevationView
+                          : undefined;
+                    const dragColCenter =
+                      dragFace && elevationView === "all-faces"
+                        ? towerFaceColumnCenterX(dragFace)
+                        : startColCenter;
+                    lastOffsetX = cur.x - dragColCenter;
                     updateTowerDraftPlacement(page.id, pl.id, {
                       mountHeightFtAgl: yToFtAglWithSnap(
                         ftAglToY(startFt, page.towerHeightFtAgl) + (cur.y - startSvg.y),
@@ -519,10 +646,18 @@ export default function TowerDraftRenderer({
                         snapFt,
                         page.guideBandsFt,
                       ),
-                      offsetX: startOffsetX + (cur.x - startSvg.x),
+                      offsetX: lastOffsetX,
+                      ...(dragFace ? { towerFace: dragFace } : {}),
                     });
                   };
                   const onUp = () => {
+                    if (dragging) {
+                      suppressPlacementClickRef.current = true;
+                      const snapped = snapOffsetXToMountLateral(lastOffsetX);
+                      if (snapped !== lastOffsetX) {
+                        updateTowerDraftPlacement(page.id, pl.id, { offsetX: snapped });
+                      }
+                    }
                     setDraggingPlacementId(null);
                     window.removeEventListener("mousemove", onMove);
                     window.removeEventListener("mouseup", onUp);
@@ -532,15 +667,19 @@ export default function TowerDraftRenderer({
                 }}
                 opacity={draggingPlacementId === pl.id ? 0.85 : 1}
               >
-                <title>{tipLines.join(" · ")}</title>
                 <TowerDraftPlacementGlyph
                   deviceType={data?.deviceType}
                   selected={selected}
                   hovered={hovered}
                   azimuthDeg={azimuthDeg}
+                  dishDiameterM={dishDiameterMFromData(data)}
+                  elevationView={elevationView}
+                  viewFace={glyphFace}
+                  placementFace={plFace}
+                  mountFlip={pl.mountFlip}
                 />
                 {(labelLayers.designation || labelLayers.azimuth || labelLayers.band) && (
-                  <g transform={`translate(${TOWER_GLYPH_SIZE / 2 + 4}, 0)`} data-print-show>
+                  <g transform={`translate(8, 0)`} data-print-show>
                     {labelLayers.designation && (
                       <text x={0} y={-4} fontSize={8} fill="var(--color-text)">
                         {label}
@@ -563,10 +702,15 @@ export default function TowerDraftRenderer({
           })}
 
           <text x={centerX - 40} y={16} fontSize={10} fontWeight={600} fill="var(--color-text)">
-            Tower elevation (documentation scale)
+            {elevationView === "profile"
+              ? "Tower elevation (documentation scale)"
+              : elevationView === "all-faces"
+                ? "All faces — equipment by azimuth / face"
+                : `${TOWER_FACE_LABELS[elevationView]} face — equipment layout`}
           </text>
           <text x={centerX - 40} y={28} fontSize={8} fill="var(--color-text-muted)">
-            {page.towerHeightFtAgl}′ {towerType.replace("_", " ")} · hover for details · right-click to edit
+            {formatHeightFtAgl(page.towerHeightFtAgl, measurementSystem, { suffix: false })}{" "}
+            {towerType.replace("_", " ")} · click to select · drag to move · double-click device to edit
           </text>
         </g>
       </svg>
@@ -584,70 +728,6 @@ export default function TowerDraftRenderer({
               {line}
             </div>
           ))}
-        </div>
-      )}
-
-      {contextMenu && (
-        <div
-          className="fixed z-50 min-w-[160px] rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] py-1 text-xs shadow-lg"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-surface-hover)] text-[var(--color-text)]"
-            onClick={() => {
-              onSelectPlacement(contextMenu.placementId);
-              setContextMenu(null);
-            }}
-          >
-            Edit mount height…
-          </button>
-          <button
-            type="button"
-            className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-surface-hover)] text-[var(--color-text)]"
-            onClick={() => {
-              setEditingNodeId(contextMenu.deviceNodeId);
-              setContextMenu(null);
-            }}
-          >
-            Edit device details…
-          </button>
-          <button
-            type="button"
-            className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-surface-hover)] text-[var(--color-text)]"
-            onClick={() => {
-              const pl = page.placements.find((p) => p.id === contextMenu.placementId);
-              try {
-                if (window.opener && !window.opener.closed) {
-                  window.opener.postMessage(
-                    {
-                      type: "KGO_ES_FOCUS_TOWER_LEVEL",
-                      payload: { plantLocationId: pl?.plantLocationId },
-                    },
-                    "*",
-                  );
-                }
-              } catch {
-                /* ignore */
-              }
-              setContextMenu(null);
-            }}
-          >
-            Open in trackIT…
-          </button>
-          <div className="border-t border-[var(--color-border)] my-1" />
-          <button
-            type="button"
-            className="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600 dark:hover:bg-red-950/40"
-            onClick={() => {
-              removeTowerDraftPlacement(page.id, contextMenu.placementId);
-              onSelectPlacement(null);
-              setContextMenu(null);
-            }}
-          >
-            Remove from elevation
-          </button>
         </div>
       )}
     </div>

@@ -53,6 +53,7 @@ import { templates as kgoMrMrcMrx4000 } from "./devices/kgo-mr-mrc-mrx4000";
 import { templates as kgoErHdEncoder } from "./devices/kgo-er-hd-encoder";
 import { templates as rfMicrowaveStl } from "./devices/rf-microwave-stl";
 import { templates as kgoTowerSite } from "./devices/kgo-tower-site";
+import { templates as kgoBoPtzCamera } from "./devices/kgo-bo-ptz-camera";
 
 import { DEVICE_TYPE_TO_CATEGORY } from "./deviceTypeCategories";
 export { DEVICE_TYPE_TO_CATEGORY };
@@ -105,6 +106,7 @@ export const DEVICE_TEMPLATES: DeviceTemplate[] = [
 
   ...rfMicrowaveStl,
   ...kgoTowerSite,
+  ...kgoBoPtzCamera,
 
 ];
 

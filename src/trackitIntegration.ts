@@ -4,9 +4,16 @@
  */
 
 import { shouldShowCadTools } from "./cadDrawingUtils";
-import { trackItAutosaveKey, useSchematicStore } from "./store";
+import {
+  markSchematicStorageHydrated,
+  trackItAutosaveKey,
+  useSchematicStore,
+} from "./store";
 import { useSidebarStore } from "./sidebarStore";
 import type { SchematicFile, TrackItLinkContext } from "./types";
+
+/** Last linked plant_drawings row — survives popup reload when trackIT bootstrap is delayed. */
+export const TRACKIT_ACTIVE_LINK_KEY = "kgo-es-trackit-active-link";
 
 export type { TrackItLinkContext };
 
@@ -109,8 +116,54 @@ function installTrackItAutosavePagehideHook(): void {
   if (pagehideHookInstalled || typeof window === "undefined") return;
   pagehideHookInstalled = true;
   window.addEventListener("pagehide", () => {
+    try {
+      useSchematicStore.getState().saveToLocalStorage();
+    } catch {
+      // tab closing
+    }
     flushTrackItAutosave();
   });
+}
+
+export function persistTrackItActiveLink(link: TrackItLinkContext): void {
+  try {
+    localStorage.setItem(TRACKIT_ACTIVE_LINK_KEY, JSON.stringify(link));
+  } catch {
+    // Storage unavailable
+  }
+}
+
+export function readTrackItActiveLink(): TrackItLinkContext | null {
+  try {
+    const raw = localStorage.getItem(TRACKIT_ACTIVE_LINK_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<TrackItLinkContext>;
+    if (!parsed?.drawingId || !parsed?.dwgNumber) return null;
+    return parsed as TrackItLinkContext;
+  } catch {
+    return null;
+  }
+}
+
+/** Restore per-drawing autosave on popup reload before trackIT postMessage bootstrap. */
+export function restoreTrackItPopupAutosaveOnMount(): void {
+  if (!isTrackItPopupOpener()) return;
+
+  const store = useSchematicStore.getState();
+  const link = readTrackItActiveLink();
+
+  if (link?.drawingId) {
+    if (store.trackItLink?.drawingId !== link.drawingId || store.nodes.length === 0) {
+      const loaded = loadTrackItDrawingAutosave(link.drawingId);
+      store.setTrackItLink(link);
+      const drawingName = link.drawingName?.trim();
+      if (drawingName) store.setSchematicName(drawingName);
+      useSchematicStore.setState({ isDemo: false });
+      if (loaded) return;
+    }
+  }
+
+  markSchematicStorageHydrated();
 }
 
 /** Push pending debounced save immediately (e.g. popup close). */
@@ -160,6 +213,7 @@ export function beginBlankTrackItDrawing(link: TrackItLinkContext): void {
 
 export function applyTrackItLink(link: TrackItLinkContext): void {
   if (!link?.drawingId) return;
+  persistTrackItActiveLink(link);
   const store = useSchematicStore.getState();
   const switched = store.trackItLink?.drawingId !== link.drawingId;
   if (switched) {

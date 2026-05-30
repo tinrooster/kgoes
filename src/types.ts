@@ -13,7 +13,7 @@ export type ConnectorType =
   | "mini-din-4" | "mini-din-7" | "mini-din-8"
   | "mini-hdmi" | "mini-displayport"
   | "rj11" | "rj12" | "usb-mini" | "usb-micro" | "trs-2.5mm"
-  | "reverse-tnc" | "sma" | "db37"
+  | "reverse-tnc" | "n-connector" | "sma" | "db37"
   | "d-tap" | "v-mount" | "f-connector"
   | "lemo-2pin" | "lemo-4pin" | "lemo-5pin"
   | "wireless"
@@ -333,6 +333,8 @@ export interface DeviceData {
   facePlateLayout?: FacePlateLayout;
   /** Antenna azimuth/tilt/beamwidth for tower stack drawings. */
   rfInstallation?: RfInstallationMetadata;
+  /** Parabolic dish diameter in metres (microwave-dish instances). */
+  dishDiameterM?: number;
 }
 
 /** One row of auxiliary data shown on a device node. */
@@ -576,6 +578,8 @@ export interface DeviceTemplate {
   auxiliaryData?: AuxRow[];      // Aux rows shown on the node (each row carries its own header/footer slot)
   facePlateLayout?: FacePlateLayout; // Custom face-plate connector positions
   rfInstallation?: RfInstallationMetadata;
+  /** Parabolic dish diameter in metres (microwave-dish templates). */
+  dishDiameterM?: number;
 }
 
 export interface CustomTemplateGroup {
@@ -767,12 +771,18 @@ export interface TowerGuideBandFt {
 }
 
 /** Device/antenna placed at a height on the tower draft elevation. */
+export type TowerFace = "N" | "S" | "E" | "W";
+
 export interface TowerDraftPlacement {
   id: string;
   deviceNodeId: string;
   mountHeightFtAgl: number;
   /** Horizontal offset from tower centerline (px). */
   offsetX?: number;
+  /** Tower face when viewing N/S/E/W elevation (explicit override). */
+  towerFace?: TowerFace;
+  /** Flip aimable glyph 180° (dish/horn mount orientation on elevation). */
+  mountFlip?: boolean;
   /** trackIT plant_locations.id (antenna_level). */
   plantLocationId?: string;
   cadLayer?: "generated" | "user";
@@ -940,6 +950,8 @@ export interface SchematicFile {
   /** Render device labels using their shortName when available. Defaults false;
    *  user opt-in via Preferences. */
   useShortNames?: boolean;
+  /** Metric (source data) vs imperial display for heights and distances. */
+  measurementSystem?: MeasurementSystem;
   /** Wrap long device labels across two lines instead of truncating with ellipsis.
    *  New files default true; undefined on loaded files = legacy single-line truncate. */
   wrapDeviceLabels?: boolean;
@@ -950,6 +962,8 @@ export interface SchematicFile {
 }
 
 /** trackIT plant drawing this schematic belongs to (popup / embed integration). */
+export type MeasurementSystem = "metric" | "imperial";
+
 export type TrackItLinkContext = {
   drawingId: string;
   organizationId: string | null;
@@ -957,12 +971,15 @@ export type TrackItLinkContext = {
   drawingName?: string;
   /** trackIT plant_drawings.drawing_type — drives CAD toolbar visibility. */
   drawingType?: string;
+  /** Display preference pushed from trackIT settings. */
+  measurementSystem?: MeasurementSystem;
 };
 
 export type TrackItTowerSiteContext = {
   siteCode: string;
   siteName: string;
   towerHeightFt: number;
+  measurementSystem?: MeasurementSystem;
   accessNotes?: string;
   towerCompany?: string;
   antennaLevels: {
@@ -1199,6 +1216,7 @@ export const CONNECTOR_LABELS: Record<ConnectorType, string> = {
   "usb-micro": "Micro USB",
   "trs-2.5mm": "2.5mm TRS",
   "reverse-tnc": "Reverse TNC",
+  "n-connector": "N-Type",
   sma: "SMA",
   db37: "DB37",
   "d-tap": "D-Tap",
@@ -1319,6 +1337,6 @@ export const CONNECTOR_GROUPS: Record<string, ConnectorType[]> = {
   "Power": ["iec", "iec-c5", "iec-c7", "iec-c15", "iec-c20", "powercon", "powercon-true1", "edison", "barrel", "l5-20", "l6-20", "l6-30", "l21-30", "cam-lok", "socapex", "pcie-6pin", "lemo-2pin", "lemo-4pin", "d-tap", "v-mount"],
   "Speaker": ["speakon", "banana", "binding-post", "binding-post-banana"],
   "Terminal": ["phoenix", "terminal-block", "multipin", "solder-cup", "punch-down-110", "punch-down-66", "krone-idc"],
-  "RF": ["reverse-tnc", "sma", "f-connector"],
+  "RF": ["reverse-tnc", "n-connector", "sma", "f-connector"],
   "Other": ["wireless", "digilink", "d-hole-insert", "none", "other"],
 };

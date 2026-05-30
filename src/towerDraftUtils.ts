@@ -15,6 +15,8 @@ export const TOWER_DRAFT_PAD_X = 120;
 export const TOWER_DRAFT_PAD_TOP = 48;
 export const TOWER_DRAFT_PAD_BOTTOM = 48;
 export const TOWER_DRAFT_COLUMN_W = 80;
+/** Column width per face in all-faces elevation view. */
+export const TOWER_DRAFT_ALL_FACES_COL_W = 96;
 
 /** Horizontal spacing when stacking antennas at similar heights. */
 export const TOWER_DRAFT_PLACEMENT_SPACING = 38;
@@ -153,6 +155,10 @@ const TOWER_DRAFT_INCLUDED = new Set([
   "rf-antenna",
   "rf-slot-panel",
   "rf-yagi",
+  "rf-repeater-antenna",
+  "rf-collinear",
+  "camera",
+  "ptz-camera",
   "tower-obstruction-light",
   "site-obstruction-light",
   "site-rest-platform",

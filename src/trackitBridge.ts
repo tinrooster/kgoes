@@ -3,7 +3,14 @@
  * See trackIT: docs/easyschematic-writeback-protocol.md
  */
 
-import { applyTrackItLink, beginBlankTrackItDrawing, maybeAutoOpenCadToolsPanel, maybeAutoOpenTowerDraftTab } from "./trackitIntegration";
+import {
+  applyTrackItLink,
+  beginBlankTrackItDrawing,
+  loadTrackItDrawingAutosave,
+  maybeAutoOpenCadToolsPanel,
+  maybeAutoOpenTowerDraftTab,
+} from "./trackitIntegration";
+import { hasTrackItDrawingAutosave } from "./store";
 import { mergeNumberingSnapshot, upsertTrackItBlock } from "./trackitNumberingMerge";
 import { useSchematicStore } from "./store";
 import type { SchematicFile, TrackItNumberBlock, TrackItNumberingState, TrackItLinkContext, TrackItTowerSiteContext } from "./types";
@@ -218,8 +225,33 @@ export function startTrackItBridge(): void {
 
       if (nodes.length === 0 && edges.length === 0) {
         if (link?.drawingId) {
+          const hasCanvasContent = store.nodes.length > 0 || store.edges.length > 0;
+          const hasLocalAutosave = hasTrackItDrawingAutosave(link.drawingId);
+          if (hasCanvasContent || hasLocalAutosave) {
+            if (!hasCanvasContent && hasLocalAutosave) {
+              loadTrackItDrawingAutosave(link.drawingId);
+            }
+            store.setTrackItLink(link);
+            const drawingName = link.drawingName?.trim();
+            if (drawingName) store.setSchematicName(drawingName);
+            useSchematicStore.setState({ isDemo: false });
+            return;
+          }
           beginBlankTrackItDrawing(link);
         }
+        return;
+      }
+
+      const currentContent = store.nodes.length + store.edges.length;
+      const incomingContent = nodes.length + edges.length;
+      if (
+        link?.drawingId &&
+        store.trackItLink?.drawingId === link.drawingId &&
+        currentContent > incomingContent
+      ) {
+        store.setTrackItLink(link);
+        const drawingName = link.drawingName?.trim();
+        if (drawingName) store.setSchematicName(drawingName);
         return;
       }
 

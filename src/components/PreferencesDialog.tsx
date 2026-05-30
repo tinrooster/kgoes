@@ -99,6 +99,8 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
   const setStubLabelPageMode = useSchematicStore((s) => s.setStubLabelPageMode);
   const useShortNames = useSchematicStore((s) => s.useShortNames);
   const setUseShortNames = useSchematicStore((s) => s.setUseShortNames);
+  const measurementSystem = useSchematicStore((s) => s.measurementSystem);
+  const setMeasurementSystem = useSchematicStore((s) => s.setMeasurementSystem);
   const wrapDeviceLabels = useSchematicStore((s) => s.wrapDeviceLabels);
   const setWrapDeviceLabels = useSchematicStore((s) => s.setWrapDeviceLabels);
   const [autoRoutePref, setAutoRoutePref] = useState(
@@ -323,6 +325,27 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
 
           {activeTab === "display" && (
             <>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2">
+                  Units
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-xs text-[var(--color-text)]">Measurement system</span>
+                  <select
+                    className={selectClass}
+                    value={measurementSystem}
+                    onChange={(e) => setMeasurementSystem(e.target.value as "metric" | "imperial")}
+                  >
+                    <option value="metric">Metric (m)</option>
+                    <option value="imperial">Imperial (ft)</option>
+                  </select>
+                </div>
+                <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
+                  Tower elevations, room distances, and rack dimensions display in the selected system. trackIT stores
+                  source heights in metres; imperial values are converted for display.
+                </p>
+              </div>
+
               {/* Labels */}
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2">

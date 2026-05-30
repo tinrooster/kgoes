@@ -3,7 +3,9 @@ import { DEVICE_TEMPLATES } from "../deviceLibraryRuntime";
 import { useSchematicStore } from "../store";
 import type { DeviceData, DeviceTemplate, TowerDraftPage } from "../types";
 import { isTowerDraftEligibleDeviceType, placementSyncStatus, towerDraftLibraryTemplates } from "../towerDraftUtils";
+import { formatHeightFtAgl, type MeasurementSystem } from "../measurementUnits";
 import { resolveDeviceLabel } from "../displayName";
+import type { TowerDraftContextMenuState } from "./TowerDraftContextMenu";
 import TowerDraftTrackItPanel from "./TowerDraftTrackItPanel";
 
 export let draggedTowerDeviceNodeId: string | null = null;
@@ -11,11 +13,13 @@ export let draggedTowerTemplateId: string | null = null;
 
 interface TowerDraftSidebarProps {
   page: TowerDraftPage;
+  measurementSystem: MeasurementSystem;
   selectedPlacementId: string | null;
   selectedPolylineId: string | null;
   onSelectPlacement: (id: string | null) => void;
   onSelectPolyline: (id: string | null) => void;
   onSelectLevel: (plantLocationId: string) => void;
+  onOpenContextMenu: (menu: TowerDraftContextMenuState) => void;
 }
 
 function matchesSearch(label: string, deviceType: string | undefined, search: string): boolean {
@@ -26,11 +30,13 @@ function matchesSearch(label: string, deviceType: string | undefined, search: st
 
 export default function TowerDraftSidebar({
   page,
+  measurementSystem,
   selectedPlacementId,
   selectedPolylineId,
   onSelectPlacement,
   onSelectPolyline,
   onSelectLevel,
+  onOpenContextMenu,
 }: TowerDraftSidebarProps) {
   const nodes = useSchematicStore((s) => s.nodes);
   const customTemplates = useSchematicStore((s) => s.customTemplates);
@@ -38,7 +44,6 @@ export default function TowerDraftSidebar({
   const trackItTowerContext = useSchematicStore((s) => s.trackItTowerContext);
   const removeTowerDraftPlacement = useSchematicStore((s) => s.removeTowerDraftPlacement);
   const removeTowerDraftPolyline = useSchematicStore((s) => s.removeTowerDraftPolyline);
-  const updateTowerDraftPlacement = useSchematicStore((s) => s.updateTowerDraftPlacement);
   const [search, setSearch] = useState("");
 
   const placedNodeIds = new Set(page.placements.map((p) => p.deviceNodeId));
@@ -90,8 +95,6 @@ export default function TowerDraftSidebar({
     return "○";
   };
 
-  const selectedPlacement = page.placements.find((p) => p.id === selectedPlacementId);
-
   const renderDraggableTemplate = (template: DeviceTemplate) => (
     <div
       key={template.id}
@@ -127,6 +130,10 @@ export default function TowerDraftSidebar({
         onDragEnd={() => {
           draggedTowerDeviceNodeId = null;
         }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onOpenContextMenu({ kind: "device", nodeId: n.id, screenX: e.clientX, screenY: e.clientY });
+        }}
         className="px-2 py-1.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] text-xs cursor-grab hover:border-blue-400/70 hover:bg-[var(--color-surface-hover)]"
       >
         <div className="font-medium truncate text-[var(--color-text)]">{label}</div>
@@ -142,57 +149,6 @@ export default function TowerDraftSidebar({
     >
       <TowerDraftTrackItPanel page={page} onSelectLevel={onSelectLevel} />
 
-      {selectedPlacement && (
-        <div className="px-2 py-2 border-b border-blue-200 bg-blue-50/80 dark:bg-blue-950/30">
-          <div className="text-[10px] uppercase tracking-wider text-blue-700 dark:text-blue-300 mb-1">
-            Edit placement
-          </div>
-          <label className="flex items-center gap-2 text-[11px] text-[var(--color-text)] mb-1">
-            Height (ft AGL)
-            <input
-              type="number"
-              min={0}
-              max={page.towerHeightFtAgl}
-              step={1}
-              value={selectedPlacement.mountHeightFtAgl}
-              onChange={(e) =>
-                updateTowerDraftPlacement(page.id, selectedPlacement.id, {
-                  mountHeightFtAgl: Math.max(
-                    0,
-                    Math.min(page.towerHeightFtAgl, Number(e.target.value) || 0),
-                  ),
-                })
-              }
-              className="w-16 px-1 py-0.5 text-xs rounded border border-[var(--color-border)] bg-[var(--color-bg)]"
-            />
-          </label>
-          <label className="flex items-center gap-2 text-[11px] text-[var(--color-text)]">
-            Offset (px)
-            <input
-              type="number"
-              step={5}
-              value={Math.round(selectedPlacement.offsetX ?? 0)}
-              onChange={(e) =>
-                updateTowerDraftPlacement(page.id, selectedPlacement.id, {
-                  offsetX: Number(e.target.value) || 0,
-                })
-              }
-              className="w-16 px-1 py-0.5 text-xs rounded border border-[var(--color-border)] bg-[var(--color-bg)]"
-            />
-          </label>
-          <button
-            type="button"
-            className="mt-1.5 text-[11px] text-red-600 hover:text-red-800"
-            onClick={() => {
-              removeTowerDraftPlacement(page.id, selectedPlacement.id);
-              onSelectPlacement(null);
-            }}
-          >
-            Remove from elevation
-          </button>
-        </div>
-      )}
-
       <div className="px-2 py-2 border-b border-[var(--color-border)]">
         <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1">
           Antennas &amp; MW gear
@@ -205,7 +161,7 @@ export default function TowerDraftSidebar({
           className="w-full px-2 py-1 text-xs rounded border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)]"
         />
         <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5 leading-snug">
-          Drag onto the elevation. Click a guide-band label to snap a selected placement to that height.
+          Drag onto the elevation. Right-click a drawing device for the edit menu.
         </p>
       </div>
 
@@ -232,6 +188,11 @@ export default function TowerDraftSidebar({
         <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1">
           On this tower ({page.placements.length})
         </div>
+        {page.placements.length > 0 && (
+          <p className="text-[10px] text-[var(--color-text-muted)] mb-1 leading-snug">
+            Click to select · right-click for menu
+          </p>
+        )}
         {page.placements.length === 0 && page.polylines.length === 0 ? (
           <p className="text-[11px] text-[var(--color-text-muted)]">Nothing placed yet — drag from list above or refresh from trackIT.</p>
         ) : (
@@ -247,11 +208,28 @@ export default function TowerDraftSidebar({
                   className={`w-full flex items-center justify-between gap-1 text-[11px] py-1 px-1 rounded text-left ${
                     isSelected ? "bg-blue-100 dark:bg-blue-900/40" : "hover:bg-[var(--color-surface-hover)]"
                   }`}
-                  onClick={() => onSelectPlacement(isSelected ? null : pl.id)}
+                  onClick={() => {
+                    onSelectPlacement(pl.id);
+                    onSelectPolyline(null);
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    onSelectPlacement(pl.id);
+                    onSelectPolyline(null);
+                    onOpenContextMenu({
+                      kind: "placement",
+                      pageId: page.id,
+                      placementId: pl.id,
+                      deviceNodeId: pl.deviceNodeId,
+                      plantLocationId: pl.plantLocationId,
+                      screenX: e.clientX,
+                      screenY: e.clientY,
+                    });
+                  }}
                 >
                   <span className="truncate" title={label}>
                     <span className="text-[10px] mr-1">{syncBadge(pl)}</span>
-                    {pl.mountHeightFtAgl}′ · {label}
+                    {formatHeightFtAgl(pl.mountHeightFtAgl, measurementSystem, { suffix: false })} · {label}
                   </span>
                   <span
                     role="button"

@@ -1,5 +1,8 @@
 import type { TowerDraftLineStyle, TowerDraftPage } from "../types";
 import { TOWER_DRAFT_SNAP_LEVEL } from "../towerDraftUtils";
+import type { TowerElevationView } from "../towerDraftFaces";
+import { TOWER_FACE_LABELS } from "../towerDraftFaces";
+import { formatDistanceFromFt, type MeasurementSystem } from "../measurementUnits";
 
 export interface TowerDraftDrawStyle {
   strokeWidth: number;
@@ -16,14 +19,15 @@ interface TowerDraftToolbarProps {
   onSnapFtChange: (ft: number) => void;
   drawStyle: TowerDraftDrawStyle;
   onDrawStyleChange: (patch: Partial<TowerDraftDrawStyle>) => void;
-  selectedLabel?: string | null;
-  onRemoveSelected?: () => void;
   onSyncFromSchematic?: () => void;
   onSuggestFeedlines?: () => void;
   onExportCsv?: () => void;
   onPrint?: () => void;
   labelLayers: NonNullable<TowerDraftPage["labelLayers"]>;
   onLabelLayersChange: (patch: Partial<NonNullable<TowerDraftPage["labelLayers"]>>) => void;
+  elevationView: TowerElevationView;
+  onElevationViewChange: (view: TowerElevationView) => void;
+  measurementSystem: MeasurementSystem;
 }
 
 export default function TowerDraftToolbar({
@@ -35,14 +39,15 @@ export default function TowerDraftToolbar({
   onSnapFtChange,
   drawStyle,
   onDrawStyleChange,
-  selectedLabel,
-  onRemoveSelected,
   onSyncFromSchematic,
   onSuggestFeedlines,
   onExportCsv,
   onPrint,
   labelLayers,
   onLabelLayersChange,
+  elevationView,
+  onElevationViewChange,
+  measurementSystem,
 }: TowerDraftToolbarProps) {
   const toggleOff =
     "px-2.5 py-1 text-[11px] font-medium rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer whitespace-nowrap";
@@ -50,9 +55,6 @@ export default function TowerDraftToolbar({
     "px-2.5 py-1 text-[11px] font-medium rounded-md border border-blue-600 bg-blue-600 text-white shadow-sm cursor-pointer whitespace-nowrap";
   const latchedOn =
     "px-2.5 py-1 text-[11px] font-medium rounded-md border border-amber-500 bg-amber-500 text-white shadow-sm cursor-pointer whitespace-nowrap";
-  const actionBtn =
-    "px-2.5 py-1 text-[11px] font-medium rounded-md border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition-colors cursor-pointer whitespace-nowrap dark:bg-red-950/40 dark:text-red-300 dark:border-red-800";
-
   const drawBtnClass = drawMode ? (drawLatched ? latchedOn : toggleOn) : toggleOff;
 
   return (
@@ -63,6 +65,31 @@ export default function TowerDraftToolbar({
       <span className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] shrink-0">
         Tower draft
       </span>
+
+      <div className="flex items-center gap-0.5 rounded-md border border-[var(--color-border)] p-0.5">
+        {(["profile", "all-faces", "N", "S", "E", "W"] as TowerElevationView[]).map((view) => {
+          const active = elevationView === view;
+          const label =
+            view === "profile" ? "Profile" : view === "all-faces" ? "All" : view;
+          const title =
+            view === "profile"
+              ? "Centerline elevation"
+              : view === "all-faces"
+                ? "North, East, South, West faces side by side"
+                : `${TOWER_FACE_LABELS[view]} face equipment`;
+          return (
+            <button
+              key={view}
+              type="button"
+              title={title}
+              className={active ? toggleOn : toggleOff}
+              onClick={() => onElevationViewChange(view)}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
 
       <button type="button" className={drawBtnClass} aria-pressed={drawMode} onClick={() => {
         if (drawMode) { onDrawModeChange(false); onDrawLatchedChange(false); }
@@ -103,9 +130,9 @@ export default function TowerDraftToolbar({
         <select value={snapFt} onChange={(e) => onSnapFtChange(Number(e.target.value))} className="text-[11px] rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-1 py-0.5">
           <option value={0}>Off</option>
           <option value={TOWER_DRAFT_SNAP_LEVEL}>Level</option>
-          <option value={1}>1′</option>
-          <option value={5}>5′</option>
-          <option value={10}>10′</option>
+          <option value={1}>{formatDistanceFromFt(1, measurementSystem)}</option>
+          <option value={5}>{formatDistanceFromFt(5, measurementSystem)}</option>
+          <option value={10}>{formatDistanceFromFt(10, measurementSystem)}</option>
         </select>
       </label>
 
@@ -134,15 +161,6 @@ export default function TowerDraftToolbar({
         <input type="checkbox" checked={!!labelLayers.band} onChange={(e) => onLabelLayersChange({ band: e.target.checked })} />
         Band
       </label>
-
-      {selectedLabel && onRemoveSelected && (
-        <>
-          <span className="text-[10px] text-[var(--color-text-muted)] truncate max-w-[140px]" title={selectedLabel}>
-            Selected: {selectedLabel}
-          </span>
-          <button type="button" className={actionBtn} onClick={onRemoveSelected}>Remove</button>
-        </>
-      )}
     </div>
   );
 }
