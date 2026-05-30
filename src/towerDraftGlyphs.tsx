@@ -56,10 +56,28 @@ export function towerGlyphMountPoint(deviceType?: string): { x: number; y: numbe
     case "microwave-dish":
     case "microwave-horn":
     case "microwave-odu":
+    case "outdoor-ptz-camera":
+    case "camera":
+    case "ptz-camera":
       return { x: cx, y: cy };
     default:
       return { x: cx, y: cy };
   }
+}
+
+/** Outdoor PTZ — dome on mast; lens boresight toward +X at 0° azimuth. */
+function outdoorPtzSymbol(stroke: string, fill: string, cx: number, cy: number) {
+  return (
+    <g stroke={stroke} fill={fill}>
+      <line x1={cx} y1={cy + 2} x2={cx} y2={cy + 10} strokeWidth={1.5} />
+      <path
+        d={`M ${cx - 9} ${cy + 2} Q ${cx} ${cy - 10} ${cx + 9} ${cy + 2} Z`}
+        strokeWidth={1.4}
+      />
+      <circle cx={cx + 6} cy={cy - 2} r={2.8} fill="none" strokeWidth={1.3} />
+      <path d={`M ${cx + 4} ${cy - 5} L ${cx + 10} ${cy - 3}`} strokeWidth={0.9} fill="none" />
+    </g>
+  );
 }
 
 function towerSymbol(
@@ -118,16 +136,10 @@ function towerSymbol(
           <path d={`M ${cx} ${cy - 6} L ${cx + 16} ${cy} L ${cx} ${cy + 6} Z`} />
         </g>
       );
+    case "outdoor-ptz-camera":
     case "camera":
     case "ptz-camera":
-      return (
-        <g stroke={stroke} fill={fill} strokeWidth={1.3}>
-          <line x1={cx - 10} y1={cy} x2={cx - 3} y2={cy} />
-          <ellipse cx={cx + 1} cy={cy} rx={7} ry={6.5} />
-          <rect x={cx + 6} y={cy - 2.5} width={9} height={5} rx={1.2} />
-          <circle cx={cx + 16} cy={cy} r={2.2} fill={fill} />
-        </g>
-      );
+      return outdoorPtzSymbol(stroke, fill, cx, cy);
     case "tower-obstruction-light":
     case "site-obstruction-light":
       return (
@@ -181,6 +193,7 @@ export function TowerDraftPlacementGlyph({
     deviceType === "microwave-dish" ||
     deviceType === "microwave-horn" ||
     deviceType === "microwave-odu" ||
+    deviceType === "outdoor-ptz-camera" ||
     deviceType === "camera" ||
     deviceType === "ptz-camera";
   const showAimTick =

@@ -151,7 +151,7 @@ export default function TowerDraftSidebar({
 
       <div className="px-2 py-2 border-b border-[var(--color-border)]">
         <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1">
-          Antennas &amp; MW gear
+          Antennas, MW &amp; cameras
         </div>
         <input
           type="search"

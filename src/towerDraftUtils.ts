@@ -159,6 +159,7 @@ const TOWER_DRAFT_INCLUDED = new Set([
   "rf-collinear",
   "camera",
   "ptz-camera",
+  "outdoor-ptz-camera",
   "tower-obstruction-light",
   "site-obstruction-light",
   "site-rest-platform",

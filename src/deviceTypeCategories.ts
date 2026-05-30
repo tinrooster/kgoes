@@ -2,6 +2,7 @@
 export const DEVICE_TYPE_TO_CATEGORY: Record<string, string> = {
   "camera": "Sources",
   "ptz-camera": "Sources",
+  "outdoor-ptz-camera": "Sources",
   "camera-ccu": "Sources",
   "graphics": "Sources",
   "computer": "Sources",

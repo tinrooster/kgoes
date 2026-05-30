@@ -122,6 +122,7 @@ function isAimableDeviceType(deviceType: string | undefined): boolean {
     deviceType === "microwave-dish" ||
     deviceType === "microwave-horn" ||
     deviceType === "microwave-odu" ||
+    deviceType === "outdoor-ptz-camera" ||
     deviceType === "camera" ||
     deviceType === "ptz-camera"
   );
