@@ -1,6 +1,16 @@
 import { port, ports } from "./_helpers";
 import type { DeviceTemplate } from "../types";
 
+/** Explicit full-width rack panel metadata (height U from spec). */
+function fullRackMeta(rackHeightU: number) {
+  return {
+    rackHeightU,
+    mountingClass: "rack-full" as const,
+    rackForm: "full" as const,
+    rackMetadataSource: "library" as const,
+  };
+}
+
 /**
  * KGO/DET broadcast-specific device library.
  * Maintained separately from the upstream ES community library; IDs are prefixed
@@ -28,6 +38,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 445,    // 17.5"
     depthMm: 201,    // 7.9" chassis only; blades extend further
     weightKg: 6.4,   // 14 lbs, empty chassis
+    ...fullRackMeta(5),
     slots: [
       { id: "slot-1",    label: "Slot 1",              slotFamily: "ultrix" },
       { id: "slot-2",    label: "Slot 2",              slotFamily: "ultrix" },
@@ -61,6 +72,7 @@ export const templates: DeviceTemplate[] = [
     depthMm: 404,     // 15.91"
     weightKg: 55.3,   // 122 lbs fully loaded
     powerDrawW: 2400, // min 2× 1200W Ultripower PSUs; can be higher at full load
+    ...fullRackMeta(12),
     slots: [
       ...Array.from({ length: 16 }, (_, i) => ({
         id: `slot-${i + 1}`,
@@ -153,6 +165,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 445,
     depthMm: 201,
     weightKg: 6.4,
+    ...fullRackMeta(5),
     slots: [
       { id: "slot-1",    label: "Slot 1 (IO or SDPE)", slotFamily: "ultrix" },
       { id: "slot-2",    label: "Slot 2 (IO or SDPE)", slotFamily: "ultrix" },
@@ -187,6 +200,7 @@ export const templates: DeviceTemplate[] = [
     depthMm: 404,
     weightKg: 55.3,
     powerDrawW: 2400,
+    ...fullRackMeta(12),
     slots: [
       ...Array.from({ length: 16 }, (_, i) => ({
         id: `slot-${i + 1}`,
@@ -237,6 +251,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 483,    // 19" rack
     depthMm: 432,    // ~17" estimated
     weightKg: 28.1,  // 62 lbs
+    ...fullRackMeta(4),
     ports: [
       ...ports("SDI In",    "sdi",      "input",         4,   "bnc"),
       port("HDMI In",       "hdmi",     "input"),
@@ -264,6 +279,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 483,
     depthMm: 432,
     weightKg: 28.1,
+    ...fullRackMeta(4),
     ports: [
       ...ports("SDI In",    "sdi",      "input",         8,   "bnc"),
       port("HDMI In",       "hdmi",     "input"),
@@ -291,6 +307,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 483,
     depthMm: 432,
     weightKg: 28.1,
+    ...fullRackMeta(4),
     ports: [
       ...ports("SDI In",    "sdi",      "input",         12,  "bnc"),
       port("HDMI In",       "hdmi",     "input"),
@@ -320,7 +337,9 @@ export const templates: DeviceTemplate[] = [
     modelNumber: "GRAPHITE-PPC",
     referenceUrl: "https://www.rossvideo.com/products/production-switchers/all-in-one-production-systems/",
     searchTerms: ["ross", "graphite", "ppc", "portable", "production center", "2me", "carbonite", "xpression", "kgo-es-deviceadd"],
+    mountingClass: "tabletop",
     rackForm: "shelf-only",
+    rackMetadataSource: "library",
     heightMm: 372,   // 14.63" (portable case, not standard RU)
     widthMm: 434,    // 17.09"
     depthMm: 230,    // 9.05"

@@ -8,6 +8,22 @@ const THROWDOWN_SHELF_1U = {
   rackMetadataSource: "library" as const,
 };
 
+const TERANEX_MINI_SHELF = {
+  heightMm: 45,
+  widthMm: 140,
+  depthMm: 170,
+  ...THROWDOWN_SHELF_1U,
+};
+
+function fullRackMeta(rackHeightU: number) {
+  return {
+    rackHeightU,
+    mountingClass: "rack-full" as const,
+    rackForm: "full" as const,
+    rackMetadataSource: "library" as const,
+  };
+}
+
 /**
  * KGO-ES — Blackmagic Design device templates.
  */
@@ -27,6 +43,7 @@ export const templates: DeviceTemplate[] = [
       "Blackmagic multiview",
       "Blackmagic MultiView",
       "MultiView 4 6G", "kgo-es-deviceadd"],
+    ...TERANEX_MINI_SHELF,
     ports: [
       ...ports("6G-SDI In", "sdi", "input", 4, "bnc"),
       port("HDMI Out", "hdmi", "output", "hdmi"),
@@ -50,6 +67,7 @@ export const templates: DeviceTemplate[] = [
       "Teranex Mini MultiView 16",
       "Blackmagic multiview 16",
       "Blackmagic MultiView", "kgo-es-deviceadd"],
+    ...TERANEX_MINI_SHELF,
     ports: [
       ...ports("6G-SDI In", "sdi", "input", 16, "bnc"),
       ...ports("6G-SDI Loop Out", "sdi", "output", 16, "bnc"),
@@ -74,6 +92,10 @@ export const templates: DeviceTemplate[] = [
       "Smart Videohub 12x12",
       "Blackmagic Videohub 12x12",
       "Blackmagic CleanSwitch 12x12", "kgo-es-deviceadd"],
+    heightMm: 44.45,
+    widthMm: 482.6,
+    depthMm: 150,
+    ...fullRackMeta(1),
     ports: [
       ...ports("SDI In", "sdi", "input", 12, "bnc"),
       ...ports("SDI Out", "sdi", "output", 12, "bnc"),
@@ -99,8 +121,8 @@ export const templates: DeviceTemplate[] = [
       "Videohub 40x40 12G",
       "Blackmagic router 40x40", "kgo-es-deviceadd"],
     heightMm: 88.9,
-    rackForm: "full",
-    rackHeightU: 2,
+    widthMm: 482.6,
+    ...fullRackMeta(2),
     ports: [
       ...ports("12G-SDI In", "sdi", "input", 40, "bnc"),
       ...ports("12G-SDI Out", "sdi", "output", 40, "bnc"),
@@ -189,6 +211,10 @@ export const templates: DeviceTemplate[] = [
       "Blackmagic Analog to SDI",
       "Mini Converter Analog to SDI",
       "Blackmagic analog to sdi converter", "kgo-es-deviceadd"],
+    heightMm: 25,
+    widthMm: 122,
+    depthMm: 92,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("Component In Y", "component-video", "input", "bnc"),
       port("Component In Pb", "component-video", "input", "bnc"),
@@ -216,6 +242,10 @@ export const templates: DeviceTemplate[] = [
       "Blackmagic SDI to Analog",
       "Mini Converter SDI to Analog",
       "Blackmagic analog converter", "kgo-es-deviceadd"],
+    heightMm: 25,
+    widthMm: 122,
+    depthMm: 92,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("SDI In", "sdi", "input", "bnc"),
       port("Component Out Y", "component-video", "output", "bnc"),

@@ -59,6 +59,8 @@ export const templates: DeviceTemplate[] = [
     voltage: "100-240 VAC, 50/60 Hz",
     rackForm: "full",
     rackHeightU: 1,
+    mountingClass: "rack-full",
+    rackMetadataSource: "library",
     color: "black",
   },
 
@@ -127,6 +129,8 @@ export const templates: DeviceTemplate[] = [
     ],
     rackForm: "full",
     rackHeightU: 1,
+    mountingClass: "rack-full",
+    rackMetadataSource: "library",
     color: "black",
   },
 
