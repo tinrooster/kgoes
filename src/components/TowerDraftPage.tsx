@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSchematicStore } from "../store";
+import {
+  buildTowerDraftScheduleRows,
+  downloadTowerDraftCsv,
+  towerDraftScheduleToCsv,
+} from "../towerDraftExport";
 import TowerDraftRenderer from "./TowerDraftRenderer";
 import TowerDraftSidebar from "./TowerDraftSidebar";
 import TowerDraftToolbar, { type TowerDraftDrawStyle } from "./TowerDraftToolbar";
@@ -8,8 +13,14 @@ export default function TowerDraftPageView() {
   const activePage = useSchematicStore((s) => s.activePage);
   const pages = useSchematicStore((s) => s.pages);
   const nodes = useSchematicStore((s) => s.nodes);
+  const useShortNames = useSchematicStore((s) => s.useShortNames);
+  const trackItTowerContext = useSchematicStore((s) => s.trackItTowerContext);
   const removeTowerDraftPlacement = useSchematicStore((s) => s.removeTowerDraftPlacement);
   const removeTowerDraftPolyline = useSchematicStore((s) => s.removeTowerDraftPolyline);
+  const updateTowerDraftPage = useSchematicStore((s) => s.updateTowerDraftPage);
+  const syncTowerDraftFromSchematicDevices = useSchematicStore((s) => s.syncTowerDraftFromSchematicDevices);
+  const suggestTowerDraftFeedlines = useSchematicStore((s) => s.suggestTowerDraftFeedlines);
+  const requestTowerDraftFocus = useSchematicStore((s) => s.requestTowerDraftFocus);
 
   const [drawMode, setDrawMode] = useState(false);
   const [drawLatched, setDrawLatched] = useState(false);
@@ -24,6 +35,8 @@ export default function TowerDraftPageView() {
 
   const page = pages.find((p) => p.id === activePage);
   const pageId = page?.type === "tower-draft" ? page.id : null;
+
+  const labelLayers = page?.type === "tower-draft" ? (page.labelLayers ?? {}) : {};
 
   const selectedLabel = useMemo(() => {
     if (!page || page.type !== "tower-draft") return null;
@@ -71,6 +84,22 @@ export default function TowerDraftPageView() {
 
   if (!page || page.type !== "tower-draft") return null;
 
+  const handleSelectLevel = (plantLocationId: string) => {
+    const pl = page.placements.find((p) => p.plantLocationId === plantLocationId);
+    if (pl) {
+      setSelectedPlacementId(pl.id);
+      requestTowerDraftFocus({ pageId: page.id, placementId: pl.id });
+      return;
+    }
+    const level = trackItTowerContext?.antennaLevels.find((l) => l.id === plantLocationId);
+    if (level?.mountHeightM != null) {
+      requestTowerDraftFocus({
+        pageId: page.id,
+        mountHeightFtAgl: Math.round(level.mountHeightM * 3.28084),
+      });
+    }
+  };
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden min-h-0">
       <TowerDraftToolbar
@@ -90,6 +119,22 @@ export default function TowerDraftPageView() {
         onDrawStyleChange={(patch) => setDrawStyle((s) => ({ ...s, ...patch }))}
         selectedLabel={selectedLabel}
         onRemoveSelected={selectedLabel ? removeSelected : undefined}
+        onSyncFromSchematic={() => syncTowerDraftFromSchematicDevices(page.id)}
+        onSuggestFeedlines={() => suggestTowerDraftFeedlines(page.id)}
+        onExportCsv={() => {
+          const rows = buildTowerDraftScheduleRows(
+            page,
+            nodes.map((n) => ({ id: n.id, data: n.data as import("../types").DeviceData })),
+            trackItTowerContext,
+            useShortNames,
+          );
+          downloadTowerDraftCsv(page, towerDraftScheduleToCsv(rows));
+        }}
+        onPrint={() => window.print()}
+        labelLayers={labelLayers}
+        onLabelLayersChange={(patch) =>
+          updateTowerDraftPage(page.id, { labelLayers: { ...labelLayers, ...patch } })
+        }
       />
       <div className="flex flex-1 overflow-hidden min-h-0">
         <TowerDraftSidebar
@@ -104,6 +149,7 @@ export default function TowerDraftPageView() {
             setSelectedPolylineId(id);
             setSelectedPlacementId(null);
           }}
+          onSelectLevel={handleSelectLevel}
         />
         <TowerDraftRenderer
           page={page}

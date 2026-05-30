@@ -6,7 +6,7 @@
 import { applyTrackItLink, beginBlankTrackItDrawing, maybeAutoOpenCadToolsPanel, maybeAutoOpenTowerDraftTab } from "./trackitIntegration";
 import { mergeNumberingSnapshot, upsertTrackItBlock } from "./trackitNumberingMerge";
 import { useSchematicStore } from "./store";
-import type { SchematicFile, TrackItNumberBlock, TrackItNumberingState, TrackItLinkContext } from "./types";
+import type { SchematicFile, TrackItNumberBlock, TrackItNumberingState, TrackItLinkContext, TrackItTowerSiteContext } from "./types";
 
 export type { TrackItNumberBlock, TrackItNumberingState, TrackItLinkContext };
 
@@ -35,11 +35,19 @@ export type TrackItNumberingSnapshotPayload = {
   blocks: TrackItNumberBlock[];
 };
 
+export type TrackItTowerFocusPayload = {
+  plantLocationId?: string;
+  mountHeightFtAgl?: number;
+  openTowerDraftTab?: boolean;
+};
+
 type TrackItInboundMessage =
   | { type: "TRACKIT_LINK"; payload: TrackItLinkContext }
   | { type: "TRACKIT_LOAD_SCHEMATIC"; payload: SchematicFile }
   | { type: "TRACKIT_NUMBERING_SYNC"; payload: TrackItNumberingSyncPayload }
-  | { type: "TRACKIT_NUMBERING_SNAPSHOT"; payload: TrackItNumberingSnapshotPayload };
+  | { type: "TRACKIT_NUMBERING_SNAPSHOT"; payload: TrackItNumberingSnapshotPayload }
+  | { type: "TRACKIT_TOWER_SITE_CONTEXT"; payload: TrackItTowerSiteContext }
+  | { type: "TRACKIT_TOWER_FOCUS"; payload: TrackItTowerFocusPayload };
 
 function isTrackItInbound(data: unknown): data is TrackItInboundMessage {
   if (!data || typeof data !== "object") return false;
@@ -48,8 +56,28 @@ function isTrackItInbound(data: unknown): data is TrackItInboundMessage {
     t === "TRACKIT_LINK" ||
     t === "TRACKIT_LOAD_SCHEMATIC" ||
     t === "TRACKIT_NUMBERING_SYNC" ||
-    t === "TRACKIT_NUMBERING_SNAPSHOT"
+    t === "TRACKIT_NUMBERING_SNAPSHOT" ||
+    t === "TRACKIT_TOWER_SITE_CONTEXT" ||
+    t === "TRACKIT_TOWER_FOCUS"
   );
+}
+
+function applyTowerFocus(payload: TrackItTowerFocusPayload): void {
+  const store = useSchematicStore.getState();
+  if (payload.openTowerDraftTab !== false) {
+    maybeAutoOpenTowerDraftTab();
+  }
+  const pages = useSchematicStore.getState().pages;
+  const page = pages.find((p) => p.type === "tower-draft");
+  if (!page || page.type !== "tower-draft") return;
+  const placement = payload.plantLocationId
+    ? page.placements.find((p) => p.plantLocationId === payload.plantLocationId)
+    : undefined;
+  store.requestTowerDraftFocus({
+    pageId: page.id,
+    placementId: placement?.id,
+    mountHeightFtAgl: placement?.mountHeightFtAgl ?? payload.mountHeightFtAgl,
+  });
 }
 
 function ackToOpener(eventId: string): void {
@@ -220,6 +248,16 @@ export function startTrackItBridge(): void {
 
     if (event.data.type === "TRACKIT_NUMBERING_SYNC") {
       applyNumberingSync(event.data.payload);
+      return;
+    }
+
+    if (event.data.type === "TRACKIT_TOWER_SITE_CONTEXT") {
+      useSchematicStore.getState().setTrackItTowerContext(event.data.payload);
+      return;
+    }
+
+    if (event.data.type === "TRACKIT_TOWER_FOCUS") {
+      applyTowerFocus(event.data.payload);
     }
   };
 

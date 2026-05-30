@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEVICE_TEMPLATES } from "../deviceLibraryRuntime";
 import { useSchematicStore } from "../store";
 import type { DeviceData, TowerDraftPage } from "../types";
-import { TowerDraftPlacementGlyph } from "../towerDraftGlyphs";
+import { TowerDraftPlacementGlyph, TOWER_GLYPH_SIZE } from "../towerDraftGlyphs";
 import {
   ftAglToY,
   suggestPlacementOffsetX,
@@ -12,7 +12,7 @@ import {
   towerDraftGroundY,
   towerDraftPolylineDash,
   towerDraftTowerCenterX,
-  yToFtAgl,
+  yToFtAglWithSnap,
 } from "../towerDraftUtils";
 import ViewNavBar from "./ViewNavBar";
 import { stepViewZoom } from "../viewZoomUtils";
@@ -56,6 +56,11 @@ export default function TowerDraftRenderer({
   const addTowerDraftPolyline = useSchematicStore((s) => s.addTowerDraftPolyline);
   const removeTowerDraftPlacement = useSchematicStore((s) => s.removeTowerDraftPlacement);
   const setEditingNodeId = useSchematicStore((s) => s.setEditingNodeId);
+  const towerDraftFocusRequest = useSchematicStore((s) => s.towerDraftFocusRequest);
+  const requestTowerDraftFocus = useSchematicStore((s) => s.requestTowerDraftFocus);
+  const trackItTowerContext = useSchematicStore((s) => s.trackItTowerContext);
+
+  const labelLayers = page.labelLayers ?? {};
 
   const svgRef = useRef<SVGSVGElement>(null);
   const contentGroupRef = useRef<SVGGElement>(null);
@@ -97,14 +102,26 @@ export default function TowerDraftRenderer({
 
   const snapPoint = useCallback(
     (x: number, y: number) => {
-      const snappedY =
-        snapFt > 0
-          ? ftAglToY(yToFtAgl(y, page.towerHeightFtAgl, snapFt), page.towerHeightFtAgl)
-          : y;
+      const ft = yToFtAglWithSnap(y, page.towerHeightFtAgl, snapFt, page.guideBandsFt);
+      const snappedY = ftAglToY(ft, page.towerHeightFtAgl);
       return { x, y: snappedY };
     },
-    [page.towerHeightFtAgl, snapFt],
+    [page.guideBandsFt, page.towerHeightFtAgl, snapFt],
   );
+
+  useEffect(() => {
+    if (!towerDraftFocusRequest || towerDraftFocusRequest.pageId !== page.id) return;
+    const pl = towerDraftFocusRequest.placementId
+      ? page.placements.find((p) => p.id === towerDraftFocusRequest.placementId)
+      : undefined;
+    const ft = pl?.mountHeightFtAgl ?? towerDraftFocusRequest.mountHeightFtAgl;
+    if (ft != null) {
+      const y = ftAglToY(ft, page.towerHeightFtAgl);
+      setPan({ x: 40, y: Math.max(20, 120 - y * zoom) });
+      if (pl) onSelectPlacement(pl.id);
+    }
+    requestTowerDraftFocus(null);
+  }, [towerDraftFocusRequest, page.id, page.placements, page.towerHeightFtAgl, zoom, onSelectPlacement, requestTowerDraftFocus]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -152,7 +169,7 @@ export default function TowerDraftRenderer({
   const placeDeviceAt = useCallback(
     (deviceNodeId: string, clientX: number, clientY: number) => {
       const { x, y } = clientToContent(clientX, clientY);
-      const ft = yToFtAgl(y, page.towerHeightFtAgl, snapFt);
+      const ft = yToFtAglWithSnap(y, page.towerHeightFtAgl, snapFt, page.guideBandsFt);
       const preferredOffset = x - centerX;
       const offsetX = suggestPlacementOffsetX(page.placements, ft, preferredOffset);
       const id = addTowerDraftPlacement(page.id, {
@@ -332,6 +349,16 @@ export default function TowerDraftRenderer({
                   fontSize={8}
                   fill="var(--color-text-muted)"
                   fontFamily="ui-monospace, monospace"
+                  style={{ cursor: drawMode ? "default" : "pointer" }}
+                  onClick={(ev) => {
+                    if (drawMode) return;
+                    ev.stopPropagation();
+                    if (selectedPlacementId) {
+                      updateTowerDraftPlacement(page.id, selectedPlacementId, {
+                        mountHeightFtAgl: band.ftAgl,
+                      });
+                    }
+                  }}
                 >
                   {band.label ?? `${band.ftAgl}′`}
                 </text>
@@ -421,12 +448,20 @@ export default function TowerDraftRenderer({
             const x = centerX + (pl.offsetX ?? 0);
             const selected = pl.id === selectedPlacementId;
             const hovered = pl.id === hoverPlacementId;
+            const azimuthDeg =
+              data?.rfInstallation?.azimuthDeg ??
+              (pl.plantLocationId
+                ? trackItTowerContext?.antennaLevels.find((l) => l.id === pl.plantLocationId)?.azimuthDeg
+                : undefined);
+            const bandLabel = data?.ports?.find((p) => p.rf?.band)?.rf?.band ?? "";
             const tipLines = [
               label,
               `${pl.mountHeightFtAgl}′ AGL`,
               data?.deviceType ?? "",
               data?.designation?.trim() ? `Designation: ${data.designation}` : "",
               data?.modelNumber?.trim() ? data.modelNumber : "",
+              azimuthDeg != null ? `Azimuth: ${azimuthDeg}°` : "",
+              bandLabel ? `Band: ${bandLabel}` : "",
             ].filter(Boolean);
 
             return (
@@ -478,10 +513,11 @@ export default function TowerDraftRenderer({
                   const onMove = (moveEv: MouseEvent) => {
                     const cur = clientToContent(moveEv.clientX, moveEv.clientY);
                     updateTowerDraftPlacement(page.id, pl.id, {
-                      mountHeightFtAgl: yToFtAgl(
+                      mountHeightFtAgl: yToFtAglWithSnap(
                         ftAglToY(startFt, page.towerHeightFtAgl) + (cur.y - startSvg.y),
                         page.towerHeightFtAgl,
                         snapFt,
+                        page.guideBandsFt,
                       ),
                       offsetX: startOffsetX + (cur.x - startSvg.x),
                     });
@@ -501,7 +537,27 @@ export default function TowerDraftRenderer({
                   deviceType={data?.deviceType}
                   selected={selected}
                   hovered={hovered}
+                  azimuthDeg={azimuthDeg}
                 />
+                {(labelLayers.designation || labelLayers.azimuth || labelLayers.band) && (
+                  <g transform={`translate(${TOWER_GLYPH_SIZE / 2 + 4}, 0)`} data-print-show>
+                    {labelLayers.designation && (
+                      <text x={0} y={-4} fontSize={8} fill="var(--color-text)">
+                        {label}
+                      </text>
+                    )}
+                    {labelLayers.azimuth && azimuthDeg != null && (
+                      <text x={0} y={6} fontSize={7} fill="var(--color-text-muted)">
+                        {azimuthDeg}°
+                      </text>
+                    )}
+                    {labelLayers.band && bandLabel && (
+                      <text x={0} y={labelLayers.azimuth && azimuthDeg != null ? 14 : 6} fontSize={7} fill="var(--color-text-muted)">
+                        {bandLabel}
+                      </text>
+                    )}
+                  </g>
+                )}
               </g>
             );
           })}
@@ -556,6 +612,29 @@ export default function TowerDraftRenderer({
             }}
           >
             Edit device details…
+          </button>
+          <button
+            type="button"
+            className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-surface-hover)] text-[var(--color-text)]"
+            onClick={() => {
+              const pl = page.placements.find((p) => p.id === contextMenu.placementId);
+              try {
+                if (window.opener && !window.opener.closed) {
+                  window.opener.postMessage(
+                    {
+                      type: "KGO_ES_FOCUS_TOWER_LEVEL",
+                      payload: { plantLocationId: pl?.plantLocationId },
+                    },
+                    "*",
+                  );
+                }
+              } catch {
+                /* ignore */
+              }
+              setContextMenu(null);
+            }}
+          >
+            Open in trackIT…
           </button>
           <div className="border-t border-[var(--color-border)] my-1" />
           <button

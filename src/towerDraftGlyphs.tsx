@@ -6,6 +6,7 @@ interface TowerDraftGlyphProps {
   deviceType?: string;
   selected?: boolean;
   hovered?: boolean;
+  azimuthDeg?: number;
 }
 
 function towerSymbol(deviceType: string | undefined, stroke: string, fill: string) {
@@ -76,7 +77,7 @@ function towerSymbol(deviceType: string | undefined, stroke: string, fill: strin
 }
 
 /** Icon-only elevation symbol (labels via tooltip / sidebar). */
-export function TowerDraftPlacementGlyph({ deviceType, selected, hovered }: TowerDraftGlyphProps) {
+export function TowerDraftPlacementGlyph({ deviceType, selected, hovered, azimuthDeg }: TowerDraftGlyphProps) {
   const stroke = selected ? "#2563eb" : hovered ? "#64748b" : "#475569";
   const fill = selected ? "var(--color-surface)" : "var(--color-bg)";
 
@@ -97,6 +98,16 @@ export function TowerDraftPlacementGlyph({ deviceType, selected, hovered }: Towe
       )}
       <rect x={0} y={0} width={TOWER_GLYPH_SIZE} height={TOWER_GLYPH_SIZE} fill="transparent" />
       {towerSymbol(deviceType, stroke, fill)}
+      {azimuthDeg != null && (
+        <g stroke="#f59e0b" strokeWidth={1.2}>
+          <line
+            x1={TOWER_GLYPH_SIZE / 2}
+            y1={TOWER_GLYPH_SIZE / 2}
+            x2={TOWER_GLYPH_SIZE / 2 + 10 * Math.sin((azimuthDeg * Math.PI) / 180)}
+            y2={TOWER_GLYPH_SIZE / 2 - 10 * Math.cos((azimuthDeg * Math.PI) / 180)}
+          />
+        </g>
+      )}
     </g>
   );
 }

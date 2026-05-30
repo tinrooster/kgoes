@@ -69,7 +69,12 @@ import { getSignalColorOverrides, applySignalColors, loadSignalColors, saveSigna
 import { computeCableSchedule } from "./cableSchedule";
 import type { TrackItLinkContext, TrackItNumberBlock, TrackItNumberingState } from "./types";
 import { scheduleTrackItAutosave } from "./trackitIntegration";
-import { createDefaultTowerDraftPage } from "./towerDraftUtils";
+import {
+  createDefaultTowerDraftPage,
+  ftAglToY,
+  isTowerDraftEligibleDeviceType,
+  towerDraftTowerCenterX,
+} from "./towerDraftUtils";
 import {
   blockSlotNumbers,
   formatCableNumber,
@@ -799,7 +804,7 @@ interface SchematicState {
   removeTowerDraftPage: (pageId: string) => void;
   updateTowerDraftPage: (
     pageId: string,
-    patch: Partial<Pick<TowerDraftPage, "towerHeightFtAgl" | "towerType" | "guideBandsFt">>,
+    patch: Partial<Pick<TowerDraftPage, "towerHeightFtAgl" | "towerType" | "guideBandsFt" | "labelLayers">>,
   ) => void;
   addTowerDraftPlacement: (pageId: string, placement: Omit<TowerDraftPlacement, "id">) => string;
   updateTowerDraftPlacement: (pageId: string, placementId: string, patch: Partial<TowerDraftPlacement>) => void;
@@ -811,6 +816,13 @@ interface SchematicState {
   ) => string;
   removeTowerDraftPolyline: (pageId: string, polylineId: string) => void;
   duplicateTowerDraftPage: (pageId: string) => string;
+  /** Place eligible schematic devices onto tower draft at default heights. */
+  syncTowerDraftFromSchematicDevices: (pageId: string) => number;
+  /** Add L-shaped feedlines for RF edges between placed devices. */
+  suggestTowerDraftFeedlines: (pageId: string) => number;
+  /** Pan/zoom tower draft to a placement or height (trackIT focus). */
+  towerDraftFocusRequest: { pageId: string; placementId?: string; mountHeightFtAgl?: number } | null;
+  requestTowerDraftFocus: (req: { pageId: string; placementId?: string; mountHeightFtAgl?: number } | null) => void;
   duplicatePrintSheetPage: (pageId: string) => string;
   addViewport: (pageId: string, viewport: Omit<PrintViewport, "id">) => string;
   updateViewport: (pageId: string, viewportId: string, patch: Partial<PrintViewport>, options?: { persist?: boolean }) => void;
@@ -866,6 +878,8 @@ interface SchematicState {
   /** Plant drawing link when opened from trackIT (enables Save to trackIT). */
   trackItLink: TrackItLinkContext | null;
   setTrackItLink: (link: TrackItLinkContext | null) => void;
+  trackItTowerContext: import("./types").TrackItTowerSiteContext | null;
+  setTrackItTowerContext: (ctx: import("./types").TrackItTowerSiteContext | null) => void;
   trackItLastPushedAt: string | null;
   /** Active reservation for "assign next" (reservationId). */
   activeTrackItReservationId: string | null;
@@ -1444,6 +1458,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   trackItNumbering: null,
   activeTrackItReservationId: null,
   trackItLink: null,
+  trackItTowerContext: null,
+  towerDraftFocusRequest: null,
   trackItLastPushedAt: null,
   loadSeq: 0,
   schematicCanvasReady: false,
@@ -1910,29 +1926,44 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         return n;
       });
 
-    // Cascade-remove rack placements for deleted devices; clear room links for deleted rooms
+    // Cascade-remove rack/tower-draft placements for deleted devices; clear room links for deleted rooms
     const pages = state.pages.length > 0 && selectedNodeIds.size > 0
       ? state.pages.map((page): SchematicPage => {
-          if (page.type !== "rack-elevation") return page;
-          return {
-            ...page,
-            placements: page.placements.filter((p) => !selectedNodeIds.has(p.deviceNodeId)),
-            racks: page.racks.map((r) =>
-              r.linkedRoomId && deletedRoomIds.has(r.linkedRoomId)
-                ? { ...r, linkedRoomId: undefined }
-                : r
-            ),
-          };
+          if (page.type === "rack-elevation") {
+            return {
+              ...page,
+              placements: page.placements.filter((p) => !selectedNodeIds.has(p.deviceNodeId)),
+              racks: page.racks.map((r) =>
+                r.linkedRoomId && deletedRoomIds.has(r.linkedRoomId)
+                  ? { ...r, linkedRoomId: undefined }
+                  : r
+              ),
+            };
+          }
+          if (page.type === "tower-draft") {
+            return {
+              ...page,
+              placements: page.placements.filter((p) => !selectedNodeIds.has(p.deviceNodeId)),
+            };
+          }
+          return page;
         })
       : state.pages;
 
-    // Notify user if rack placements were removed
+    // Notify user if rack/tower placements were removed
     if (pages !== state.pages) {
+      const towerPlacementCount = (ps: SchematicPage[]) =>
+        ps
+          .filter((p): p is TowerDraftPage => p.type === "tower-draft")
+          .reduce((sum, p) => sum + p.placements.length, 0);
       const elevPages = (ps: SchematicPage[]) => ps.filter((p): p is RackElevationPage => p.type === "rack-elevation");
-      const removedCount = elevPages(state.pages).reduce((sum, p) => sum + p.placements.length, 0) -
+      const rackRemoved =
+        elevPages(state.pages).reduce((sum, p) => sum + p.placements.length, 0) -
         elevPages(pages).reduce((sum, p) => sum + p.placements.length, 0);
+      const towerRemoved = towerPlacementCount(state.pages) - towerPlacementCount(pages);
+      const removedCount = rackRemoved + towerRemoved;
       if (removedCount > 0) {
-        get().addToast(`Removed ${removedCount} rack placement${removedCount > 1 ? "s" : ""} for deleted device${selectedNodeIds.size > 1 ? "s" : ""}`, "info");
+        get().addToast(`Removed ${removedCount} placement${removedCount > 1 ? "s" : ""} for deleted device${selectedNodeIds.size > 1 ? "s" : ""}`, "info");
       }
     }
 
@@ -4814,7 +4845,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const state = get();
     pushUndo({ nodes: state.nodes, edges: state.edges });
     const id = nextTowerDraftPlacementId();
-    const placement: TowerDraftPlacement = { ...placementData, id };
+    const placement: TowerDraftPlacement = {
+      cadLayer: "user",
+      ...placementData,
+      id,
+    };
     set({
       pages: mapTowerDraftPage(state.pages, pageId, (p) => ({
         ...p,
@@ -4830,10 +4865,16 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   updateTowerDraftPlacement: (pageId, placementId, patch) => {
     const state = get();
     pushUndo({ nodes: state.nodes, edges: state.edges });
+    const userMoved =
+      (patch.mountHeightFtAgl !== undefined || patch.offsetX !== undefined) && patch.cadLayer === undefined;
     set({
       pages: mapTowerDraftPage(state.pages, pageId, (p) => ({
         ...p,
-        placements: p.placements.map((pl) => (pl.id === placementId ? { ...pl, ...patch } : pl)),
+        placements: p.placements.map((pl) =>
+          pl.id === placementId
+            ? { ...pl, ...patch, ...(userMoved ? { cadLayer: "user" as const } : {}) }
+            : pl,
+        ),
       })),
       undoSize: undoStack.length,
       redoSize: 0,
@@ -4913,6 +4954,106 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     get().saveToLocalStorage();
     return newPageId;
   },
+
+  syncTowerDraftFromSchematicDevices: (pageId) => {
+    const state = get();
+    const page = state.pages.find((p) => p.id === pageId && p.type === "tower-draft") as TowerDraftPage | undefined;
+    if (!page) return 0;
+    const placed = new Set(page.placements.map((p) => p.deviceNodeId));
+    const defaultFt =
+      page.guideBandsFt.find((b) => b.ftAgl > 0 && b.ftAgl < page.towerHeightFtAgl)?.ftAgl ??
+      Math.round(page.towerHeightFtAgl * 0.5);
+    let added = 0;
+    for (const node of state.nodes) {
+      if (node.type !== "device") continue;
+      const data = node.data as DeviceData;
+      if (!isTowerDraftEligibleDeviceType(data.deviceType)) continue;
+      if (placed.has(node.id)) continue;
+      const bandMatch = page.guideBandsFt.find((b) => b.label && data.designation?.includes(b.label));
+      const ft = bandMatch?.ftAgl ?? defaultFt;
+      get().addTowerDraftPlacement(pageId, {
+        deviceNodeId: node.id,
+        mountHeightFtAgl: ft,
+        cadLayer: "user",
+      });
+      placed.add(node.id);
+      added++;
+    }
+    if (added > 0) {
+      get().addToast(`Synced ${added} device${added > 1 ? "s" : ""} from schematic`, "success");
+    }
+    return added;
+  },
+
+  suggestTowerDraftFeedlines: (pageId) => {
+    const state = get();
+    const page = state.pages.find((p) => p.id === pageId && p.type === "tower-draft") as TowerDraftPage | undefined;
+    if (!page) return 0;
+    const placementByNode = new Map(page.placements.map((p) => [p.deviceNodeId, p]));
+    const centerX = towerDraftTowerCenterX();
+    let added = 0;
+
+    const keptPolylines = page.polylines.filter(
+      (pl) => pl.cadLayer !== "generated" || (!pl.feedlineFromNodeId && !pl.feedlineToNodeId),
+    );
+    const newPolylines = [...keptPolylines];
+
+    for (const edge of state.edges) {
+      const sig = String(edge.data?.signalType ?? "").toLowerCase();
+      if (sig !== "rf" && !sig.includes("rf")) continue;
+      const fromPl = placementByNode.get(edge.source);
+      const toPl = placementByNode.get(edge.target);
+      if (!fromPl || !toPl) continue;
+
+      const pairKey = `${edge.source}|${edge.target}`;
+      const filtered = newPolylines.filter(
+        (pl) =>
+          !(pl.cadLayer === "generated" && `${pl.feedlineFromNodeId}|${pl.feedlineToNodeId}` === pairKey),
+      );
+      newPolylines.length = 0;
+      newPolylines.push(...filtered);
+
+      const fromY = ftAglToY(fromPl.mountHeightFtAgl, page.towerHeightFtAgl);
+      const toY = ftAglToY(toPl.mountHeightFtAgl, page.towerHeightFtAgl);
+      const fromX = centerX + (fromPl.offsetX ?? 0);
+      const toX = centerX + (toPl.offsetX ?? 0);
+      const midX = (fromX + toX) / 2 + 40;
+
+      newPolylines.push({
+        id: nextTowerDraftPolylineId(),
+        points: [
+          { x: fromX, y: fromY },
+          { x: midX, y: fromY },
+          { x: midX, y: toY },
+          { x: toX, y: toY },
+        ],
+        strokeColor: "#64748b",
+        strokeWidth: 1,
+        lineStyle: "dashed",
+        cadLayer: "generated",
+        feedlineFromNodeId: edge.source,
+        feedlineToNodeId: edge.target,
+      });
+      added++;
+    }
+
+    if (added === 0) {
+      get().addToast("No RF links between placed devices to suggest", "info");
+      return 0;
+    }
+
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    set({
+      pages: mapTowerDraftPage(state.pages, pageId, (p) => ({ ...p, polylines: newPolylines })),
+      undoSize: undoStack.length,
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+    get().addToast(`Suggested ${added} feedline${added > 1 ? "s" : ""}`, "success");
+    return added;
+  },
+
+  requestTowerDraftFocus: (req) => set({ towerDraftFocusRequest: req }),
 
   duplicatePrintSheetPage: (pageId) => {
     const state = get();
@@ -5501,6 +5642,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   setTrackItLink: (trackItLink) => {
     set({ trackItLink });
     get().saveToLocalStorage();
+  },
+
+  setTrackItTowerContext: (trackItTowerContext) => {
+    set({ trackItTowerContext });
   },
 
   setTrackItNumbering: (trackItNumbering) => {

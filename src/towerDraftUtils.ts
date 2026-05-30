@@ -29,14 +29,59 @@ export function ftAglToY(ftAgl: number, towerHeightFt: number): number {
   return towerDraftGroundY(towerHeightFt) - ftAgl * TOWER_DRAFT_PX_PER_FT;
 }
 
-/** Inverse: canvas Y → ft AGL snapped to nearest foot. */
-export function yToFtAgl(y: number, towerHeightFt: number, snapFt = 1): number {
-  const ground = towerDraftGroundY(towerHeightFt);
-  const raw = (ground - y) / TOWER_DRAFT_PX_PER_FT;
-  const clamped = Math.max(0, Math.min(towerHeightFt, raw));
-  if (snapFt <= 0) return clamped;
+export const TOWER_DRAFT_SNAP_LEVEL = -1;
+
+/** Snap raw ft AGL to guide bands, grid, or nearest foot. */
+export function resolveSnapMountHeight(
+  rawFt: number,
+  towerHeightFt: number,
+  snapFt: number,
+  guideBandsFt?: { ftAgl: number }[],
+): number {
+  const clamped = Math.max(0, Math.min(towerHeightFt, rawFt));
+  if (snapFt === TOWER_DRAFT_SNAP_LEVEL && guideBandsFt?.length) {
+    return guideBandsFt.reduce(
+      (best, b) => (Math.abs(b.ftAgl - clamped) < Math.abs(best - clamped) ? b.ftAgl : best),
+      guideBandsFt[0].ftAgl,
+    );
+  }
+  if (snapFt <= 0) return Math.round(clamped);
   return Math.round(clamped / snapFt) * snapFt;
 }
+
+/** Inverse: canvas Y → ft AGL snapped to nearest foot or grid. */
+export function yToFtAgl(y: number, towerHeightFt: number, snapFt = 1): number {
+  return yToFtAglWithSnap(y, towerHeightFt, snapFt);
+}
+
+/** Canvas Y → ft AGL with optional snap (including level bands when snapFt === TOWER_DRAFT_SNAP_LEVEL). */
+export function yToFtAglWithSnap(
+  y: number,
+  towerHeightFt: number,
+  snapFt: number,
+  guideBandsFt?: { ftAgl: number }[],
+): number {
+  const ground = towerDraftGroundY(towerHeightFt);
+  const raw = (ground - y) / TOWER_DRAFT_PX_PER_FT;
+  return resolveSnapMountHeight(raw, towerHeightFt, snapFt, guideBandsFt);
+}
+
+/** Expected ft AGL from trackIT antenna level (metres). */
+export function mountHeightMToFtAgl(mountHeightM: number): number {
+  return Math.round(mountHeightM * 3.28084);
+}
+
+export function placementSyncStatus(
+  placement: TowerDraftPlacement,
+  contextLevels?: { id: string; mountHeightM?: number }[],
+): 'linked' | 'mismatch' | 'unassigned' {
+  if (!placement.plantLocationId) return 'unassigned';
+  const level = contextLevels?.find((l) => l.id === placement.plantLocationId);
+  if (!level || level.mountHeightM == null) return 'linked';
+  const expected = mountHeightMToFtAgl(level.mountHeightM);
+  return Math.abs(expected - placement.mountHeightFtAgl) <= 2 ? 'linked' : 'mismatch';
+}
+
 
 export function towerDraftContentHeight(towerHeightFt: number): number {
   return TOWER_DRAFT_PAD_TOP + towerHeightFt * TOWER_DRAFT_PX_PER_FT + TOWER_DRAFT_PAD_BOTTOM;

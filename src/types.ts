@@ -763,6 +763,7 @@ export type TowerDraftTowerType = "self_support" | "guyed" | "monopole";
 export interface TowerGuideBandFt {
   ftAgl: number;
   label?: string;
+  plantLocationId?: string;
 }
 
 /** Device/antenna placed at a height on the tower draft elevation. */
@@ -772,6 +773,9 @@ export interface TowerDraftPlacement {
   mountHeightFtAgl: number;
   /** Horizontal offset from tower centerline (px). */
   offsetX?: number;
+  /** trackIT plant_locations.id (antenna_level). */
+  plantLocationId?: string;
+  cadLayer?: "generated" | "user";
 }
 
 export type TowerDraftLineStyle = "solid" | "dashed" | "dotted";
@@ -783,6 +787,10 @@ export interface TowerDraftPolyline {
   strokeColor?: string;
   strokeWidth?: number;
   lineStyle?: TowerDraftLineStyle;
+  cadLayer?: "generated" | "user";
+  /** Optional source/target device node ids for generated feedlines. */
+  feedlineFromNodeId?: string;
+  feedlineToNodeId?: string;
 }
 
 /** Structured vertical tower elevation / section draft (ft-AGL axis). */
@@ -795,14 +803,17 @@ export interface TowerDraftPage {
   guideBandsFt: TowerGuideBandFt[];
   placements: TowerDraftPlacement[];
   polylines: TowerDraftPolyline[];
+  labelLayers?: { designation?: boolean; azimuth?: boolean; band?: boolean };
 }
 
 export interface PrintViewport {
   id: string;
-  kind: "rack-front" | "rack-rear" | "rack-side" | "drawing";
+  kind: "rack-front" | "rack-rear" | "rack-side" | "drawing" | "tower-draft";
   /** Rack elevation page + rack id (rack viewports only). */
   rackRefPageId?: string;
   rackRefId?: string;
+  /** Tower draft page id (tower-draft viewports only). */
+  towerDraftPageId?: string;
   positionMm: { x: number; y: number };
   sizeMm: { w: number; h: number };
   scale?: number;
@@ -946,6 +957,28 @@ export type TrackItLinkContext = {
   drawingName?: string;
   /** trackIT plant_drawings.drawing_type — drives CAD toolbar visibility. */
   drawingType?: string;
+};
+
+export type TrackItTowerSiteContext = {
+  siteCode: string;
+  siteName: string;
+  towerHeightFt: number;
+  accessNotes?: string;
+  towerCompany?: string;
+  antennaLevels: {
+    id: string;
+    code: string;
+    name: string;
+    mountHeightM?: number;
+    sectorLabel?: string;
+    azimuthDeg?: number;
+  }[];
+  linkedDrawings?: {
+    drawingId: string;
+    dwgNumber: string;
+    title?: string;
+    drawingType?: string;
+  }[];
 };
 
 /** Persisted trackIT numbering sync (see trackitBridge.ts). */

@@ -2,8 +2,9 @@ import { useMemo, useState } from "react";
 import { DEVICE_TEMPLATES } from "../deviceLibraryRuntime";
 import { useSchematicStore } from "../store";
 import type { DeviceData, DeviceTemplate, TowerDraftPage } from "../types";
-import { isTowerDraftEligibleDeviceType, towerDraftLibraryTemplates } from "../towerDraftUtils";
+import { isTowerDraftEligibleDeviceType, placementSyncStatus, towerDraftLibraryTemplates } from "../towerDraftUtils";
 import { resolveDeviceLabel } from "../displayName";
+import TowerDraftTrackItPanel from "./TowerDraftTrackItPanel";
 
 export let draggedTowerDeviceNodeId: string | null = null;
 export let draggedTowerTemplateId: string | null = null;
@@ -14,6 +15,7 @@ interface TowerDraftSidebarProps {
   selectedPolylineId: string | null;
   onSelectPlacement: (id: string | null) => void;
   onSelectPolyline: (id: string | null) => void;
+  onSelectLevel: (plantLocationId: string) => void;
 }
 
 function matchesSearch(label: string, deviceType: string | undefined, search: string): boolean {
@@ -28,10 +30,12 @@ export default function TowerDraftSidebar({
   selectedPolylineId,
   onSelectPlacement,
   onSelectPolyline,
+  onSelectLevel,
 }: TowerDraftSidebarProps) {
   const nodes = useSchematicStore((s) => s.nodes);
   const customTemplates = useSchematicStore((s) => s.customTemplates);
   const useShortNames = useSchematicStore((s) => s.useShortNames);
+  const trackItTowerContext = useSchematicStore((s) => s.trackItTowerContext);
   const removeTowerDraftPlacement = useSchematicStore((s) => s.removeTowerDraftPlacement);
   const removeTowerDraftPolyline = useSchematicStore((s) => s.removeTowerDraftPolyline);
   const updateTowerDraftPlacement = useSchematicStore((s) => s.updateTowerDraftPlacement);
@@ -66,6 +70,25 @@ export default function TowerDraftSidebar({
       }),
     [unplacedDevices, search, useShortNames],
   );
+
+  type AvailableItem =
+    | { kind: "template"; template: DeviceTemplate }
+    | { kind: "node"; node: (typeof unplacedDevices)[number] };
+
+  const availableItems = useMemo((): AvailableItem[] => {
+    const items: AvailableItem[] = filteredLibrary.map((template) => ({ kind: "template", template }));
+    for (const n of filteredUnplaced) {
+      items.push({ kind: "node", node: n });
+    }
+    return items;
+  }, [filteredLibrary, filteredUnplaced]);
+
+  const syncBadge = (pl: (typeof page.placements)[number]) => {
+    const status = placementSyncStatus(pl, trackItTowerContext?.antennaLevels);
+    if (status === "linked") return "✓";
+    if (status === "mismatch") return "⚠";
+    return "○";
+  };
 
   const selectedPlacement = page.placements.find((p) => p.id === selectedPlacementId);
 
@@ -117,6 +140,8 @@ export default function TowerDraftSidebar({
       className="w-60 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col min-h-0 overflow-hidden"
       data-print-hide
     >
+      <TowerDraftTrackItPanel page={page} onSelectLevel={onSelectLevel} />
+
       {selectedPlacement && (
         <div className="px-2 py-2 border-b border-blue-200 bg-blue-50/80 dark:bg-blue-950/30">
           <div className="text-[10px] uppercase tracking-wider text-blue-700 dark:text-blue-300 mb-1">
@@ -180,40 +205,35 @@ export default function TowerDraftSidebar({
           className="w-full px-2 py-1 text-xs rounded border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)]"
         />
         <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5 leading-snug">
-          Drag from the library below onto the elevation. Multiple dishes can share similar heights — drag horizontally to adjust.
+          Drag onto the elevation. Click a guide-band label to snap a selected placement to that height.
         </p>
       </div>
 
       <div className="flex-1 overflow-y-auto p-1.5 min-h-0 space-y-3">
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1 px-0.5">
-            Device library
+          <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1 px-0.5">
+            Available ({availableItems.length})
           </div>
           <div className="space-y-1">
-            {filteredLibrary.length === 0 ? (
-              <p className="text-[11px] text-[var(--color-text-muted)] px-1">No library matches.</p>
+            {availableItems.length === 0 ? (
+              <p className="text-[11px] text-[var(--color-text-muted)] px-1">No matches.</p>
             ) : (
-              filteredLibrary.map(renderDraggableTemplate)
+              availableItems.map((item) =>
+                item.kind === "template"
+                  ? renderDraggableTemplate(item.template)
+                  : renderDraggableNode(item.node),
+              )
             )}
           </div>
         </div>
-
-        {filteredUnplaced.length > 0 && (
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1 px-0.5">
-              On drawing tab ({filteredUnplaced.length})
-            </div>
-            <div className="space-y-1">{filteredUnplaced.map(renderDraggableNode)}</div>
-          </div>
-        )}
       </div>
 
       <div className="border-t border-[var(--color-border)] p-2 max-h-[38%] overflow-y-auto shrink-0">
         <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1">
-          On elevation ({page.placements.length})
+          On this tower ({page.placements.length})
         </div>
         {page.placements.length === 0 && page.polylines.length === 0 ? (
-          <p className="text-[11px] text-[var(--color-text-muted)]">Nothing placed yet — drag from library above.</p>
+          <p className="text-[11px] text-[var(--color-text-muted)]">Nothing placed yet — drag from list above or refresh from trackIT.</p>
         ) : (
           <>
             {page.placements.map((pl) => {
@@ -230,6 +250,7 @@ export default function TowerDraftSidebar({
                   onClick={() => onSelectPlacement(isSelected ? null : pl.id)}
                 >
                   <span className="truncate" title={label}>
+                    <span className="text-[10px] mr-1">{syncBadge(pl)}</span>
                     {pl.mountHeightFtAgl}′ · {label}
                   </span>
                   <span
