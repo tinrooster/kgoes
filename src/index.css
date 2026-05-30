@@ -21,6 +21,36 @@
 .dark .text-gray-400 { color: var(--color-text-muted) !important; }
 .dark .text-gray-300 { color: var(--color-border) !important; }
 
+/* Neutral palette — PageTabs and other legacy light-mode utilities */
+.dark .bg-neutral-50 { background-color: var(--color-surface) !important; }
+.dark .bg-neutral-50\/80 { background-color: color-mix(in srgb, var(--color-surface) 80%, transparent) !important; }
+.dark .bg-neutral-100 { background-color: var(--color-surface) !important; }
+.dark .bg-neutral-200 { background-color: var(--color-surface-hover) !important; }
+.dark .hover\:bg-neutral-50:hover { background-color: var(--color-surface) !important; }
+.dark .hover\:bg-neutral-100:hover { background-color: var(--color-surface-hover) !important; }
+.dark .border-neutral-100 { border-color: var(--color-border) !important; }
+.dark .border-neutral-300 { border-color: var(--color-border) !important; }
+.dark .text-neutral-400 { color: var(--color-text-muted) !important; }
+.dark .text-neutral-600 { color: var(--color-text) !important; }
+.dark .text-neutral-700 { color: var(--color-text) !important; }
+.dark .text-neutral-900 { color: var(--color-text-heading) !important; }
+
+/* Blue / violet accents on dark surfaces */
+.dark .text-blue-700 { color: #93c5fd !important; }
+.dark .text-blue-800 { color: #bfdbfe !important; }
+.dark .hover\:text-blue-700:hover { color: #93c5fd !important; }
+.dark .hover\:text-blue-800:hover { color: #bfdbfe !important; }
+.dark .hover\:bg-blue-50:hover { background-color: color-mix(in srgb, #3b82f6 12%, var(--color-surface)) !important; }
+.dark .hover\:bg-blue-50\/50:hover { background-color: color-mix(in srgb, #3b82f6 8%, var(--color-surface)) !important; }
+.dark .border-blue-400 { border-color: #60a5fa !important; }
+.dark .text-violet-600 { color: #c4b5fd !important; }
+.dark .text-violet-700 { color: #ddd6fe !important; }
+.dark .text-violet-900 { color: var(--color-text-heading) !important; }
+.dark .bg-violet-50 { background-color: color-mix(in srgb, #8b5cf6 12%, var(--color-surface)) !important; }
+.dark .hover\:bg-violet-50:hover { background-color: color-mix(in srgb, #8b5cf6 12%, var(--color-surface)) !important; }
+.dark .hover\:bg-violet-100:hover { background-color: color-mix(in srgb, #8b5cf6 18%, var(--color-surface)) !important; }
+.dark .border-violet-400 { border-color: #a78bfa !important; }
+
 @font-face {
   font-family: 'Inter';
   font-weight: 400;

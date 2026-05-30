@@ -36,6 +36,8 @@ import { useTheme } from "../hooks/useTheme";
 import { isTrackItDrawingLinked, saveToTrackItParent } from "../trackitIntegration";
 import TrackItModeBadge from "./TrackItModeBadge";
 import { useAppBuildInfo } from "../buildVersion";
+import DeviceLibraryAdminPanel from "./DeviceLibraryAdminPanel";
+import { useUiChromeStore } from "../uiChromeStore";
 
 // ─── Menu data types ─────────────────────────────────────────────
 
@@ -120,7 +122,7 @@ function MenuItem({
 
 function MenuDropdown({ items, onClose }: { items: MenuEntry[]; onClose: () => void }) {
   return (
-    <div className="absolute top-full left-0 mt-0.5 min-w-[220px] bg-white border border-[var(--color-border)] rounded-lg shadow-lg p-1 z-50">
+    <div className="absolute top-full left-0 mt-0.5 min-w-[220px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-lg p-1 z-50">
       {items.map((entry, i) => {
         if (entry.type === "separator") return <MenuSeparator key={i} />;
         if (entry.type === "caption") {
@@ -666,6 +668,29 @@ export default function MenuBar() {
       { type: "separator" },
       { type: "item", label: "Select All", shortcut: "Ctrl+A", onClick: () => useSchematicStore.getState().selectAll() },
     ],
+    Devices: [
+      {
+        type: "item",
+        label: "Device library admin…",
+        onClick: () => useUiChromeStore.getState().openDeviceAdmin({ tab: "manage" }),
+      },
+      {
+        type: "item",
+        label: "Add devices (agent)…",
+        onClick: () => useUiChromeStore.getState().openDeviceAdmin({ tab: "agent" }),
+      },
+      { type: "separator" },
+      {
+        type: "item",
+        label: "Save device archive",
+        onClick: handleSaveArchive,
+      },
+      {
+        type: "item",
+        label: "Import device archive…",
+        onClick: handleOpenArchive,
+      },
+    ],
     Insert: [
       { type: "item", label: "Add Rectangle", onClick: () => addAnnotation("rectangle") },
       { type: "item", label: "Add Ellipse", onClick: () => addAnnotation("ellipse") },
@@ -1178,6 +1203,7 @@ export default function MenuBar() {
         <SchematicBrowser onClose={() => setShowSchematicBrowser(false)} />
       )}
       <LoginDialog open={showCloudLogin} onClose={() => setShowCloudLogin(false)} />
+      <DeviceLibraryAdminPanel />
     </div>
   );
 }

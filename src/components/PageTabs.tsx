@@ -121,11 +121,11 @@ export default function PageTabs() {
     `px-3 py-1 rounded-t border border-b-0 whitespace-nowrap transition-colors cursor-pointer ${
       isActive
         ? isPrint
-          ? "bg-white border-violet-400 font-semibold text-violet-900"
-          : "bg-white border-neutral-300 font-semibold text-neutral-900"
+          ? "bg-[var(--color-bg)] border-violet-400/70 font-semibold text-[var(--color-text-heading)]"
+          : "bg-[var(--color-bg)] border-[var(--color-border)] font-semibold text-[var(--color-text-heading)]"
         : isPrint
-          ? "bg-violet-50 border-transparent text-violet-600 hover:bg-violet-100"
-          : "bg-neutral-200 border-transparent text-neutral-600 hover:bg-neutral-50"
+          ? "bg-[var(--color-surface-hover)] border-transparent text-violet-500 dark:text-violet-300 hover:bg-[var(--color-surface)]"
+          : "bg-[var(--color-surface-hover)] border-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface)]"
     }`;
 
   const pageTabTitle = (page: (typeof pages)[number]) => {
@@ -155,7 +155,7 @@ export default function PageTabs() {
     <>
       <div
         data-print-hide
-        className="relative z-30 flex items-center bg-neutral-100 border-b border-neutral-300 text-xs select-none overflow-visible"
+        className="relative z-30 flex items-center bg-[var(--color-surface)] border-b border-[var(--color-border)] text-xs select-none overflow-visible"
         style={{ minHeight: 28 }}
       >
         {/* Drawing tab */}
@@ -187,7 +187,7 @@ export default function PageTabs() {
                 {editingId === page.id ? (
                   <input
                     ref={inputRef}
-                    className="bg-white border border-blue-400 rounded px-1 py-0 text-xs w-24 outline-none"
+                    className="bg-[var(--color-bg)] border border-blue-400/70 rounded px-1 py-0 text-xs text-[var(--color-text)] w-24 outline-none"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
                     onBlur={commitRename}
@@ -210,22 +210,22 @@ export default function PageTabs() {
         </div>
 
         {printSheetCount > 0 && (
-          <span className="text-[10px] text-neutral-400 pl-1 pr-1 shrink-0 hidden sm:inline self-center">
+          <span className="text-[10px] text-[var(--color-text-muted)] pl-1 pr-1 shrink-0 hidden sm:inline self-center">
             {printSheetCount} print view{printSheetCount === 1 ? "" : "s"}
           </span>
         )}
 
         {/* Add page — right end of tab bar */}
         <div
-          className="relative shrink-0 flex items-center self-stretch border-l border-neutral-300 bg-neutral-50/80 px-1.5"
+          className="relative shrink-0 flex items-center self-stretch border-l border-[var(--color-border)] bg-[var(--color-surface)] px-1.5"
           ref={addMenuRef}
         >
           <button
             type="button"
             className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-medium border cursor-pointer transition-colors ${
               addMenuOpen
-                ? "bg-white border-blue-400 text-blue-800 shadow-sm"
-                : "bg-white border-neutral-300 text-neutral-700 hover:border-blue-400 hover:text-blue-800 hover:bg-blue-50/50"
+                ? "bg-[var(--color-bg)] border-blue-400/70 text-[var(--color-text-heading)] shadow-sm"
+                : "bg-[var(--color-bg)] border-[var(--color-border)] text-[var(--color-text)] hover:border-blue-400/70 hover:text-[var(--color-text-heading)] hover:bg-[var(--color-surface-hover)]"
             }`}
             onClick={(e) => {
               e.stopPropagation();
@@ -241,12 +241,12 @@ export default function PageTabs() {
           </button>
           {addMenuOpen && (
             <div
-              className="absolute right-0 top-full mt-0.5 z-[100] bg-white border border-neutral-300 rounded-md shadow-lg py-1 min-w-[188px]"
+              className="absolute right-0 top-full mt-0.5 z-[100] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-md shadow-lg py-1 min-w-[188px]"
               role="menu"
             >
               <button
                 type="button"
-                className="w-full text-left px-3 py-1.5 text-neutral-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer"
+                className="w-full text-left px-3 py-1.5 text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] cursor-pointer"
                 role="menuitem"
                 onClick={openRackPage}
               >
@@ -254,7 +254,7 @@ export default function PageTabs() {
               </button>
               <button
                 type="button"
-                className="w-full text-left px-3 py-1.5 text-violet-700 hover:bg-violet-50 cursor-pointer"
+                className="w-full text-left px-3 py-1.5 text-violet-600 dark:text-violet-300 hover:bg-[var(--color-surface-hover)] cursor-pointer"
                 role="menuitem"
                 onClick={openPrintSheetPage}
               >
@@ -268,29 +268,29 @@ export default function PageTabs() {
       {contextMenu && menuPage && (
         <div
           ref={menuRef}
-          className="fixed z-50 bg-white border border-gray-300 rounded shadow-lg py-1 min-w-[140px] text-xs"
+          className="fixed z-50 bg-[var(--color-surface)] border border-[var(--color-border)] rounded shadow-lg py-1 min-w-[140px] text-xs"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-neutral-400 border-b border-neutral-100 mb-1 truncate">
+          <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] border-b border-[var(--color-border)] mb-1 truncate">
             {isPrintSheet ? "📄 " : menuPage.type === "rack-elevation" ? "🗄 " : ""}
             {menuPage.label}
           </div>
           <button
             type="button"
-            className="w-full text-left px-3 py-1.5 text-gray-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer"
+            className="w-full text-left px-3 py-1.5 text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] cursor-pointer"
             onClick={handleRename}
           >
             Rename
           </button>
           <button
             type="button"
-            className="w-full text-left px-3 py-1.5 text-gray-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer"
+            className="w-full text-left px-3 py-1.5 text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] cursor-pointer"
             onClick={handleDuplicate}
           >
             Duplicate
           </button>
-          <div className="border-t border-gray-100 my-1" />
+          <div className="border-t border-[var(--color-border)] my-1" />
           <button
             type="button"
             className="w-full text-left px-3 py-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer"

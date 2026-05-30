@@ -8,6 +8,13 @@ import { scoreTemplate } from "../templateSearch";
 import { inventoryKeyFromDeviceData, inventoryKeyFromTemplate } from "../inventoryKey";
 import DeviceCreatorPicker from "./DeviceCreatorPicker";
 import ImportDevicesDialog from "./ImportDevicesDialog";
+import DeviceLibraryTemplateContextMenu, {
+  type LibraryTemplateMenuState,
+} from "./DeviceLibraryTemplateContextMenu";
+import LoginDialog from "./LoginDialog";
+import { templateKey } from "../deviceTemplateActions";
+import { mergeDeviceLibraryTemplates, bundledTemplateKeys, isPureUserTemplate } from "../deviceLibraryMerge";
+import { useUiChromeStore } from "../uiChromeStore";
 
 function onDragStart(event: DragEvent, template: DeviceTemplate) {
   event.dataTransfer.setData(
@@ -55,6 +62,7 @@ function TemplateItem({
   ownedQuantity,
   onToggleFavorite,
   onAddToOwned,
+  onContextMenu,
 }: {
   template: DeviceTemplate;
   query: string;
@@ -64,6 +72,7 @@ function TemplateItem({
   ownedQuantity?: number;
   onToggleFavorite?: () => void;
   onAddToOwned?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const signalText = getUniqueSignalTypes(template)
     .map((t) => SIGNAL_LABELS[t as keyof typeof SIGNAL_LABELS])
@@ -74,6 +83,10 @@ function TemplateItem({
       className="flex items-center gap-1 px-2 py-1.5 rounded cursor-grab hover:bg-[var(--color-surface-hover)] transition-colors group"
       draggable
       onDragStart={(e) => onDragStart(e, template)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContextMenu?.(e);
+      }}
     >
       {(onToggleFavorite || onAddToOwned) && (
         <div className="shrink-0 flex flex-col items-center gap-1 self-start min-w-[1.25rem]">
@@ -155,6 +168,7 @@ function CategorySection({
   onAddToOwned,
   categoryIndex,
   onCategoryReorder,
+  onTemplateContextMenu,
 }: {
   label: string;
   templates: DeviceTemplate[];
@@ -168,6 +182,7 @@ function CategorySection({
   onAddToOwned?: (template: DeviceTemplate) => void;
   categoryIndex?: number;
   onCategoryReorder?: (category: string, targetIndex: number) => void;
+  onTemplateContextMenu?: (e: React.MouseEvent, template: DeviceTemplate) => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [dropLine, setDropLine] = useState<"above" | "below" | null>(null);
@@ -238,6 +253,7 @@ function CategorySection({
                 ownedQuantity={ownedQuantityMap?.get(key)}
                 onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(key) : undefined}
                 onAddToOwned={onAddToOwned ? () => onAddToOwned(template) : undefined}
+                onContextMenu={onTemplateContextMenu ? (e) => onTemplateContextMenu(e, template) : undefined}
               />
             );
           })}
@@ -259,6 +275,7 @@ function DraggableTemplateItem({
   onAddToOwned,
   index,
   onReorder,
+  onContextMenu,
 }: {
   template: DeviceTemplate;
   query: string;
@@ -269,6 +286,7 @@ function DraggableTemplateItem({
   onAddToOwned?: () => void;
   index: number;
   onReorder: (deviceType: string, targetIndex: number) => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const [dropLine, setDropLine] = useState<"above" | "below" | null>(null);
   const rowRef = useRef<HTMLDivElement>(null);
@@ -308,6 +326,10 @@ function DraggableTemplateItem({
           e.dataTransfer.setData("application/easyschematic-template-reorder", template.id ?? template.deviceType);
           e.dataTransfer.setData("application/easyschematic-device", JSON.stringify(template));
           e.dataTransfer.effectAllowed = "move";
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onContextMenu?.(e);
         }}
       >
         {/* Drag handle */}
@@ -547,12 +569,14 @@ function CustomTemplatesSection({
   favoriteSet,
   ownedQuantityMap,
   onAddToOwned,
+  onTemplateContextMenu,
 }: {
   customTemplates: DeviceTemplate[];
   query: string;
   favoriteSet: Set<string>;
   ownedQuantityMap?: Map<string, number>;
   onAddToOwned?: (template: DeviceTemplate) => void;
+  onTemplateContextMenu?: (e: React.MouseEvent, template: DeviceTemplate) => void;
 }) {
   const groups = useSchematicStore((s) => s.customTemplateGroups);
   const order = useSchematicStore((s) => s.customTemplateOrder);
@@ -760,6 +784,7 @@ function CustomTemplatesSection({
                         onAddToOwned={onAddToOwned ? () => onAddToOwned(t) : undefined}
                         index={i}
                         onReorder={(dt, targetIdx) => handleReorder(dt, targetIdx, sectionIdx)}
+                        onContextMenu={onTemplateContextMenu ? (e) => onTemplateContextMenu(e, t) : undefined}
                       />
                     );
                   })}
@@ -792,6 +817,7 @@ function CustomTemplatesSection({
                             onAddToOwned={onAddToOwned ? () => onAddToOwned(t) : undefined}
                             index={i}
                             onReorder={(dt, targetIdx) => handleReorder(dt, targetIdx, sectionIdx)}
+                            onContextMenu={onTemplateContextMenu ? (e) => onTemplateContextMenu(e, t) : undefined}
                           />
                         );
                       })}
@@ -830,6 +856,7 @@ function CustomTemplatesSection({
                           onAddToOwned={onAddToOwned ? () => onAddToOwned(t) : undefined}
                           index={i}
                           onReorder={(dt, targetIdx) => handleReorder(dt, targetIdx, sectionIdx)}
+                          onContextMenu={onTemplateContextMenu ? (e) => onTemplateContextMenu(e, t) : undefined}
                         />
                       );
                     })}
@@ -1052,9 +1079,14 @@ export default function DeviceLibrary() {
   const showOwnedGearPane = useSchematicStore((s) => s.showOwnedGearPane);
   const libraryActiveTab = useSchematicStore((s) => s.libraryActiveTab);
   const setLibraryActiveTab = useSchematicStore((s) => s.setLibraryActiveTab);
+  const customTemplateGroups = useSchematicStore((s) => s.customTemplateGroups);
   const [search, setSearch] = useState("");
   const [showDeviceCreator, setShowDeviceCreator] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const openDeviceAdmin = useUiChromeStore((s) => s.openDeviceAdmin);
+  const hiddenLibraryTemplateIds = useSchematicStore((s) => s.hiddenLibraryTemplateIds);
+  const [templateMenu, setTemplateMenu] = useState<LibraryTemplateMenuState | null>(null);
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
   const leftExpanded = useSidebarStore((s) => s.leftExpanded);
   const setLeftExpanded = useSidebarStore((s) => s.setLeftExpanded);
   const libraryBrowseMode = useSidebarStore((s) => s.libraryBrowseMode);
@@ -1073,11 +1105,46 @@ export default function DeviceLibrary() {
     [ownedGear],
   );
 
+  const customTemplateIds = useMemo(
+    () => new Set(customTemplates.map((t) => templateKey(t))),
+    [customTemplates],
+  );
+
+  const handleTemplateContextMenu = useCallback(
+    (e: React.MouseEvent, template: DeviceTemplate) => {
+      const key = templateKey(template);
+      setTemplateMenu({
+        template,
+        screenX: e.clientX,
+        screenY: e.clientY,
+        isCustom: customTemplateIds.has(key),
+      });
+    },
+    [customTemplateIds],
+  );
+
+  const openAdminPanel = useCallback(
+    (template?: DeviceTemplate) => {
+      openDeviceAdmin({
+        tab: "manage",
+        focusId: template?.id ?? (template ? templateKey(template) : null),
+      });
+    },
+    [openDeviceAdmin],
+  );
+
+  const hiddenIds = useMemo(
+    () => new Set(hiddenLibraryTemplateIds),
+    [hiddenLibraryTemplateIds],
+  );
+
   // Non-expansion templates for filter option derivation
   const libraryTemplates = useMemo(
     () => templates.filter((t) => t.category !== "Expansion Cards"),
     [templates],
   );
+
+  const bundledKeys = useMemo(() => bundledTemplateKeys(libraryTemplates), [libraryTemplates]);
 
   const matchesSignalFilter = useCallback((t: DeviceTemplate) => {
     if (selectedSignalTypes.size === 0) return true;
@@ -1145,18 +1212,22 @@ export default function DeviceLibrary() {
   const query = search.trim();
 
   const filteredCustom = useMemo(() => {
-    let result = customTemplates;
+    let result = customTemplates.filter((t) => isPureUserTemplate(t, bundledKeys));
     if (selectedCategories.size > 0) result = result.filter((t) => t.category && selectedCategories.has(t.category));
     if (selectedBrands.size > 0) result = result.filter((t) => t.manufacturer && selectedBrands.has(t.manufacturer));
     if (selectedSignalTypes.size > 0) result = result.filter(matchesSignalFilter);
     if (query) result = result.filter((t) => scoreTemplate(t, query) > 0);
     return result;
-  }, [customTemplates, query, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter]);
+  }, [customTemplates, bundledKeys, query, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter]);
 
   // When searching, produce a flat ranked list; when browsing, keep categories
   const rankedResults = useMemo(() => {
     if (!query) return null;
-    let all = [...templates, ...customTemplates].filter((t) => t.category !== "Expansion Cards");
+    let all = mergeDeviceLibraryTemplates(
+      templates.filter((t) => t.category !== "Expansion Cards"),
+      customTemplates,
+      hiddenIds,
+    );
     if (selectedCategories.size > 0) all = all.filter((t) => t.category && selectedCategories.has(t.category));
     if (selectedBrands.size > 0) all = all.filter((t) => t.manufacturer && selectedBrands.has(t.manufacturer));
     if (selectedSignalTypes.size > 0) all = all.filter(matchesSignalFilter);
@@ -1170,12 +1241,12 @@ export default function DeviceLibrary() {
       .filter((r) => r.score > 0)
       .sort((a, b) => b.score - a.score || a.template.label.localeCompare(b.template.label));
     return scored.map((r) => r.template);
-  }, [templates, customTemplates, query, favoriteSet, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter]);
+  }, [templates, customTemplates, hiddenIds, query, favoriteSet, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter]);
 
   // Favorites section: resolve template keys to actual template objects
   const favoritesList = useMemo(() => {
     if (favoriteTemplates.length === 0) return [];
-    const all = [...templates, ...customTemplates];
+    const all = mergeDeviceLibraryTemplates(templates, customTemplates, hiddenIds);
     const byKey = new Map<string, DeviceTemplate>();
     for (const t of all) byKey.set(t.id ?? t.deviceType, t);
     let favs = favoriteTemplates.map((k) => byKey.get(k)).filter((t): t is DeviceTemplate => !!t);
@@ -1183,7 +1254,7 @@ export default function DeviceLibrary() {
     if (selectedBrands.size > 0) favs = favs.filter((t) => t.manufacturer && selectedBrands.has(t.manufacturer));
     if (selectedSignalTypes.size > 0) favs = favs.filter(matchesSignalFilter);
     return favs;
-  }, [templates, customTemplates, favoriteTemplates, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter]);
+  }, [templates, customTemplates, hiddenIds, favoriteTemplates, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter]);
 
   const filteredCategories = useMemo(() => {
     const groups = new Map<string, DeviceTemplate[]>();
@@ -1245,19 +1316,34 @@ export default function DeviceLibrary() {
   return (
     <div className="w-56 bg-[var(--color-surface)] border-r border-[var(--color-border)] flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="px-3 py-2 border-b border-[var(--color-border)] flex items-center justify-between">
-        <h2 className="text-xs font-semibold text-[var(--color-text-heading)] uppercase tracking-wider">
+      <div className="px-3 py-2 border-b border-[var(--color-border)] flex items-center justify-between gap-1">
+        <h2 className="text-xs font-semibold text-[var(--color-text-heading)] uppercase tracking-wider truncate">
           {showOwnedGearPane ? "Library" : "Devices"}
         </h2>
-        <button
-          onClick={() => setLeftExpanded(false)}
-          className="cursor-pointer hover:bg-[var(--color-surface-hover)] rounded p-0.5 transition-colors"
-          title="Collapse device library"
-        >
-          <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-[var(--color-text-muted)]" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d="M10 3l-5 5 5 5" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-0.5 shrink-0">
+          {libraryActiveTab === "devices" && (
+            <button
+              type="button"
+              onClick={() => openDeviceAdmin({ tab: "manage" })}
+              className="cursor-pointer hover:bg-[var(--color-surface-hover)] rounded p-0.5 transition-colors"
+              title="Device library admin"
+            >
+              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-[var(--color-text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                <circle cx="8" cy="8" r="2.5" />
+                <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
+          <button
+            onClick={() => setLeftExpanded(false)}
+            className="cursor-pointer hover:bg-[var(--color-surface-hover)] rounded p-0.5 transition-colors"
+            title="Collapse device library"
+          >
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-[var(--color-text-muted)]" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path d="M10 3l-5 5 5 5" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {libraryActiveTab === "devices" && (
@@ -1540,12 +1626,13 @@ export default function DeviceLibrary() {
                       key={key}
                       template={template}
                       query={query}
-                      onDelete={customTemplates.includes(template) ? () => removeCustomTemplate(template.id ?? template.deviceType) : undefined}
+                      onDelete={customTemplateIds.has(key) ? () => removeCustomTemplate(key) : undefined}
                       hasPreset={!!(template.id && presetIds.has(template.id))}
                       isFavorite={favoriteSet.has(key)}
                       ownedQuantity={ownedQuantityMap.get(key)}
                       onToggleFavorite={() => toggleFavoriteTemplate(key)}
                       onAddToOwned={() => handleAddToOwned(template)}
+                      onContextMenu={(e) => handleTemplateContextMenu(e, template)}
                     />
                   );
                 })}
@@ -1569,6 +1656,7 @@ export default function DeviceLibrary() {
                 ownedQuantityMap={ownedQuantityMap}
                 onToggleFavorite={toggleFavoriteTemplate}
                 onAddToOwned={handleAddToOwned}
+                onTemplateContextMenu={handleTemplateContextMenu}
               />
             )}
 
@@ -1578,6 +1666,7 @@ export default function DeviceLibrary() {
               favoriteSet={favoriteSet}
               ownedQuantityMap={ownedQuantityMap}
               onAddToOwned={handleAddToOwned}
+              onTemplateContextMenu={handleTemplateContextMenu}
             />
 
             {(libraryBrowseMode !== "userTemplatesOnly" || query) &&
@@ -1595,12 +1684,22 @@ export default function DeviceLibrary() {
                   onAddToOwned={handleAddToOwned}
                   categoryIndex={i}
                   onCategoryReorder={reorderCategory}
+                  onTemplateContextMenu={handleTemplateContextMenu}
                 />
               ))}
           </>
         )}
       </div>
       )}
+
+      <DeviceLibraryTemplateContextMenu
+        menu={templateMenu}
+        onClose={() => setTemplateMenu(null)}
+        groups={customTemplateGroups}
+        onOpenAdmin={(template) => openAdminPanel(template)}
+        onLoginRequired={() => setShowLoginDialog(true)}
+      />
+      <LoginDialog open={showLoginDialog} onClose={() => setShowLoginDialog(false)} />
     </div>
   );
 }

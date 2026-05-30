@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { pushLibraryBackup } from "./libraryTemplateBackup";
 import {
   applyNodeChanges,
   applyEdgeChanges,
@@ -235,6 +236,7 @@ export function trackItAutosaveKey(drawingId: string): string {
   return `easyschematic-trackit:${drawingId}`;
 }
 const TEMPLATES_KEY = "easyschematic-custom-templates";
+const HIDDEN_LIBRARY_KEY = "easyschematic-hidden-library-ids";
 const TEMPLATE_META_KEY = "easyschematic-custom-template-meta";
 const CATEGORY_ORDER_KEY = "easyschematic-category-order";
 
@@ -459,9 +461,13 @@ interface SchematicState {
   selectAll: () => void;
 
   // Custom templates
+  hiddenLibraryTemplateIds: string[];
   addCustomTemplate: (template: DeviceTemplate) => void;
   updateCustomTemplate: (id: string, template: DeviceTemplate) => void;
+  upsertLibraryTemplate: (template: DeviceTemplate) => void;
   removeCustomTemplate: (deviceType: string) => void;
+  removeLibraryTemplateWithBackup: (key: string, label: string) => void;
+  restoreHiddenLibraryTemplate: (key: string) => void;
   clearAllCustomTemplates: () => void;
   addOwnedGear: (template: DeviceTemplate, quantity?: number) => void;
   setOwnedGear: (items: OwnedGearItem[]) => void;
@@ -717,6 +723,7 @@ interface SchematicState {
   // Template import/export (#12/#26)
   exportCustomTemplates: () => DeviceTemplate[];
   importCustomTemplates: (templates: DeviceTemplate[]) => void;
+  replaceCustomTemplates: (templates: DeviceTemplate[]) => void;
 
   // Cloud storage
   cloudSchematicId: string | null;
@@ -1290,6 +1297,25 @@ function saveCustomTemplates(templates: DeviceTemplate[]) {
   }
 }
 
+function loadHiddenLibraryTemplateIds(): string[] {
+  try {
+    const raw = localStorage.getItem(HIDDEN_LIBRARY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHiddenLibraryTemplateIds(ids: string[]) {
+  try {
+    localStorage.setItem(HIDDEN_LIBRARY_KEY, JSON.stringify(ids));
+  } catch {
+    // silently fail
+  }
+}
+
 function loadCustomTemplateMeta(templates: DeviceTemplate[]): CustomTemplateMeta {
   try {
     const raw = localStorage.getItem(TEMPLATE_META_KEY);
@@ -1323,6 +1349,7 @@ function saveCategoryOrder(order: string[] | null) {
 
 const _initCustomTemplates = loadCustomTemplates();
 const _initCustomMeta = loadCustomTemplateMeta(_initCustomTemplates);
+const _initHiddenLibraryIds = loadHiddenLibraryTemplateIds();
 
 function resolveActiveReservedBlock(
   state: Pick<SchematicState, "trackItNumbering" | "activeTrackItReservationId">,
@@ -1349,6 +1376,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   editingNodeId: null,
   creatingNodeId: null,
   customTemplates: _initCustomTemplates,
+  hiddenLibraryTemplateIds: _initHiddenLibraryIds,
   ownedGear: [],
   showOwnedGearPane: false,
   libraryActiveTab: "devices",
@@ -3337,6 +3365,54 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     saveCustomTemplates(updated);
   },
 
+  upsertLibraryTemplate: (template) => {
+    const key = templateKey(template);
+    const existing = get().customTemplates;
+    const idx = existing.findIndex((t) => templateKey(t) === key);
+    let updated: DeviceTemplate[];
+    let order = get().customTemplateOrder;
+    if (idx >= 0) {
+      updated = existing.map((t, i) => (i === idx ? template : t));
+    } else {
+      updated = [...existing, template];
+      if (!order.includes(key)) order = [...order, key];
+    }
+    const hidden = get().hiddenLibraryTemplateIds.filter((id) => id !== key);
+    set({
+      customTemplates: updated,
+      customTemplateOrder: order,
+      hiddenLibraryTemplateIds: hidden,
+    });
+    saveCustomTemplates(updated);
+    saveHiddenLibraryTemplateIds(hidden);
+    if (idx < 0) {
+      saveCustomTemplateMeta({
+        groups: get().customTemplateGroups,
+        order,
+        groupAssignments: get().customTemplateGroupAssignments,
+      });
+    }
+  },
+
+  removeLibraryTemplateWithBackup: (key, label) => {
+    const custom = get().customTemplates.find((t) => templateKey(t) === key);
+    if (custom) {
+      pushLibraryBackup([structuredClone(custom)], label);
+      get().removeCustomTemplate(key);
+      return;
+    }
+    const hidden = [...new Set([...get().hiddenLibraryTemplateIds, key])];
+    set({ hiddenLibraryTemplateIds: hidden });
+    saveHiddenLibraryTemplateIds(hidden);
+    pushLibraryBackup([], `${label} (hidden)`);
+  },
+
+  restoreHiddenLibraryTemplate: (key) => {
+    const hidden = get().hiddenLibraryTemplateIds.filter((id) => id !== key);
+    set({ hiddenLibraryTemplateIds: hidden });
+    saveHiddenLibraryTemplateIds(hidden);
+  },
+
   addOwnedGear: (template, quantity = 1) => {
     const normalizedQuantity = Math.max(1, Math.floor(quantity));
     const key = templateKey(template);
@@ -4001,16 +4077,46 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   },
 
   importCustomTemplates: (templates) => {
+    if (templates.length === 0) return;
     const existing = get().customTemplates;
-    const existingKeys = new Set(existing.map((t) => templateKey(t)));
-    const newTemplates = templates.filter((t) => !existingKeys.has(templateKey(t)));
-    if (newTemplates.length > 0) {
-      const merged = [...existing, ...newTemplates];
-      const order = [...get().customTemplateOrder, ...newTemplates.map((t) => templateKey(t))];
-      set({ customTemplates: merged, customTemplateOrder: order });
-      saveCustomTemplates(merged);
-      saveCustomTemplateMeta({ groups: get().customTemplateGroups, order, groupAssignments: get().customTemplateGroupAssignments });
+    const byKey = new Map(existing.map((t) => [templateKey(t), t]));
+    for (const t of templates) {
+      byKey.set(templateKey(t), t);
     }
+    const merged = [...byKey.values()];
+    const order = [...get().customTemplateOrder];
+    for (const t of templates) {
+      const key = templateKey(t);
+      if (!order.includes(key)) order.push(key);
+    }
+    const hidden = get().hiddenLibraryTemplateIds.filter(
+      (id) => !templates.some((t) => templateKey(t) === id),
+    );
+    set({ customTemplates: merged, customTemplateOrder: order, hiddenLibraryTemplateIds: hidden });
+    saveCustomTemplates(merged);
+    saveHiddenLibraryTemplateIds(hidden);
+    saveCustomTemplateMeta({
+      groups: get().customTemplateGroups,
+      order,
+      groupAssignments: get().customTemplateGroupAssignments,
+    });
+  },
+
+  replaceCustomTemplates: (templates) => {
+    pushLibraryBackup(get().customTemplates, "Before library restore");
+    const order = templates.map((t) => templateKey(t));
+    set({
+      customTemplates: structuredClone(templates),
+      customTemplateOrder: order,
+      hiddenLibraryTemplateIds: [],
+    });
+    saveCustomTemplates(templates);
+    saveHiddenLibraryTemplateIds([]);
+    saveCustomTemplateMeta({
+      groups: get().customTemplateGroups,
+      order,
+      groupAssignments: get().customTemplateGroupAssignments,
+    });
   },
 
   setCloudSchematicId: (id) => { set({ cloudSchematicId: id }); get().saveToLocalStorage(); },
@@ -4293,9 +4399,32 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     if (!page) return null;
     const shelf = page.accessories.find((a) => a.id === shelfId);
     if (!shelf || shelf.type !== "shelf") return null;
+    const rack = page.racks.find((r) => r.id === shelf.rackId);
     const newDevice = state.nodes.find((n) => n.id === deviceNodeId)?.data as DeviceData | undefined;
     pushUndo({ nodes: state.nodes, edges: state.edges });
     const id = nextPlacementId();
+
+    // Grow shelf span when a multi-U throwdown needs more vertical rack space.
+    let shelfHeightPatch: { heightU: number } | undefined;
+    if (newDevice && rack) {
+      const deviceU = resolveRackHeightU(newDevice).heightU;
+      const neededShelfU = Math.max(shelf.heightU, Math.min(rack.heightU, deviceU));
+      if (
+        neededShelfU > shelf.heightU
+        && get().isRackSlotAvailable(
+          pageId,
+          shelf.rackId,
+          shelf.uPosition,
+          neededShelfU,
+          shelf.face,
+          undefined,
+          undefined,
+          shelfId,
+        )
+      ) {
+        shelfHeightPatch = { heightU: neededShelfU };
+      }
+    }
 
     // Auto-place: walk row by row from y=0 upward. On each row, push past occupants
     // whose y range intersects [rowY, rowY + newH]. If the device fits horizontally
@@ -4342,7 +4471,13 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       shelfOffsetMm: offset,
     };
     set({
-      pages: mapElevationPage(state.pages, pageId, (p) => ({ ...p, placements: [...p.placements, placement] })),
+      pages: mapElevationPage(state.pages, pageId, (p) => ({
+        ...p,
+        accessories: shelfHeightPatch
+          ? p.accessories.map((a) => (a.id === shelfId ? { ...a, ...shelfHeightPatch } : a))
+          : p.accessories,
+        placements: [...p.placements, placement],
+      })),
       undoSize: undoStack.length, redoSize: 0,
     });
     get().saveToLocalStorage();

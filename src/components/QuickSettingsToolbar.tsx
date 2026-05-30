@@ -197,14 +197,14 @@ export default function QuickSettingsToolbar() {
             }
           }}
           placeholder="Devices…"
-          className="w-40 rounded border border-[var(--color-border)] bg-white px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+          className="w-40 rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1 text-[11px] text-[var(--color-text)] outline-none focus:border-blue-500"
           title="Search devices to add to drawing"
         />
         <button type="button" className={btn} onClick={() => deviceResults[0] && quickAddTemplate(deviceResults[0])}>
           Add
         </button>
         {dropdownOpen && deviceQuery.trim() && deviceResults.length > 0 && (
-          <div className="absolute top-[calc(100%+4px)] left-0 z-30 w-72 rounded border border-[var(--color-border)] bg-white shadow-lg p-1">
+          <div className="absolute top-[calc(100%+4px)] left-0 z-30 w-72 rounded border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg p-1">
             {deviceResults.map((template) => (
               <button
                 key={template.id ?? template.deviceType}

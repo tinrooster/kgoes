@@ -28,7 +28,7 @@ const BADGE_STYLES: Record<
   standalone: {
     label: "Standalone",
     className:
-      "bg-[var(--color-surface-2)] text-[var(--color-text)] ring-1 ring-[var(--color-border)]",
+      "bg-[var(--color-surface)] text-[var(--color-text)] ring-1 ring-[var(--color-border)]",
   },
   "popup-awaiting-link": {
     label: "trackIT…",
