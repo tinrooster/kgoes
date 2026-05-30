@@ -183,3 +183,34 @@ export function applyTrackItLink(link: TrackItLinkContext): void {
 
   store.addToast(`Linked to trackIT DWG ${link.dwgNumber}`, "success", 3500);
 }
+
+/** Ask trackIT opener to navigate to another plant drawing (fly link). */
+export function requestOpenTrackItDrawing(payload: {
+  dwgNumber: string;
+  remoteDrawingId?: string;
+}): void {
+  const trimmed = payload.dwgNumber.trim();
+  if (!trimmed) {
+    useSchematicStore.getState().addToast("Set a remote DWG number on the fly endpoint", "info");
+    return;
+  }
+  if (!isTrackItPopupOpener()) {
+    useSchematicStore
+      .getState()
+      .addToast("Fly navigation requires opening ES from trackIT Plant", "info", 4000);
+    return;
+  }
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(
+        {
+          type: "KGO_ES_OPEN_DRAWING",
+          payload: { dwgNumber: trimmed, drawingId: payload.remoteDrawingId },
+        },
+        "*",
+      );
+    }
+  } catch {
+    useSchematicStore.getState().addToast("Could not reach trackIT window", "error");
+  }
+}

@@ -185,6 +185,18 @@ export default function PortContextMenu() {
     useSchematicStore.setState({ portContextMenu: null });
   }, [menu, updateNodeInternals]);
 
+  const terminateFlyOff = useCallback(() => {
+    if (!menu) return;
+    useSchematicStore.getState().terminatePortAsFly(menu.nodeId, menu.portId, "out");
+    useSchematicStore.setState({ portContextMenu: null });
+  }, [menu]);
+
+  const terminateFlyIn = useCallback(() => {
+    if (!menu) return;
+    useSchematicStore.getState().terminatePortAsFly(menu.nodeId, menu.portId, "in");
+    useSchematicStore.setState({ portContextMenu: null });
+  }, [menu]);
+
   if (!menu) return null;
 
   const node = useSchematicStore.getState().nodes.find((n) => n.id === menu.nodeId);
@@ -243,6 +255,15 @@ export default function PortContextMenu() {
       )}
       {canConvertAll && (
         <MenuItem label="Convert All Ports to Passthrough" onClick={convertAllToPassthrough} />
+      )}
+      {(port.direction === "output" || port.direction === "bidirectional") && (
+        <>
+          <div className="border-t border-gray-200 my-1" />
+          <MenuItem label="Terminate as fly-off…" onClick={terminateFlyOff} />
+        </>
+      )}
+      {(port.direction === "input" || port.direction === "bidirectional") && (
+        <MenuItem label="Terminate as fly-in…" onClick={terminateFlyIn} />
       )}
       <div className="border-t border-gray-200 my-1" />
       <MenuItem label="Show in Drawing" onClick={showInDrawing} />

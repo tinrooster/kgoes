@@ -426,6 +426,31 @@ export interface StubLabelData {
 
 export type StubLabelNode = Node<StubLabelData, "stub-label">;
 
+export type FlyDirection = "in" | "out";
+
+/** Cross-drawing fly-in / fly-off endpoint (references remote plant_drawings.dwg_number). */
+export interface FlyEndpointData {
+  [key: string]: unknown;
+  direction: FlyDirection;
+  signalType: SignalType;
+  /** Local housename (e.g. TC-03 DA C). */
+  designation: string;
+  /** Port / IN/OUT notation (e.g. OUT 3). */
+  notation: string;
+  /** Remote sheet index — trackIT dwg_number. */
+  remoteDwgNumber: string;
+  remoteDrawingId?: string;
+  remoteDesignation?: string;
+  remoteNotation?: string;
+  deviceNodeId?: string;
+  portId?: string;
+  cableId?: string;
+  pairedFlyId?: string;
+  placed?: boolean;
+}
+
+export type FlyEndpointNode = Node<FlyEndpointData, "fly-endpoint">;
+
 export interface WaypointData {
   [key: string]: unknown;
   /** The connection edge this waypoint belongs to. */
@@ -436,7 +461,7 @@ export interface WaypointData {
 
 export type WaypointNode = Node<WaypointData, "waypoint">;
 
-export type SchematicNode = DeviceNode | RoomNode | NoteNode | AnnotationNode | StubLabelNode | WaypointNode;
+export type SchematicNode = DeviceNode | RoomNode | NoteNode | AnnotationNode | StubLabelNode | FlyEndpointNode | WaypointNode;
 
 export interface ConnectionData {
   [key: string]: unknown;

@@ -37,6 +37,7 @@ import type {
 import type { ReactFlowInstance } from "@xyflow/react";
 import type { SignalType, ScrollConfig, LineStyle, LabelCaseMode, DistanceSettings, PanMode, StubLabelPageMode, RfPathRole } from "./types";
 import { applyRfPathDefaults } from "./rfPath";
+import { defaultFlyEndpointData, defaultFlyPlacement } from "./flyFormat";
 import { defaultStubPlacement } from "./stubPlacement";
 import { getPortAbsolutePositions } from "./snapUtils";
 import { DEFAULT_SCROLL_CONFIG, DEFAULT_LABEL_CASE, DEFAULT_DISTANCE_SETTINGS, DEFAULT_PAN_MODE, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_SHOW_ROOM, DEFAULT_STUB_LABEL_PAGE_MODE } from "./types";
@@ -501,6 +502,14 @@ interface SchematicState {
   // Stub conversion (real React Flow nodes for the labels)
   convertEdgeToStubs: (edgeId: string) => void;
   collapseStubsForEdge: (edgeId: string) => void;
+  patchFlyEndpointData: (nodeId: string, patch: Partial<import("./types").FlyEndpointData>) => void;
+  deleteFlyEndpoint: (nodeId: string) => void;
+  terminatePortAsFly: (
+    nodeId: string,
+    portId: string,
+    direction: import("./types").FlyDirection,
+  ) => void;
+  setEditingFlyEndpointId: (nodeId: string | null) => void;
 
   // Manual edge routing
   setManualWaypoints: (edgeId: string, waypoints: { x: number; y: number }[]) => void;
@@ -510,6 +519,8 @@ interface SchematicState {
   edgeContextMenu: { edgeId: string; screenX: number; screenY: number; flowX: number; flowY: number } | null;
   roomContextMenu: { nodeId: string; screenX: number; screenY: number } | null;
   stubLabelContextMenu: { nodeId: string; screenX: number; screenY: number } | null;
+  flyEndpointContextMenu: { nodeId: string; screenX: number; screenY: number } | null;
+  editingFlyEndpointId: string | null;
   portContextMenu: { nodeId: string; portId: string; screenX: number; screenY: number } | null;
 
   // Centralized edge routing
@@ -1395,6 +1406,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   edgeContextMenu: null,
   roomContextMenu: null,
   stubLabelContextMenu: null,
+  flyEndpointContextMenu: null,
+  editingFlyEndpointId: null,
   portContextMenu: null,
   autoRoute: true,
   _edgeWaypointStash: null,
@@ -5675,6 +5688,154 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       }),
     });
     get().saveToLocalStorage();
+  },
+
+  patchFlyEndpointData: (nodeId, patch) => {
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    set({
+      nodes: state.nodes.map((n) => {
+        if (n.id !== nodeId || n.type !== "fly-endpoint") return n;
+        const merged = { ...(n.data as Record<string, unknown>), ...patch } as typeof n.data;
+        for (const k of Object.keys(patch) as (keyof typeof patch)[]) {
+          if (patch[k] === undefined) delete (merged as Record<string, unknown>)[k];
+        }
+        return { ...n, data: merged };
+      }),
+    });
+    get().saveToLocalStorage();
+  },
+
+  setEditingFlyEndpointId: (nodeId) => set({ editingFlyEndpointId: nodeId }),
+
+  deleteFlyEndpoint: (nodeId) => {
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    const newEdges = state.edges.filter((e) => e.source !== nodeId && e.target !== nodeId);
+    const nodesAfter = state.nodes.filter((n) => n.id !== nodeId);
+    set({
+      nodes: reconcileWaypointNodes(nodesAfter, newEdges),
+      edges: newEdges,
+    });
+    get().saveToLocalStorage();
+  },
+
+  terminatePortAsFly: (nodeId, portId, direction) => {
+    const state = get();
+    const device = state.nodes.find((n) => n.id === nodeId && n.type === "device");
+    if (!device) return;
+    const data = device.data as DeviceData;
+    const port = data.ports.find((p) => p.id === portId);
+    if (!port) return;
+
+    const touchesPort = (e: ConnectionEdge) => {
+      const matchHandle = (nid: string, handle: string | null | undefined) => {
+        if (nid !== nodeId || !handle) return false;
+        return handle.replace(/-(in|out|rear|front)$/, "") === portId;
+      };
+      return matchHandle(e.source, e.sourceHandle) || matchHandle(e.target, e.targetHandle);
+    };
+
+    const absPos = (n: typeof state.nodes[number]): { x: number; y: number } => {
+      let x = n.position.x;
+      let y = n.position.y;
+      let pid = n.parentId;
+      while (pid) {
+        const p = state.nodes.find((nn) => nn.id === pid);
+        if (!p) break;
+        x += p.position.x;
+        y += p.position.y;
+        pid = p.parentId;
+      }
+      return { x, y };
+    };
+
+    const nodeMap = new Map(state.nodes.map((n) => [n.id, n] as const));
+    const displayDefaults = {
+      useShortNames: state.useShortNames,
+      wrapDeviceLabels: state.wrapDeviceLabels,
+    };
+    const handleSuffix = direction === "out" ? "out" : "in";
+    const deviceHandleId = `${portId}-${handleSuffix}`;
+    const positions = getPortAbsolutePositions(device, nodeMap, displayDefaults);
+    const match = positions.find((p) => p.handleId === deviceHandleId)
+      ?? positions.find((p) => p.portId === portId);
+    const dPos = absPos(device);
+    const w = (device.measured?.width as number | undefined) ?? 180;
+    const h = (device.measured?.height as number | undefined) ?? 60;
+    const handlePos = match
+      ? { x: match.absX, y: match.absY, side: match.side as "left" | "right" }
+      : {
+          x: port.direction === "input" ? dPos.x : dPos.x + w,
+          y: dPos.y + h / 2,
+          side: (port.direction === "input" ? "left" : "right") as "left" | "right",
+        };
+
+    const placement = defaultFlyPlacement({ x: handlePos.x, y: handlePos.y }, handlePos.side);
+    const flyAbs = { x: Math.round(placement.pos.x), y: Math.round(placement.pos.y) };
+    const parentId = device.parentId;
+    const parentAbs = parentId
+      ? absPos(state.nodes.find((n) => n.id === parentId)!)
+      : { x: 0, y: 0 };
+
+    const flyNodeId = `fly-${Date.now()}`;
+    const flyData = defaultFlyEndpointData({
+      direction,
+      signalType: port.signalType,
+      device: data,
+      port,
+      trackItDwgNumber: state.trackItLink?.dwgNumber,
+    });
+    flyData.deviceNodeId = nodeId;
+    flyData.portId = portId;
+
+    const flyNode: SchematicNode = {
+      id: flyNodeId,
+      type: "fly-endpoint",
+      position: { x: flyAbs.x - parentAbs.x, y: flyAbs.y - parentAbs.y },
+      ...(parentId ? { parentId } : {}),
+      data: flyData,
+    } as SchematicNode;
+
+    const edgeBase: ConnectionData =
+      port.signalType === "rf"
+        ? applyRfPathDefaults(
+            { signalType: port.signalType },
+            direction === "out" ? port : undefined,
+            direction === "in" ? port : undefined,
+          )
+        : { signalType: port.signalType };
+
+    const newEdge: ConnectionEdge =
+      direction === "out"
+        ? {
+            id: nextEdgeId(),
+            source: nodeId,
+            target: flyNodeId,
+            sourceHandle: deviceHandleId,
+            targetHandle: placement.handle,
+            data: edgeBase,
+            style: { stroke: resolveEdgeStroke(edgeBase), strokeWidth: 2 },
+          }
+        : {
+            id: nextEdgeId(),
+            source: flyNodeId,
+            target: nodeId,
+            sourceHandle: placement.handle,
+            targetHandle: deviceHandleId,
+            data: edgeBase,
+            style: { stroke: resolveEdgeStroke(edgeBase), strokeWidth: 2 },
+          };
+
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    const remainingEdges = state.edges.filter((e) => !touchesPort(e));
+    const newEdges = [...remainingEdges, newEdge];
+    set({
+      nodes: reconcileWaypointNodes([...state.nodes, flyNode], newEdges),
+      edges: newEdges,
+    });
+    get().saveToLocalStorage();
+    get().setEditingFlyEndpointId(flyNodeId);
   },
 
   convertEdgeToStubs: (edgeId) => {

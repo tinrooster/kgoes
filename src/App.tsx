@@ -53,6 +53,8 @@ import {
 import RoomContextMenu from "./components/RoomContextMenu";
 import DeviceContextMenu from "./components/DeviceContextMenu";
 import StubLabelContextMenu from "./components/StubLabelContextMenu";
+import FlyEndpointContextMenu from "./components/FlyEndpointContextMenu";
+import FlyEndpointEditor from "./components/FlyEndpointEditor";
 import RoomEditor from "./components/RoomEditor";
 import AnnotationEditor from "./components/AnnotationEditor";
 import QuickAddDevice from "./components/QuickAddDevice";
@@ -1616,6 +1618,11 @@ function SchematicCanvas() {
           useSchematicStore.setState({
             stubLabelContextMenu: { nodeId: node.id, screenX: event.clientX, screenY: event.clientY },
           });
+        } else if (node.type === "fly-endpoint") {
+          event.preventDefault();
+          useSchematicStore.setState({
+            flyEndpointContextMenu: { nodeId: node.id, screenX: event.clientX, screenY: event.clientY },
+          });
         }
       }}
       onReconnectStart={onReconnectStart}
@@ -1921,6 +1928,8 @@ export default function App() {
       <RoomContextMenu />
       <DeviceContextMenu />
       <StubLabelContextMenu />
+      <FlyEndpointContextMenu />
+      <FlyEndpointEditor />
       <PortContextMenu />
       <IncompatibleConnectionDialog />
       <DeviceSwapDialog />

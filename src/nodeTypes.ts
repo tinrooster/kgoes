@@ -4,6 +4,7 @@ import RoomNodeComponent from "./components/RoomNode";
 import NoteNodeComponent from "./components/NoteNode";
 import AnnotationNodeComponent from "./components/AnnotationNode";
 import StubLabelNodeComponent from "./components/StubLabelNode";
+import FlyEndpointNodeComponent from "./components/FlyEndpointNode";
 import WaypointNodeComponent from "./components/WaypointNode";
 import OffsetEdgeComponent from "./components/OffsetEdge";
 
@@ -13,6 +14,7 @@ export const nodeTypes: NodeTypes = {
   note: NoteNodeComponent,
   annotation: AnnotationNodeComponent,
   "stub-label": StubLabelNodeComponent,
+  "fly-endpoint": FlyEndpointNodeComponent,
   waypoint: WaypointNodeComponent,
 };
 
