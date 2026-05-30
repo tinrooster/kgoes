@@ -570,6 +570,7 @@ function CustomTemplatesSection({
   ownedQuantityMap,
   onAddToOwned,
   onTemplateContextMenu,
+  defaultOpen = false,
 }: {
   customTemplates: DeviceTemplate[];
   query: string;
@@ -577,6 +578,8 @@ function CustomTemplatesSection({
   ownedQuantityMap?: Map<string, number>;
   onAddToOwned?: (template: DeviceTemplate) => void;
   onTemplateContextMenu?: (e: React.MouseEvent, template: DeviceTemplate) => void;
+  /** When true, User Templates section starts expanded (user-library browse mode). */
+  defaultOpen?: boolean;
 }) {
   const groups = useSchematicStore((s) => s.customTemplateGroups);
   const order = useSchematicStore((s) => s.customTemplateOrder);
@@ -592,7 +595,7 @@ function CustomTemplatesSection({
   const reorderCustomTemplateGroup = useSchematicStore((s) => s.reorderCustomTemplateGroup);
   const toggleCustomGroupCollapsed = useSchematicStore((s) => s.toggleCustomGroupCollapsed);
 
-  const [sectionOpen, setSectionOpen] = useState(false);
+  const [sectionOpen, setSectionOpen] = useState(defaultOpen);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [newGroupLabel, setNewGroupLabel] = useState("");
   const [ungroupedOpen, setUngroupedOpen] = useState(true);
@@ -1210,6 +1213,7 @@ export default function DeviceLibrary() {
   }, [addOwnedGear]);
 
   const query = search.trim();
+  const browseUserLibraryOnly = libraryBrowseMode === "userTemplatesOnly" && !query;
 
   const filteredCustom = useMemo(() => {
     let result = customTemplates.filter((t) => isPureUserTemplate(t, bundledKeys));
@@ -1250,11 +1254,14 @@ export default function DeviceLibrary() {
     const byKey = new Map<string, DeviceTemplate>();
     for (const t of all) byKey.set(t.id ?? t.deviceType, t);
     let favs = favoriteTemplates.map((k) => byKey.get(k)).filter((t): t is DeviceTemplate => !!t);
+    if (libraryBrowseMode === "userTemplatesOnly") {
+      favs = favs.filter((t) => customTemplateIds.has(templateKey(t)));
+    }
     if (selectedCategories.size > 0) favs = favs.filter((t) => t.category && selectedCategories.has(t.category));
     if (selectedBrands.size > 0) favs = favs.filter((t) => t.manufacturer && selectedBrands.has(t.manufacturer));
     if (selectedSignalTypes.size > 0) favs = favs.filter(matchesSignalFilter);
     return favs;
-  }, [templates, customTemplates, hiddenIds, favoriteTemplates, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter]);
+  }, [templates, customTemplates, hiddenIds, favoriteTemplates, customTemplateIds, libraryBrowseMode, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter]);
 
   const filteredCategories = useMemo(() => {
     const groups = new Map<string, DeviceTemplate[]>();
@@ -1560,6 +1567,18 @@ export default function DeviceLibrary() {
         <OwnedGearTab query={query} />
       ) : (
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
+        {browseUserLibraryOnly && (
+          <CustomTemplatesSection
+            customTemplates={filteredCustom}
+            query={query}
+            favoriteSet={favoriteSet}
+            ownedQuantityMap={ownedQuantityMap}
+            onAddToOwned={handleAddToOwned}
+            onTemplateContextMenu={handleTemplateContextMenu}
+            defaultOpen
+          />
+        )}
+
         {/* Note draggable */}
         {!hasFilter && (!query || "note".includes(query.toLowerCase())) && (
           <div
@@ -1645,7 +1664,7 @@ export default function DeviceLibrary() {
           </>
         ) : (
           <>
-            {favoritesList.length > 0 && (
+            {favoritesList.length > 0 && !browseUserLibraryOnly && (
               <CategorySection
                 label="Favorites"
                 templates={favoritesList}
@@ -1660,14 +1679,17 @@ export default function DeviceLibrary() {
               />
             )}
 
-            <CustomTemplatesSection
-              customTemplates={customTemplates}
-              query={query}
-              favoriteSet={favoriteSet}
-              ownedQuantityMap={ownedQuantityMap}
-              onAddToOwned={handleAddToOwned}
-              onTemplateContextMenu={handleTemplateContextMenu}
-            />
+            {!browseUserLibraryOnly && (
+              <CustomTemplatesSection
+                customTemplates={filteredCustom}
+                query={query}
+                favoriteSet={favoriteSet}
+                ownedQuantityMap={ownedQuantityMap}
+                onAddToOwned={handleAddToOwned}
+                onTemplateContextMenu={handleTemplateContextMenu}
+                defaultOpen={libraryBrowseMode === "userTemplatesOnly"}
+              />
+            )}
 
             {(libraryBrowseMode !== "userTemplatesOnly" || query) &&
               filteredCategories.map((cat, i) => (

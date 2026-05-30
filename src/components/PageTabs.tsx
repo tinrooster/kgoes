@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { KGO_ES_DRAWING_TAB_LABEL } from "../branding";
 import { printPageTabLabel } from "../printPageLabels";
 import { useSchematicStore } from "../store";
-import type { RackElevationPage } from "../types";
+import type { RackElevationPage, TowerDraftPage } from "../types";
 
 interface ContextMenuState {
   pageId: string;
@@ -15,15 +15,19 @@ export default function PageTabs() {
   const activePage = useSchematicStore((s) => s.activePage);
   const setActivePage = useSchematicStore((s) => s.setActivePage);
   const addRackPage = useSchematicStore((s) => s.addRackPage);
+  const addTowerDraftPage = useSchematicStore((s) => s.addTowerDraftPage);
   const removeRackPage = useSchematicStore((s) => s.removeRackPage);
+  const removeTowerDraftPage = useSchematicStore((s) => s.removeTowerDraftPage);
   const renameRackPage = useSchematicStore((s) => s.renameRackPage);
   const addPrintSheetPage = useSchematicStore((s) => s.addPrintSheetPage);
   const removePrintSheetPage = useSchematicStore((s) => s.removePrintSheetPage);
   const renamePrintSheetPage = useSchematicStore((s) => s.renamePrintSheetPage);
   const duplicateRackPage = useSchematicStore((s) => s.duplicateRackPage);
+  const duplicateTowerDraftPage = useSchematicStore((s) => s.duplicateTowerDraftPage);
   const duplicatePrintSheetPage = useSchematicStore((s) => s.duplicatePrintSheetPage);
 
   const rackPageCount = pages.filter((p) => p.type === "rack-elevation").length;
+  const towerDraftCount = pages.filter((p) => p.type === "tower-draft").length;
   const printSheetCount = pages.filter((p) => p.type === "print-sheet").length;
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -92,6 +96,7 @@ export default function PageTabs() {
 
   const menuPage = contextMenu ? pages.find((p) => p.id === contextMenu.pageId) : null;
   const isPrintSheet = menuPage?.type === "print-sheet";
+  const isTowerDraft = menuPage?.type === "tower-draft";
 
   const handleRename = () => {
     if (!menuPage) return;
@@ -102,6 +107,7 @@ export default function PageTabs() {
     if (!menuPage) return;
     setContextMenu(null);
     if (menuPage.type === "print-sheet") duplicatePrintSheetPage(menuPage.id);
+    else if (menuPage.type === "tower-draft") duplicateTowerDraftPage(menuPage.id);
     else duplicateRackPage(menuPage.id);
   };
 
@@ -110,6 +116,8 @@ export default function PageTabs() {
     setContextMenu(null);
     if (menuPage.type === "print-sheet") {
       if (confirm(`Delete print sheet "${menuPage.label}"?`)) removePrintSheetPage(menuPage.id);
+    } else if (menuPage.type === "tower-draft") {
+      if (confirm(`Delete tower draft "${menuPage.label}"?`)) removeTowerDraftPage(menuPage.id);
     } else {
       if (confirm(`Delete rack page "${menuPage.label}"? This will remove all racks and placements on this page.`)) {
         removeRackPage(menuPage.id);
@@ -133,6 +141,10 @@ export default function PageTabs() {
       const vpCount = page.viewports.length;
       return `${printPageTabLabel(page.label)}${vpCount ? ` · ${vpCount} view${vpCount === 1 ? "" : "s"}` : ""}`;
     }
+    if (page.type === "tower-draft") {
+      const td = page as TowerDraftPage;
+      return `${page.label} · ${td.towerHeightFtAgl}′ · ${td.placements.length} placed`;
+    }
     const elev = page as RackElevationPage;
     const rackN = elev.racks.length;
     const devN = elev.placements.length;
@@ -143,6 +155,13 @@ export default function PageTabs() {
     const label =
       rackPageCount === 0 ? "Rack Elevations" : `Rack Elevations ${rackPageCount + 1}`;
     addRackPage(label);
+    setAddMenuOpen(false);
+  };
+
+  const openTowerDraftPage = () => {
+    const label =
+      towerDraftCount === 0 ? "Tower elevation draft" : `Tower elevation draft ${towerDraftCount + 1}`;
+    addTowerDraftPage(label);
     setAddMenuOpen(false);
   };
 
@@ -174,6 +193,7 @@ export default function PageTabs() {
           {pages.map((page) => {
             const isPrint = page.type === "print-sheet";
             const isRack = page.type === "rack-elevation";
+            const isTower = page.type === "tower-draft";
             return (
               <button
                 key={page.id}
@@ -200,7 +220,7 @@ export default function PageTabs() {
                   />
                 ) : (
                   <>
-                    {isPrint ? "📄 " : isRack ? "🗄 " : ""}
+                    {isPrint ? "📄 " : isRack ? "🗄 " : isTower ? "📐 " : ""}
                     {page.label}
                   </>
                 )}
@@ -254,6 +274,14 @@ export default function PageTabs() {
               </button>
               <button
                 type="button"
+                className="w-full text-left px-3 py-1.5 text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] cursor-pointer"
+                role="menuitem"
+                onClick={openTowerDraftPage}
+              >
+                📐 Tower elevation draft…
+              </button>
+              <button
+                type="button"
                 className="w-full text-left px-3 py-1.5 text-violet-600 dark:text-violet-300 hover:bg-[var(--color-surface-hover)] cursor-pointer"
                 role="menuitem"
                 onClick={openPrintSheetPage}
@@ -273,7 +301,7 @@ export default function PageTabs() {
           onMouseDown={(e) => e.stopPropagation()}
         >
           <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] border-b border-[var(--color-border)] mb-1 truncate">
-            {isPrintSheet ? "📄 " : menuPage.type === "rack-elevation" ? "🗄 " : ""}
+            {isPrintSheet ? "📄 " : menuPage.type === "rack-elevation" ? "🗄 " : isTowerDraft ? "📐 " : ""}
             {menuPage.label}
           </div>
           <button

@@ -1,12 +1,61 @@
 /**
  * Sanitize HTML from note nodes to prevent XSS via event handlers.
- * Keeps only safe formatting elements and strips all on* attributes.
+ * Allows rich text plus inline SVG wireframes (mountaintop CAD notes).
  */
 
 const ALLOWED_TAGS = new Set([
-  "b", "i", "u", "em", "strong", "font", "ul", "ol", "li",
-  "br", "div", "span", "p", "sub", "sup",
+  "b",
+  "i",
+  "u",
+  "em",
+  "strong",
+  "font",
+  "ul",
+  "ol",
+  "li",
+  "br",
+  "div",
+  "span",
+  "p",
+  "sub",
+  "sup",
+  // CAD wireframes embedded in notes
+  "svg",
+  "g",
+  "defs",
+  "pattern",
+  "line",
+  "rect",
+  "circle",
+  "ellipse",
+  "path",
+  "polyline",
+  "polygon",
+  "text",
+  "tspan",
 ]);
+
+/** Dropped entirely — do not unwrap (unwrap would leak <style> text into the note). */
+const FORBIDDEN_TAGS = new Set([
+  "script",
+  "style",
+  "iframe",
+  "object",
+  "embed",
+  "link",
+  "foreignobject",
+  "use",
+  "image",
+  "animate",
+  "set",
+]);
+
+function isSafeAttrValue(value: string): boolean {
+  const v = value.replace(/\s/g, "").toLowerCase();
+  if (v.startsWith("javascript:")) return false;
+  if (v.includes("expression(")) return false;
+  return true;
+}
 
 function sanitizeNode(node: Node, doc: Document): Node | null {
   if (node.nodeType === Node.TEXT_NODE) {
@@ -18,8 +67,11 @@ function sanitizeNode(node: Node, doc: Document): Node | null {
   const el = node as Element;
   const tag = el.tagName.toLowerCase();
 
+  if (FORBIDDEN_TAGS.has(tag)) {
+    return null;
+  }
+
   if (!ALLOWED_TAGS.has(tag)) {
-    // Unwrap: keep children, discard the element itself
     const frag = doc.createDocumentFragment();
     for (const child of Array.from(el.childNodes)) {
       const clean = sanitizeNode(child, doc);
@@ -30,12 +82,11 @@ function sanitizeNode(node: Node, doc: Document): Node | null {
 
   const clean = doc.createElement(tag);
 
-  // Copy only safe attributes (no on* event handlers)
   for (const attr of Array.from(el.attributes)) {
     const name = attr.name.toLowerCase();
     if (name.startsWith("on")) continue;
-    // Block javascript: URLs in any attribute
-    if (attr.value.replace(/\s/g, "").toLowerCase().startsWith("javascript:")) continue;
+    if (!isSafeAttrValue(attr.value)) continue;
+    if (name === "href" || name === "xlink:href") continue;
     clean.setAttribute(attr.name, attr.value);
   }
 

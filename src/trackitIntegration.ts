@@ -3,7 +3,9 @@
  * See trackIT: docs/kgo-es-writeback-protocol.md
  */
 
+import { shouldShowCadTools } from "./cadDrawingUtils";
 import { trackItAutosaveKey, useSchematicStore } from "./store";
+import { useSidebarStore } from "./sidebarStore";
 import type { SchematicFile, TrackItLinkContext } from "./types";
 
 export type { TrackItLinkContext };
@@ -160,6 +162,10 @@ export function applyTrackItLink(link: TrackItLinkContext): void {
   if (!link?.drawingId) return;
   const store = useSchematicStore.getState();
   const switched = store.trackItLink?.drawingId !== link.drawingId;
+  if (switched) {
+    cadToolsAutoOpenedForDrawingId = null;
+    towerDraftAutoOpenedForDrawingId = null;
+  }
 
   if (switched) {
     const loaded = loadTrackItDrawingAutosave(link.drawingId);
@@ -182,6 +188,54 @@ export function applyTrackItLink(link: TrackItLinkContext): void {
   }
 
   store.addToast(`Linked to trackIT DWG ${link.dwgNumber}`, "success", 3500);
+  if (link.drawingType === "tower_stack") {
+    window.setTimeout(() => maybeAutoOpenTowerDraftTab(), 0);
+  }
+}
+
+/** After schematic load — open CAD tools once (deferred; avoids render loops on TRACKIT_LINK). */
+let cadToolsAutoOpenedForDrawingId: string | null = null;
+
+/** After tower_stack load — switch to tower elevation draft tab once. */
+let towerDraftAutoOpenedForDrawingId: string | null = null;
+
+export function maybeAutoOpenTowerDraftTab(): void {
+  const store = useSchematicStore.getState();
+  const link = store.trackItLink;
+  if (!link?.drawingId || link.drawingType !== "tower_stack") return;
+  if (towerDraftAutoOpenedForDrawingId === link.drawingId) return;
+
+  const draftPage = store.pages.find((p) => p.type === "tower-draft");
+  if (!draftPage) return;
+
+  towerDraftAutoOpenedForDrawingId = link.drawingId;
+  store.setActivePage(draftPage.id);
+  store.addToast(
+    "Tower elevation draft — drag devices from the sidebar to set mount heights (ft AGL)",
+    "info",
+    4500,
+  );
+}
+
+export function maybeAutoOpenCadToolsPanel(): void {
+  const store = useSchematicStore.getState();
+  const link = store.trackItLink;
+  if (!link?.drawingId) return;
+  if (cadToolsAutoOpenedForDrawingId === link.drawingId) return;
+  if (
+    !shouldShowCadTools({
+      trackItLink: link,
+      nodes: store.nodes,
+      schematicName: store.schematicName,
+    })
+  ) {
+    return;
+  }
+
+  cadToolsAutoOpenedForDrawingId = link.drawingId;
+  const sidebar = useSidebarStore.getState();
+  sidebar.setPanelVisible("cadTools", true);
+  sidebar.expandRightPanel("cadTools");
 }
 
 /** Ask trackIT opener to navigate to another plant drawing (fly link). */

@@ -8,7 +8,26 @@ const SHAPES: Array<{ value: AnnotationData["shape"]; label: string }> = [
   { value: "circle", label: "Circle" },
   { value: "diamond", label: "Diamond" },
   { value: "triangle", label: "Triangle" },
+  { value: "hline", label: "Line (H)" },
+  { value: "vline", label: "Line (V)" },
+  { value: "dline", label: "Line (diag)" },
+  { value: "frame-dashed", label: "Dashed frame" },
+  { value: "dimension", label: "Dimension" },
+  { value: "north-arrow", label: "North arrow" },
+  { value: "scale-bar", label: "Scale bar" },
+  { value: "leader", label: "Leader" },
 ];
+
+const CAD_SHAPES = new Set<AnnotationData["shape"]>([
+  "hline",
+  "vline",
+  "dline",
+  "frame-dashed",
+  "dimension",
+  "north-arrow",
+  "scale-bar",
+  "leader",
+]);
 
 const FILL_PRESETS: Array<{ rgba: string; hex: string }> = [
   { rgba: "rgba(59, 130, 246, 0.15)", hex: "#3b82f6" },
@@ -170,7 +189,7 @@ export default function AnnotationEditor() {
           </div>
 
           {/* Fill Color */}
-          <div>
+          <div className={CAD_SHAPES.has(shape) ? "opacity-40 pointer-events-none" : ""}>
             <label className="block text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1">
               Fill Color
             </label>

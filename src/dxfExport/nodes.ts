@@ -375,7 +375,36 @@ function annotationFillToTrueColor(color: string): number {
   return hexToTrueColor(color);
 }
 
-/** Emit an annotation (rectangle, ellipse, circle, diamond, or triangle). */
+function annotationBorderStyle(data: AnnotationData): EntityStyle {
+  const borderStyle: EntityStyle = {};
+  if (data.borderColor) borderStyle.trueColor = hexToTrueColor(data.borderColor);
+  return borderStyle;
+}
+
+function emitAnnotationLabel(
+  writer: DxfWriter,
+  data: AnnotationData,
+  rect: { x: number; y: number; w: number; h: number },
+  borderStyle: EntityStyle,
+) {
+  if (!data.label) return;
+  const cx = rect.x + rect.w / 2;
+  const cy = rect.y + rect.h / 2;
+  writer.addText(
+    CANONICAL_LAYERS.LABELS,
+    cx,
+    cy,
+    data.label,
+    {
+      height: cssFontPxToDxfHeight(data.fontSize ?? 12),
+      align: "center",
+      vAlign: "middle",
+      style: borderStyle.trueColor != null ? borderStyle : undefined,
+    },
+  );
+}
+
+/** Emit an annotation (shapes + CAD primitives). */
 export function emitAnnotation(
   writer: DxfWriter,
   node: SchematicNode,
@@ -390,9 +419,132 @@ export function emitAnnotation(
   const w = node.measured?.width ?? 100;
   const h = node.measured?.height ?? 80;
   const rect = toDxfRect(ax, ay, w, h);
+  const shape = data.shape ?? "rectangle";
+  const borderStyle = annotationBorderStyle(data);
+  const dashedStyle: EntityStyle = { ...borderStyle, linetype: "ES_DASHED" };
 
-  const borderStyle: EntityStyle = {};
-  if (data.borderColor) borderStyle.trueColor = hexToTrueColor(data.borderColor);
+  if (shape === "hline") {
+    const cy = rect.y + rect.h / 2;
+    writer.addLine(CANONICAL_LAYERS.ANNOTATIONS, rect.x, cy, rect.x + rect.w, cy, borderStyle);
+    return;
+  }
+  if (shape === "vline") {
+    const cx = rect.x + rect.w / 2;
+    writer.addLine(CANONICAL_LAYERS.ANNOTATIONS, cx, rect.y, cx, rect.y + rect.h, borderStyle);
+    return;
+  }
+  if (shape === "dline") {
+    writer.addLine(
+      CANONICAL_LAYERS.ANNOTATIONS,
+      rect.x,
+      rect.y + rect.h,
+      rect.x + rect.w,
+      rect.y,
+      borderStyle,
+    );
+    return;
+  }
+  if (shape === "frame-dashed") {
+    writer.addPolyline(
+      CANONICAL_LAYERS.ANNOTATIONS,
+      [
+        { x: rect.x, y: rect.y },
+        { x: rect.x + rect.w, y: rect.y },
+        { x: rect.x + rect.w, y: rect.y + rect.h },
+        { x: rect.x, y: rect.y + rect.h },
+      ],
+      true,
+      dashedStyle,
+    );
+    return;
+  }
+  if (shape === "dimension") {
+    const cy = rect.y + rect.h / 2;
+    writer.addLine(CANONICAL_LAYERS.ANNOTATIONS, rect.x, cy, rect.x + rect.w, cy, borderStyle);
+    writer.addLine(CANONICAL_LAYERS.ANNOTATIONS, rect.x, rect.y + rect.h, rect.x, cy, borderStyle);
+    writer.addLine(
+      CANONICAL_LAYERS.ANNOTATIONS,
+      rect.x + rect.w,
+      rect.y + rect.h,
+      rect.x + rect.w,
+      cy,
+      borderStyle,
+    );
+    if (data.label) {
+      writer.addText(
+        CANONICAL_LAYERS.LABELS,
+        rect.x + rect.w / 2,
+        cy + pxToIn(4),
+        data.label,
+        {
+          height: cssFontPxToDxfHeight(data.fontSize ?? 10),
+          align: "center",
+          vAlign: "bottom",
+          style: borderStyle.trueColor != null ? borderStyle : undefined,
+        },
+      );
+    }
+    return;
+  }
+  if (shape === "north-arrow") {
+    const cx = rect.x + rect.w / 2;
+    writer.addPolyline(
+      CANONICAL_LAYERS.ANNOTATIONS,
+      [
+        { x: cx, y: rect.y + rect.h },
+        { x: rect.x, y: rect.y },
+        { x: rect.x + rect.w, y: rect.y },
+      ],
+      true,
+      borderStyle,
+    );
+    writer.addText(CANONICAL_LAYERS.LABELS, cx, rect.y + rect.h * 0.35, "N", {
+      height: cssFontPxToDxfHeight(data.fontSize ?? 10),
+      align: "center",
+      vAlign: "middle",
+      style: borderStyle.trueColor != null ? borderStyle : undefined,
+    });
+    return;
+  }
+  if (shape === "scale-bar") {
+    const cy = rect.y + rect.h / 2;
+    const seg = rect.w / 4;
+    for (let i = 0; i <= 4; i++) {
+      const x = rect.x + seg * i;
+      writer.addLine(CANONICAL_LAYERS.ANNOTATIONS, x, cy, x, cy + pxToIn(6), borderStyle);
+    }
+    writer.addLine(CANONICAL_LAYERS.ANNOTATIONS, rect.x, cy, rect.x + rect.w, cy, borderStyle);
+    if (data.label) {
+      writer.addText(
+        CANONICAL_LAYERS.LABELS,
+        rect.x + rect.w / 2,
+        cy - pxToIn(4),
+        data.label,
+        {
+          height: cssFontPxToDxfHeight(data.fontSize ?? 9),
+          align: "center",
+          vAlign: "top",
+          style: borderStyle.trueColor != null ? borderStyle : undefined,
+        },
+      );
+    }
+    return;
+  }
+  if (shape === "leader") {
+    const elbowY = rect.y + rect.h * 0.35;
+    writer.addPolyline(
+      CANONICAL_LAYERS.ANNOTATIONS,
+      [
+        { x: rect.x, y: rect.y + rect.h },
+        { x: rect.x, y: elbowY },
+        { x: rect.x + rect.w, y: elbowY },
+      ],
+      false,
+      borderStyle,
+    );
+    emitAnnotationLabel(writer, data, rect, borderStyle);
+    return;
+  }
 
   if (data.shape === "ellipse" || data.shape === "circle") {
     const cx = rect.x + rect.w / 2;
@@ -441,19 +593,5 @@ export function emitAnnotation(
     writer.addRect(CANONICAL_LAYERS.ANNOTATIONS, rect.x, rect.y, rect.w, rect.h, borderStyle);
   }
 
-  if (data.label) {
-    const cx = rect.x + rect.w / 2;
-    const cy = rect.y + rect.h / 2;
-    writer.addText(
-      CANONICAL_LAYERS.LABELS,
-      cx, cy,
-      data.label,
-      {
-        height: cssFontPxToDxfHeight(data.fontSize ?? 12),
-        align: "center",
-        vAlign: "middle",
-        style: data.borderColor ? { trueColor: hexToTrueColor(data.borderColor) } : undefined,
-      },
-    );
-  }
+  emitAnnotationLabel(writer, data, rect, borderStyle);
 }

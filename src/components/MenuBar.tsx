@@ -34,6 +34,18 @@ import SignalColorPanel from "./SignalColorPanel";
 import { useSidebarStore } from "../sidebarStore";
 import { useTheme } from "../hooks/useTheme";
 import { isTrackItDrawingLinked, saveToTrackItParent } from "../trackitIntegration";
+import { insertTowerElevation, insertTowerSitePlan } from "../towerSiteInsert";
+import {
+  insertCadDiagonalLine,
+  insertCadDimensionLine,
+  insertCadFenceFrame,
+  insertCadLeader,
+  insertCadNorthArrow,
+  insertCadScaleBar,
+  insertTowerCadElevation,
+  insertTowerCadFullSheet,
+  insertTowerCadSitePlan,
+} from "../towerSiteCadInsert";
 import TrackItModeBadge from "./TrackItModeBadge";
 import { useAppBuildInfo } from "../buildVersion";
 import DeviceLibraryAdminPanel from "./DeviceLibraryAdminPanel";
@@ -210,6 +222,7 @@ export default function MenuBar() {
   const setQuickToolbarVisible = useSidebarStore((s) => s.setQuickToolbarVisible);
   const panelsVisible = useSidebarStore((s) => s.panelsVisible);
   const setPanelVisible = useSidebarStore((s) => s.setPanelVisible);
+  const expandRightPanel = useSidebarStore((s) => s.expandRightPanel);
 
   // Keep nameValue in sync when schematicName changes externally
   useEffect(() => {
@@ -567,16 +580,42 @@ export default function MenuBar() {
     const state = useSchematicStore.getState();
     state.pushSnapshot();
     const viewport = reactFlowInstance.getViewport();
-    // Place annotation in the center of the current viewport
     const x = (-viewport.x + window.innerWidth / 2) / viewport.zoom - 100;
     const y = (-viewport.y + window.innerHeight / 2) / viewport.zoom - 50;
+    const cadDefaults: Partial<
+      Record<AnnotationData["shape"], { w: number; h: number; data: AnnotationData }>
+    > = {
+      hline: { w: 160, h: 4, data: { shape: "hline", borderColor: "#334155" } },
+      vline: { w: 4, h: 160, data: { shape: "vline", borderColor: "#334155" } },
+      "frame-dashed": { w: 320, h: 220, data: { shape: "frame-dashed", borderColor: "#64748b" } },
+      dimension: {
+        w: 140,
+        h: 22,
+        data: { shape: "dimension", label: "150′", borderColor: "#475569", fontSize: 10 },
+      },
+      dline: { w: 140, h: 100, data: { shape: "dline", borderColor: "#334155" } },
+      "north-arrow": { w: 48, h: 56, data: { shape: "north-arrow", borderColor: "#334155", fontSize: 10 } },
+      "scale-bar": {
+        w: 200,
+        h: 28,
+        data: { shape: "scale-bar", label: "100′", borderColor: "#475569", fontSize: 9 },
+      },
+      leader: {
+        w: 140,
+        h: 72,
+        data: { shape: "leader", label: "Callout", borderColor: "#334155", fontSize: 10 },
+      },
+    };
+    const cad = cadDefaults[shape];
     const isSquare = shape === "circle" || shape === "diamond";
     const newNode: SchematicNode = {
       id: `annotation-${Date.now()}`,
       type: "annotation",
       position: { x: isSquare ? x + 50 : x, y },
-      data: { shape, color: "rgba(59, 130, 246, 0.15)", borderColor: "#3b82f6" } as AnnotationData,
-      style: { width: isSquare ? 100 : 200, height: 100 },
+      data:
+        cad?.data ??
+        ({ shape, color: "rgba(59, 130, 246, 0.15)", borderColor: "#3b82f6" } as AnnotationData),
+      style: { width: cad?.w ?? (isSquare ? 100 : 200), height: cad?.h ?? 100 },
     };
     useSchematicStore.setState({ nodes: [...state.nodes, newNode] });
     state.saveToLocalStorage();
@@ -692,6 +731,68 @@ export default function MenuBar() {
       },
     ],
     Insert: [
+      { type: "caption", label: "Mountaintop / tower" },
+      {
+        type: "item",
+        label: "Tower elevation layout…",
+        title: "Stack lattice bays, platforms, lights, and access notes at the viewport center",
+        onClick: () => insertTowerElevation(reactFlowInstance),
+      },
+      {
+        type: "item",
+        label: "Site plan layout…",
+        title: "Shelter, gate, generator pad, transformer, cable tray, and tower base",
+        onClick: () => insertTowerSitePlan(reactFlowInstance),
+      },
+      { type: "separator" },
+      { type: "caption", label: "CAD wireframes" },
+      {
+        type: "item",
+        label: "CAD tower elevation (wireframe)…",
+        title: "SVG lattice profile with height ticks — drag to align with as-built",
+        onClick: () => insertTowerCadElevation(reactFlowInstance),
+      },
+      {
+        type: "item",
+        label: "CAD site plan (wireframe)…",
+        onClick: () => insertTowerCadSitePlan(reactFlowInstance),
+      },
+      {
+        type: "item",
+        label: "CAD full sheet (symbols + wireframes)…",
+        onClick: () => insertTowerCadFullSheet(reactFlowInstance),
+      },
+      { type: "separator" },
+      { type: "caption", label: "CAD primitives" },
+      {
+        type: "item",
+        label: "Dimension line",
+        onClick: () => insertCadDimensionLine(reactFlowInstance),
+      },
+      {
+        type: "item",
+        label: "Dashed fence / compound frame",
+        onClick: () => insertCadFenceFrame(reactFlowInstance),
+      },
+      {
+        type: "item",
+        label: "North arrow",
+        onClick: () => insertCadNorthArrow(reactFlowInstance),
+      },
+      {
+        type: "item",
+        label: "Scale bar…",
+        onClick: () => insertCadScaleBar(reactFlowInstance),
+      },
+      {
+        type: "item",
+        label: "Leader / callout…",
+        onClick: () => insertCadLeader(reactFlowInstance),
+      },
+      { type: "item", label: "Line (horizontal)", onClick: () => addAnnotation("hline") },
+      { type: "item", label: "Line (vertical)", onClick: () => addAnnotation("vline") },
+      { type: "item", label: "Line (diagonal)", onClick: () => insertCadDiagonalLine(reactFlowInstance) },
+      { type: "separator" },
       { type: "item", label: "Add Rectangle", onClick: () => addAnnotation("rectangle") },
       { type: "item", label: "Add Ellipse", onClick: () => addAnnotation("ellipse") },
       { type: "item", label: "Add Circle", onClick: () => addAnnotation("circle") },
@@ -778,6 +879,16 @@ export default function MenuBar() {
         label: "Colors",
         checked: panelsVisible.colors,
         onClick: () => setPanelVisible("colors", !panelsVisible.colors),
+      },
+      {
+        type: "item",
+        label: "CAD tools",
+        checked: panelsVisible.cadTools,
+        onClick: () => {
+          const next = !panelsVisible.cadTools;
+          setPanelVisible("cadTools", next);
+          if (next) expandRightPanel("cadTools");
+        },
       },
     ],
     Export: [

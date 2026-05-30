@@ -28,6 +28,7 @@ import SignalColorPanel from "./components/SignalColorPanel";
 import TrackItNumberingPanel from "./components/TrackItNumberingPanel";
 import ShowInfoPanel from "./components/ShowInfoPanel";
 import ViewOptionsPanel from "./components/ViewOptionsPanel";
+import CadToolsPanel from "./components/CadToolsPanel";
 import QuickSettingsToolbar from "./components/QuickSettingsToolbar";
 import { useSidebarStore } from "./sidebarStore";
 import { KGO_ES_NAME, kgoEsDocumentTitle } from "./branding";
@@ -62,6 +63,7 @@ import DeviceCreatorPicker from "./components/DeviceCreatorPicker";
 import PageTabs from "./components/PageTabs";
 import SchematicViewNav from "./components/SchematicViewNav";
 import RackPage from "./components/RackPage";
+import TowerDraftPageView from "./components/TowerDraftPage";
 import PrintSheetPage from "./components/PrintSheetPage";
 import DrawingCaptureHost from "./components/DrawingCaptureHost";
 import { computeSnap, enforceMinSpacing, detectOverlap, speculativeReparent, type GuideLine } from "./snapUtils";
@@ -72,6 +74,7 @@ import { loadSharedSchematic, checkSession } from "./templateApi";
 import { refreshCloudCache } from "./cloudSync";
 import { useTheme } from "./hooks/useTheme";
 import { isTrackItPopupOpener } from "./trackitIntegration";
+import { schematicFlowRef } from "./schematicFlowRef";
 
 /** Darkens the canvas area left of x=0 and above y=0, marking the printable origin. */
 function CanvasOriginOverlay() {
@@ -247,6 +250,14 @@ function SchematicCanvas() {
   } = useSchematicStore();
 
   const rfInstance = useReactFlow();
+  schematicFlowRef.current = rfInstance;
+  useEffect(() => {
+    useSchematicStore.setState({ schematicCanvasReady: true });
+    return () => {
+      schematicFlowRef.current = null;
+      useSchematicStore.setState({ schematicCanvasReady: false });
+    };
+  }, []);
   const rfStore = useStoreApi();
   const updateNodeInternals = useUpdateNodeInternals();
   const { screenToFlowPosition } = rfInstance;
@@ -1913,11 +1924,14 @@ export default function App() {
               {panelsVisible.showInfo && <ShowInfoPanel />}
               {panelsVisible.trackItNumbers && <TrackItNumberingPanel />}
               {panelsVisible.colors && <SignalColorPanel />}
+              {panelsVisible.cadTools && <CadToolsPanel />}
             </div>
           </div>
         </div>
       ) : activePgType === "print-sheet" ? (
         <PrintSheetPage />
+      ) : activePgType === "tower-draft" ? (
+        <TowerDraftPageView />
       ) : (
         <RackPage />
       )}

@@ -383,6 +383,9 @@ export interface NoteData {
   [key: string]: unknown;
   /** HTML content from contentEditable */
   html: string;
+  /** CAD SVG wireframe — view-only until unlocked (Insert / CAD toolbar). */
+  cadLocked?: boolean;
+  cadWireframe?: boolean;
 }
 
 export type NoteNode = Node<NoteData, "note">;
@@ -390,7 +393,20 @@ export type NoteNode = Node<NoteData, "note">;
 export interface AnnotationData {
   [key: string]: unknown;
   /** Shape type for the annotation (#24) */
-  shape: "rectangle" | "ellipse" | "circle" | "diamond" | "triangle";
+  shape:
+    | "rectangle"
+    | "ellipse"
+    | "circle"
+    | "diamond"
+    | "triangle"
+    | "hline"
+    | "vline"
+    | "dline"
+    | "frame-dashed"
+    | "dimension"
+    | "north-arrow"
+    | "scale-bar"
+    | "leader";
   /** Fill color */
   color?: string;
   /** Border color */
@@ -741,6 +757,46 @@ export interface RackElevationPage {
   crossLinks?: RackCrossLink[];
 }
 
+export type TowerDraftTowerType = "self_support" | "guyed" | "monopole";
+
+/** Horizontal guide at a mount height (ft AGL) on tower draft pages. */
+export interface TowerGuideBandFt {
+  ftAgl: number;
+  label?: string;
+}
+
+/** Device/antenna placed at a height on the tower draft elevation. */
+export interface TowerDraftPlacement {
+  id: string;
+  deviceNodeId: string;
+  mountHeightFtAgl: number;
+  /** Horizontal offset from tower centerline (px). */
+  offsetX?: number;
+}
+
+export type TowerDraftLineStyle = "solid" | "dashed" | "dotted";
+
+/** User-drawn polyline segment (tower leg, guy wire, callout line). */
+export interface TowerDraftPolyline {
+  id: string;
+  points: { x: number; y: number }[];
+  strokeColor?: string;
+  strokeWidth?: number;
+  lineStyle?: TowerDraftLineStyle;
+}
+
+/** Structured vertical tower elevation / section draft (ft-AGL axis). */
+export interface TowerDraftPage {
+  id: string;
+  label: string;
+  type: "tower-draft";
+  towerHeightFtAgl: number;
+  towerType?: TowerDraftTowerType;
+  guideBandsFt: TowerGuideBandFt[];
+  placements: TowerDraftPlacement[];
+  polylines: TowerDraftPolyline[];
+}
+
 export interface PrintViewport {
   id: string;
   kind: "rack-front" | "rack-rear" | "rack-side" | "drawing";
@@ -768,7 +824,7 @@ export interface PrintSheetPage {
   showTitleBlock: boolean;
 }
 
-export type SchematicPage = RackElevationPage | PrintSheetPage;
+export type SchematicPage = RackElevationPage | PrintSheetPage | TowerDraftPage;
 
 export interface SchematicFile {
   version: number;
@@ -888,6 +944,8 @@ export type TrackItLinkContext = {
   organizationId: string | null;
   dwgNumber: string;
   drawingName?: string;
+  /** trackIT plant_drawings.drawing_type — drives CAD toolbar visibility. */
+  drawingType?: string;
 };
 
 /** Persisted trackIT numbering sync (see trackitBridge.ts). */

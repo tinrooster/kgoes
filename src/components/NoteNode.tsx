@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { NodeResizer, type NodeProps } from "@xyflow/react";
-import type { NoteNode as NoteNodeType } from "../types";
+import type { NoteData, NoteNode as NoteNodeType } from "../types";
 import { useSchematicStore } from "../store";
 import { sanitizeNoteHtml } from "../sanitizeHtml";
 
@@ -17,6 +17,8 @@ const SIZES = [
 ] as const;
 
 function NoteNodeComponent({ id, data, selected }: NodeProps<NoteNodeType>) {
+  const noteData = data as NoteData;
+  const cadLocked = noteData.cadLocked === true;
   const updateNoteHtml = useSchematicStore((s) => s.updateNoteHtml);
   const pushSnapshot = useSchematicStore((s) => s.pushSnapshot);
   const [editing, setEditing] = useState(false);
@@ -33,6 +35,12 @@ function NoteNodeComponent({ id, data, selected }: NodeProps<NoteNodeType>) {
   }, [data.html, editing]);
 
   const startEditing = useCallback(() => {
+    if (cadLocked) {
+      useSchematicStore
+        .getState()
+        .addToast("CAD wireframe is locked — use CAD tools → Unlock selected", "info", 4000);
+      return;
+    }
     setEditing(true);
     requestAnimationFrame(() => {
       const el = editorRef.current;
@@ -44,7 +52,7 @@ function NoteNodeComponent({ id, data, selected }: NodeProps<NoteNodeType>) {
         sel.collapseToEnd();
       }
     });
-  }, []);
+  }, [cadLocked]);
 
   const commit = useCallback(() => {
     const html = editorRef.current?.innerHTML ?? "";
@@ -110,14 +118,20 @@ function NoteNodeComponent({ id, data, selected }: NodeProps<NoteNodeType>) {
       {/* nodrag + nowheel on the whole container when editing so React Flow doesn't intercept */}
       <div
         ref={containerRef}
-        className={`w-full h-full rounded border bg-amber-50 flex flex-col ${
-          editing ? "nodrag nowheel" : ""
-        } ${
-          selected ? "border-amber-400 shadow-md shadow-amber-200/40" : "border-amber-300/60"
+        className={`w-full h-full rounded border flex flex-col ${
+          cadLocked ? "bg-slate-50 border-slate-300/80" : "bg-amber-50"
+        } ${editing ? "nodrag nowheel" : ""} ${
+          selected ? "border-amber-400 shadow-md shadow-amber-200/40" : cadLocked ? "border-slate-300/70" : "border-amber-300/60"
         }`}
       >
+        {cadLocked && !editing && (
+          <div className="flex items-center gap-1 px-1.5 py-0.5 border-b border-slate-200/80 bg-slate-100/90 text-[9px] text-slate-600 font-medium shrink-0">
+            <span aria-hidden>🔒</span>
+            <span>CAD wireframe</span>
+          </div>
+        )}
         {/* Formatting toolbar — visible only when editing */}
-        {editing && (
+        {editing && !cadLocked && (
           <div
             className="flex items-center gap-0.5 px-1.5 py-0.5 border-b border-amber-300/40 bg-amber-100/60 rounded-t"
             onMouseDown={(e) => e.preventDefault()}

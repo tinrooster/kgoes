@@ -3,7 +3,7 @@
  * See trackIT: docs/easyschematic-writeback-protocol.md
  */
 
-import { applyTrackItLink, beginBlankTrackItDrawing } from "./trackitIntegration";
+import { applyTrackItLink, beginBlankTrackItDrawing, maybeAutoOpenCadToolsPanel, maybeAutoOpenTowerDraftTab } from "./trackitIntegration";
 import { mergeNumberingSnapshot, upsertTrackItBlock } from "./trackitNumberingMerge";
 import { useSchematicStore } from "./store";
 import type { SchematicFile, TrackItNumberBlock, TrackItNumberingState, TrackItLinkContext } from "./types";
@@ -206,6 +206,10 @@ export function startTrackItBridge(): void {
       }
       useSchematicStore.setState({ isDemo: false });
       store.addToast("Schematic loaded from trackIT", "success");
+      window.setTimeout(() => {
+        maybeAutoOpenTowerDraftTab();
+        maybeAutoOpenCadToolsPanel();
+      }, 0);
       return;
     }
 

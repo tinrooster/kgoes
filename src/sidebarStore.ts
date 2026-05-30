@@ -1,12 +1,20 @@
 import { create } from "zustand";
-import { isTrackItPopupSession } from "./trackitIntegration";
+
+/** Avoid importing trackitIntegration (circular with sidebar store). */
+function isTrackItPopupOpener(): boolean {
+  try {
+    return !!(typeof window !== "undefined" && window.opener && !window.opener.closed);
+  } catch {
+    return false;
+  }
+}
 
 export const SIDEBAR_PREFS_KEY = "easyschematic-sidebar-prefs";
 export const LIBRARY_BROWSE_MODE_KEY = "easyschematic-library-browse-mode";
 
 export type LibraryBrowseMode = "full" | "userTemplatesOnly";
 
-export type RightPanelId = "viewOptions" | "trackIt" | "showInfo" | "colors";
+export type RightPanelId = "viewOptions" | "trackIt" | "showInfo" | "colors" | "cadTools";
 
 export interface SidebarPanelVisibility {
   devices: boolean;
@@ -14,6 +22,7 @@ export interface SidebarPanelVisibility {
   trackItNumbers: boolean;
   showInfo: boolean;
   colors: boolean;
+  cadTools: boolean;
 }
 
 export interface SidebarPrefs {
@@ -22,18 +31,20 @@ export interface SidebarPrefs {
   rightTrackItExpanded: boolean;
   rightShowInfoExpanded: boolean;
   rightColorsExpanded: boolean;
+  rightCadToolsExpanded: boolean;
   quickToolbarVisible: boolean;
   libraryBrowseMode: LibraryBrowseMode;
   panelsVisible: SidebarPanelVisibility;
 }
 
 function trackItSessionDefaults(): Partial<SidebarPrefs> {
-  if (!isTrackItPopupSession()) return {};
+  if (!isTrackItPopupOpener()) return {};
   return {
     leftExpanded: false,
     rightTrackItExpanded: true,
     rightShowInfoExpanded: false,
     rightColorsExpanded: false,
+    rightCadToolsExpanded: false,
     libraryBrowseMode: "userTemplatesOnly",
   };
 }
@@ -55,6 +66,7 @@ const DEFAULT_PANELS_VISIBLE: SidebarPanelVisibility = {
   trackItNumbers: true,
   showInfo: true,
   colors: true,
+  cadTools: false,
 };
 
 function loadSidebarPrefs(): SidebarPrefs {
@@ -64,6 +76,7 @@ function loadSidebarPrefs(): SidebarPrefs {
     rightTrackItExpanded: false,
     rightShowInfoExpanded: false,
     rightColorsExpanded: false,
+    rightCadToolsExpanded: false,
     quickToolbarVisible: true,
     libraryBrowseMode: loadLibraryBrowseMode(),
     panelsVisible: { ...DEFAULT_PANELS_VISIBLE },
@@ -103,6 +116,7 @@ interface SidebarState extends SidebarPrefs {
   setRightTrackItExpanded: (v: boolean) => void;
   setRightShowInfoExpanded: (v: boolean) => void;
   setRightColorsExpanded: (v: boolean) => void;
+  setRightCadToolsExpanded: (v: boolean) => void;
   setQuickToolbarVisible: (v: boolean) => void;
   toggleQuickToolbarVisible: () => void;
   setLibraryBrowseMode: (mode: LibraryBrowseMode) => void;
@@ -140,6 +154,11 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
     persistSidebar({ ...get(), rightColorsExpanded });
   },
 
+  setRightCadToolsExpanded: (rightCadToolsExpanded) => {
+    set({ rightCadToolsExpanded });
+    persistSidebar({ ...get(), rightCadToolsExpanded });
+  },
+
   setQuickToolbarVisible: (quickToolbarVisible) => {
     set({ quickToolbarVisible });
     persistSidebar({ ...get(), quickToolbarVisible });
@@ -174,6 +193,7 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
       rightTrackItExpanded: panel === "trackIt",
       rightShowInfoExpanded: panel === "showInfo",
       rightColorsExpanded: panel === "colors",
+      rightCadToolsExpanded: panel === "cadTools",
     };
     set(next);
     persistSidebar({ ...get(), ...next });
