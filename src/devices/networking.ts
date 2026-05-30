@@ -1,5 +1,6 @@
 import { port } from "./_helpers";
 import type { DeviceTemplate } from "../types";
+import { networkSwitchRackMeta } from "./_rackMeta";
 
 export const templates: DeviceTemplate[] = [
   // NDI Encoder
@@ -38,6 +39,7 @@ export const templates: DeviceTemplate[] = [
     searchTerms: ["switch", "network", "poe"],
     powerDrawW: 15,
     poeBudgetW: 60,
+    ...networkSwitchRackMeta(4),
     ports: [
       { ...port("Port 1", "ethernet", "bidirectional", undefined, false), linkSpeed: "1G" },
       { ...port("Port 2", "ethernet", "bidirectional", undefined, false), linkSpeed: "1G" },
@@ -54,6 +56,7 @@ export const templates: DeviceTemplate[] = [
     searchTerms: ["switch", "network", "poe"],
     powerDrawW: 25,
     poeBudgetW: 120,
+    ...networkSwitchRackMeta(8),
     ports: [
       { ...port("Port 1", "ethernet", "bidirectional", undefined, false), linkSpeed: "1G" },
       { ...port("Port 2", "ethernet", "bidirectional", undefined, false), linkSpeed: "1G" },

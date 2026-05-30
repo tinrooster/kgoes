@@ -1,5 +1,6 @@
 import { port, camLokSet, patchPanelCircuits, wallPlatePorts } from "./_helpers";
 import type { DeviceTemplate } from "../types";
+import { patchPanelRackMeta } from "./_rackMeta";
 
 export const templates: DeviceTemplate[] = [
   // Company Switches (venue-provided power sources)
@@ -282,6 +283,7 @@ export const templates: DeviceTemplate[] = [
     label: "Patch Panel 12-Port",
     searchTerms: ["patch panel", "patch bay", "12 port", "rj45", "ethernet", "cat6"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(12),
     ports: patchPanelCircuits("Port ", 12, { signalType: "ethernet", rearConnectorType: "rj45", frontConnectorType: "rj45" }),
   },
   {
@@ -290,6 +292,7 @@ export const templates: DeviceTemplate[] = [
     label: "Patch Panel 24-Port",
     searchTerms: ["patch panel", "patch bay", "24 port", "rj45", "ethernet", "cat6"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(24),
     ports: patchPanelCircuits("Port ", 24, { signalType: "ethernet", rearConnectorType: "rj45", frontConnectorType: "rj45" }),
   },
   {
@@ -298,6 +301,7 @@ export const templates: DeviceTemplate[] = [
     label: "Patch Panel 48-Port",
     searchTerms: ["patch panel", "patch bay", "48 port", "rj45", "ethernet", "cat6"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(48),
     ports: patchPanelCircuits("Port ", 48, { signalType: "ethernet", rearConnectorType: "rj45", frontConnectorType: "rj45" }),
   },
   {
@@ -306,6 +310,7 @@ export const templates: DeviceTemplate[] = [
     label: "BNC Patch Panel 12-Port",
     searchTerms: ["patch panel", "patch bay", "12 port", "bnc", "sdi", "video"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(12),
     ports: patchPanelCircuits("Port ", 12, { signalType: "sdi", rearConnectorType: "bnc", frontConnectorType: "bnc" }),
   },
   {
@@ -314,6 +319,7 @@ export const templates: DeviceTemplate[] = [
     label: "BNC Patch Panel 24-Port",
     searchTerms: ["patch panel", "patch bay", "24 port", "bnc", "sdi", "video"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(24),
     ports: patchPanelCircuits("Port ", 24, { signalType: "sdi", rearConnectorType: "bnc", frontConnectorType: "bnc" }),
   },
   {
@@ -331,6 +337,7 @@ export const templates: DeviceTemplate[] = [
     label: "XLR Patch Panel 24-Port",
     searchTerms: ["patch panel", "patch bay", "24 port", "xlr", "audio", "analog"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(24),
     ports: patchPanelCircuits("Port ", 24, { signalType: "analog-audio", rearConnectorType: "xlr-3", frontConnectorType: "xlr-3", rearGender: "female", frontGender: "female" }),
   },
   {
@@ -339,6 +346,7 @@ export const templates: DeviceTemplate[] = [
     label: "Fiber Patch Panel 12-Port",
     searchTerms: ["patch panel", "patch bay", "12 port", "fiber", "lc", "optical"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(12),
     ports: patchPanelCircuits("Port ", 12, { signalType: "fiber", rearConnectorType: "lc", frontConnectorType: "lc" }),
   },
   {
@@ -347,6 +355,7 @@ export const templates: DeviceTemplate[] = [
     label: "Fiber Patch Panel 24-Port",
     searchTerms: ["patch panel", "patch bay", "24 port", "fiber", "lc", "optical"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(24),
     ports: patchPanelCircuits("Port ", 24, { signalType: "fiber", rearConnectorType: "lc", frontConnectorType: "lc" }),
   },
   {
@@ -355,6 +364,7 @@ export const templates: DeviceTemplate[] = [
     label: "Patch Panel 32-Port",
     searchTerms: ["patch panel", "patch bay", "32 port", "rj45", "ethernet", "cat6", "networx"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(32),
     ports: patchPanelCircuits("Port ", 32, { signalType: "ethernet", rearConnectorType: "rj45", frontConnectorType: "rj45" }),
   },
   {
@@ -363,6 +373,7 @@ export const templates: DeviceTemplate[] = [
     label: "BNC Patch Panel 32-Port",
     searchTerms: ["patch panel", "patch bay", "32 port", "bnc", "sdi", "video"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(32),
     ports: patchPanelCircuits("Port ", 32, { signalType: "sdi", rearConnectorType: "bnc", frontConnectorType: "bnc" }),
   },
   {
@@ -371,6 +382,7 @@ export const templates: DeviceTemplate[] = [
     label: "BNC Patch Panel 48-Port",
     searchTerms: ["patch panel", "patch bay", "48 port", "bnc", "sdi", "video"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(48),
     ports: patchPanelCircuits("Port ", 48, { signalType: "sdi", rearConnectorType: "bnc", frontConnectorType: "bnc" }),
   },
   {
@@ -379,6 +391,7 @@ export const templates: DeviceTemplate[] = [
     label: "XLR Patch Panel 32-Port",
     searchTerms: ["patch panel", "patch bay", "32 port", "xlr", "audio", "analog"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(32),
     ports: patchPanelCircuits("Port ", 32, { signalType: "analog-audio", rearConnectorType: "xlr-3", frontConnectorType: "xlr-3", rearGender: "female", frontGender: "female" }),
   },
   {
@@ -387,6 +400,7 @@ export const templates: DeviceTemplate[] = [
     label: "XLR Patch Panel 48-Port",
     searchTerms: ["patch panel", "patch bay", "48 port", "xlr", "audio", "analog"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(48),
     ports: patchPanelCircuits("Port ", 48, { signalType: "analog-audio", rearConnectorType: "xlr-3", frontConnectorType: "xlr-3", rearGender: "female", frontGender: "female" }),
   },
   {
@@ -395,6 +409,7 @@ export const templates: DeviceTemplate[] = [
     label: "Fiber Patch Panel 32-Port",
     searchTerms: ["patch panel", "patch bay", "32 port", "fiber", "lc", "optical"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(32),
     ports: patchPanelCircuits("Port ", 32, { signalType: "fiber", rearConnectorType: "lc", frontConnectorType: "lc" }),
   },
   {
@@ -403,6 +418,7 @@ export const templates: DeviceTemplate[] = [
     label: "Fiber Patch Panel 48-Port",
     searchTerms: ["patch panel", "patch bay", "48 port", "fiber", "lc", "optical"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(48),
     ports: patchPanelCircuits("Port ", 48, { signalType: "fiber", rearConnectorType: "lc", frontConnectorType: "lc" }),
   },
   {
@@ -411,6 +427,7 @@ export const templates: DeviceTemplate[] = [
     label: "TRS Patch Bay 24-Point",
     searchTerms: ["patch bay", "patch panel", "24 point", "trs", "quarter inch", "audio", "tt", "bantam", "normalled"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(24),
     ports: patchPanelCircuits("Port ", 24, { signalType: "analog-audio", rearConnectorType: "trs-quarter", frontConnectorType: "trs-quarter" }),
   },
   {
@@ -419,6 +436,7 @@ export const templates: DeviceTemplate[] = [
     label: "TRS Patch Bay 48-Point",
     searchTerms: ["patch bay", "patch panel", "48 point", "trs", "quarter inch", "audio", "tt", "bantam", "normalled"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(48),
     ports: patchPanelCircuits("Port ", 48, { signalType: "analog-audio", rearConnectorType: "trs-quarter", frontConnectorType: "trs-quarter" }),
   },
   {
@@ -427,6 +445,7 @@ export const templates: DeviceTemplate[] = [
     label: "TRS Patch Bay 96-Point",
     searchTerms: ["patch bay", "patch panel", "96 point", "trs", "quarter inch", "audio", "tt", "bantam", "normalled"],
     powerDrawW: 0,
+    ...patchPanelRackMeta(96),
     ports: patchPanelCircuits("Port ", 96, { signalType: "analog-audio", rearConnectorType: "trs-quarter", frontConnectorType: "trs-quarter" }),
   },
   // Wall Plates

@@ -1,5 +1,6 @@
 import { port, ports } from "./_helpers";
 import type { DeviceTemplate } from "../types";
+import { fullRackMeta, fullRackFromHeightMm } from "./_rackMeta";
 
 export const templates: DeviceTemplate[] = [
   // Switchers
@@ -8,6 +9,7 @@ export const templates: DeviceTemplate[] = [
     deviceType: "switcher",
     label: "Video Switcher",
     powerDrawW: 50, // typical
+    ...fullRackMeta(2),
     ports: [
       port("SDI In 1", "sdi", "input"),
       port("SDI In 2", "sdi", "input"),
@@ -26,6 +28,7 @@ export const templates: DeviceTemplate[] = [
     deviceType: "router",
     label: "SDI Router",
     powerDrawW: 30, // typical
+    ...fullRackMeta(2),
     ports: [
       port("In 1", "sdi", "input"),
       port("In 2", "sdi", "input"),
@@ -52,6 +55,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 482,
     depthMm: 236,
     weightKg: 3.6,
+    ...fullRackFromHeightMm(44, 482, 236),
     ports: [
       port("In 1", "sdi", "input"),
       port("In 2", "sdi", "input"),
@@ -162,6 +166,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 436,
     depthMm: 183,
     weightKg: 2.4,
+    ...fullRackFromHeightMm(44, 436, 183),
     ports: [
       port("HDMI In 1", "hdmi", "input"),
       port("HDMI In 2", "hdmi", "input"),
@@ -693,6 +698,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 483,
     depthMm: 236,
     weightKg: 3,
+    ...fullRackFromHeightMm(44, 483, 236),
     ports: [
       ...ports("In", "sdi", "input", 10),
       ...ports("Out", "sdi", "output", 10),
@@ -715,6 +721,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 482,
     depthMm: 238,
     weightKg: 5.6,
+    ...fullRackFromHeightMm(88, 482, 238),
     ports: [
       ...ports("In", "sdi", "input", 40),
       ...ports("Out", "sdi", "output", 40),
@@ -748,6 +755,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 482,
     depthMm: 161,
     weightKg: 6.4,
+    ...fullRackFromHeightMm(221, 482, 161),
     ports: [
       ...ports("SDI In", "sdi", "input", 72, "bnc"),
       ...ports("SDI Out", "sdi", "output", 72, "bnc"),
@@ -780,6 +788,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 483,
     depthMm: 238,
     weightKg: 10.9,
+    ...fullRackFromHeightMm(177, 483, 238),
     ports: [
       ...ports("SDI In", "sdi", "input", 80, "bnc"),
       ...ports("SDI Out", "sdi", "output", 80, "bnc"),
@@ -802,6 +811,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 442,
     depthMm: 278,
     weightKg: 3.2,
+    ...fullRackFromHeightMm(44, 442, 278),
     ports: [
       ...ports("HDMI In", "hdmi", "input", 8),
       ...ports("HDMI Out", "hdmi", "output", 8),
@@ -823,6 +833,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 441,
     depthMm: 280,
     weightKg: 8.5,
+    ...fullRackFromHeightMm(133, 441, 280),
     ports: [
       ...ports("HDMI In", "hdmi", "input", 16),
       ...ports("HDMI Out", "hdmi", "output", 16),
@@ -845,6 +856,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 442,
     depthMm: 39,
     weightKg: 0.6,
+    ...fullRackFromHeightMm(44, 442, 39),
     ports: [
       ...ports("In", "sdi", "input", 16),
       ...ports("Out", "sdi", "output", 16),
@@ -881,6 +893,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 485,
     depthMm: 459,
     weightKg: 9.1,
+    ...fullRackFromHeightMm(177, 485, 459),
     ports: [
       port("Ethernet", "ethernet", "bidirectional"),
       port("AC Power", "power", "input"),
@@ -917,6 +930,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 485,
     depthMm: 398,
     weightKg: 12.9,
+    ...fullRackFromHeightMm(311, 485, 398),
     ports: [
       port("Ethernet", "ethernet", "bidirectional"),
       port("AC Power", "power", "input"),
@@ -967,6 +981,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 432,
     depthMm: 389,
     weightKg: 5.2,
+    ...fullRackFromHeightMm(89, 432, 389),
     ports: [
       ...ports("HDMI In", "hdmi", "input", 6),
       ...ports("HDBaseT In", "hdbaset", "input", 2),
@@ -989,6 +1004,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 432,
     depthMm: 389,
     weightKg: 7.4,
+    ...fullRackFromHeightMm(133, 432, 389),
     ports: [
       ...ports("HDMI In", "hdmi", "input", 6),
       ...ports("HDBaseT In", "hdbaset", "input", 4),
@@ -1024,6 +1040,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 445,
     depthMm: 201,
     weightKg: 6.4,
+    ...fullRackFromHeightMm(221, 445, 201),
     ports: [
       ...ports("Ethernet", "ethernet", "bidirectional", 2, "ethercon"),
       port("Ref In", "genlock", "input", "bnc"),
@@ -1051,6 +1068,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 445,
     depthMm: 201,
     weightKg: 5.4,
+    ...fullRackFromHeightMm(88, 445, 201),
     ports: [
       ...ports("SDI In", "sdi", "input", 16, "bnc"),
       ...ports("SDI Out", "sdi", "output", 16, "bnc"),
@@ -1078,6 +1096,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 445,
     depthMm: 201,
     weightKg: 4.1,
+    ...fullRackFromHeightMm(44, 445, 201),
     ports: [
       ...ports("SDI In", "sdi", "input", 16, "bnc"),
       ...ports("SDI Out", "sdi", "output", 16, "bnc"),
@@ -1192,6 +1211,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 442,
     depthMm: 39,
     weightKg: 1,
+    ...fullRackFromHeightMm(89, 442, 39),
     ports: [
       ...ports("SDI In", "sdi", "input", 32, "bnc"),
       ...ports("SDI Out", "sdi", "output", 32, "bnc"),
@@ -1259,6 +1279,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 483,
     depthMm: 142,
     weightKg: 15,
+    ...fullRackFromHeightMm(266, 483, 142),
     ports: [
       ...ports("SDI In", "sdi", "input", 120, "bnc"),
       ...ports("SDI Out", "sdi", "output", 120, "bnc"),
@@ -1291,6 +1312,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 441,
     depthMm: 280,
     weightKg: 9.3,
+    ...fullRackFromHeightMm(177, 441, 280),
     ports: [
       ...ports("HDMI In", "hdmi", "input", 24),
       ...ports("HDMI Out", "hdmi", "output", 24),
