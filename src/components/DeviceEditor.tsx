@@ -42,6 +42,7 @@ import {
   buildExplicitRackMetadata,
   rackDeviceDefinitionKey,
   rackMetadataChanged,
+  resolveMountingClass,
 } from "../rackMount";
 
 const ALL_SIGNAL_TYPES = (Object.keys(SIGNAL_LABELS) as SignalType[]).sort(
@@ -307,7 +308,14 @@ export default function DeviceEditor() {
     setDepthMm(node.data.depthMm);
     setWeightKg(node.data.weightKg);
     setRackHeightU(node.data.rackHeightU ?? (node.data.heightMm != null ? Math.max(1, Math.round(node.data.heightMm / 44.45)) : undefined));
-    setMountingClass(node.data.mountingClass ?? (node.data.rackForm === "half" ? "rack-half" : node.data.rackForm === "shelf-only" ? "shelf" : "rack-full"));
+    setMountingClass(
+      node.data.mountingClass
+        ?? (node.data.rackForm === "half"
+          ? "rack-half"
+          : node.data.rackForm === "shelf-only"
+            ? "shelf"
+            : resolveMountingClass(node.data)),
+    );
     setSyncMmFromU(true);
     setIsCableAccessory(node.data.isCableAccessory ?? false);
     setIntegratedWithCable(node.data.integratedWithCable ?? false);

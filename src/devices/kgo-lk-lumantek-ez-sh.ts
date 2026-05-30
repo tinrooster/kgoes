@@ -1,6 +1,13 @@
 import { port } from "./_helpers";
 import type { DeviceTemplate } from "../types";
 
+const THROWDOWN_SHELF_1U = {
+  rackHeightU: 1,
+  mountingClass: "shelf" as const,
+  rackForm: "shelf-only" as const,
+  rackMetadataSource: "library" as const,
+};
+
 /**
  * KGO-ES — Lumantek device templates.
  */
@@ -30,6 +37,7 @@ export const templates: DeviceTemplate[] = [
     powerDrawW: 1.8,
     powerCapacityW: 18,
     voltage: "5 V DC",
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("SDI In", "sdi", "input", "bnc"),
       port("HDMI Out", "hdmi", "output", "hdmi"),
@@ -63,6 +71,7 @@ export const templates: DeviceTemplate[] = [
     powerDrawW: 2.04,
     powerCapacityW: 18,
     voltage: "5 V DC",
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("HDMI In", "hdmi", "input", "hdmi"),
       port("SDI Out 1", "sdi", "output", "bnc"),

@@ -1,6 +1,14 @@
 import { port, ports } from "./_helpers";
 import type { DeviceTemplate } from "../types";
 
+/** 1U shelf / throwdown slot metadata for mini converters and similar gear. */
+const THROWDOWN_SHELF_1U = {
+  rackHeightU: 1,
+  mountingClass: "shelf" as const,
+  rackForm: "shelf-only" as const,
+  rackMetadataSource: "library" as const,
+};
+
 export const templates: DeviceTemplate[] = [
   // Blackmagic Micro Converter SDI to HDMI
   {
@@ -16,6 +24,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 77,
     depthMm: 46,
     weightKg: 0.2,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("SDI In", "sdi", "input"),
       port("HDMI Out", "hdmi", "output"),
@@ -36,6 +45,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 77,
     depthMm: 46,
     weightKg: 0.2,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("HDMI In", "hdmi", "input"),
       port("SDI Out", "sdi", "output"),
@@ -56,6 +66,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 60,
     depthMm: 74,
     weightKg: 0.4,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("SDI In", "sdi", "input"),
       port("HDMI In", "hdmi", "input"),
@@ -77,6 +88,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 81,
     depthMm: 59,
     weightKg: 0.2,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("SDI In", "sdi", "input"),
       port("HDMI In", "hdmi", "input"),
@@ -204,6 +216,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 112,
     depthMm: 85,
     weightKg: 0.4,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("SDI In", "sdi", "input"),
       port("HDMI In", "hdmi", "input"),
@@ -369,6 +382,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 81,
     depthMm: 59,
     weightKg: 0.2,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("SDI In", "sdi", "input"),
       port("HDMI Out", "hdmi", "output"),
@@ -388,6 +402,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 81,
     depthMm: 59,
     weightKg: 0.2,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("HDMI In", "hdmi", "input"),
       port("SDI Out 1", "sdi", "output"),
@@ -407,6 +422,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 81,
     depthMm: 59,
     weightKg: 0.2,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("SDI In", "sdi", "input"),
       port("HDMI In", "hdmi", "input"),
@@ -427,6 +443,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 140,
     depthMm: 170,
     weightKg: 0.6,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("SDI In", "sdi", "input"),
       port("SDI Loop", "sdi", "output"),
@@ -450,6 +467,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 140,
     depthMm: 170,
     weightKg: 0.6,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("HDMI In", "hdmi", "input"),
       port("SDI Out", "sdi", "output"),
@@ -470,6 +488,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 117,
     depthMm: 102,
     weightKg: 0.3,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("12G-SDI In", "sdi", "input"),
       port("SDI Loop", "sdi", "output"),
@@ -496,6 +515,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 117,
     depthMm: 102,
     weightKg: 0.3,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("HDMI 2.0 In", "hdmi", "input"),
       port("12G-SDI Out 1", "sdi", "output"),
@@ -544,6 +564,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 123,
     depthMm: 80,
     weightKg: 0.7,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("SDI In", "sdi", "input"),
       port("HDMI In", "hdmi", "input"),
@@ -1339,6 +1360,7 @@ export const templates: DeviceTemplate[] = [
     heightMm: 23,
     widthMm: 122,
     depthMm: 92,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("SDI In", "sdi", "input"),
       port("SDI Out", "sdi", "output"),
@@ -1361,6 +1383,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 130,
     depthMm: 106,
     weightKg: 0.5,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("SDI In", "sdi", "input"),
       port("HDMI In", "hdmi", "input"),

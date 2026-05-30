@@ -1,6 +1,13 @@
 import { port, ports } from "./_helpers";
 import type { DeviceTemplate } from "../types";
 
+const THROWDOWN_SHELF_1U = {
+  rackHeightU: 1,
+  mountingClass: "shelf" as const,
+  rackForm: "shelf-only" as const,
+  rackMetadataSource: "library" as const,
+};
+
 export const templates: DeviceTemplate[] = [
   // Audio Mixer
   {
@@ -35,6 +42,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 140,
     depthMm: 170,
     weightKg: 0.6,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("SDI In", "sdi", "input"),
       port("SDI Loop", "sdi", "output"),
@@ -61,6 +69,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 140,
     depthMm: 170,
     weightKg: 0.6,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("SDI In", "sdi", "input"),
       port("Analog In L", "analog-audio", "input"),

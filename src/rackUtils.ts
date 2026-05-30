@@ -297,6 +297,9 @@ export function shelfInnerWidthMm(): number {
   return DEVICE_WIDTH_PX / PX_PER_MM;
 }
 
+/** Common shelf height presets (rack U) for accessory context menu. */
+export const SHELF_HEIGHT_PRESETS = [1, 2, 3, 4] as const;
+
 /**
  * Can a new device fit on this shelf? Depth-only gate — width is not capped here
  * because auto-placement walks upward to a second row when the bottom row fills,

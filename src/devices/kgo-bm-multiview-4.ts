@@ -1,6 +1,13 @@
 import { port, ports } from "./_helpers";
 import type { DeviceTemplate } from "../types";
 
+const THROWDOWN_SHELF_1U = {
+  rackHeightU: 1,
+  mountingClass: "shelf" as const,
+  rackForm: "shelf-only" as const,
+  rackMetadataSource: "library" as const,
+};
+
 /**
  * KGO-ES — Blackmagic Design device templates.
  */
@@ -123,6 +130,10 @@ export const templates: DeviceTemplate[] = [
       "Blackmagic mini converter SDI HDMI", "kgo-es-deviceadd"],
     powerDrawW: 5.2,
     voltage: "12-18V DC",
+    heightMm: 25,
+    widthMm: 122,
+    depthMm: 92,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("SDI In", "sdi", "input", "bnc"),
       port("ALT SDI In", "sdi", "input", "bnc"),
@@ -149,6 +160,10 @@ export const templates: DeviceTemplate[] = [
       "Blackmagic HDMI to SDI",
       "HDMI to SDI 6G",
       "Blackmagic mini converter HDMI SDI", "kgo-es-deviceadd"],
+    heightMm: 25,
+    widthMm: 122,
+    depthMm: 92,
+    ...THROWDOWN_SHELF_1U,
     ports: [
       port("HDMI In", "hdmi", "input", "hdmi"),
       port("SDI Out 1", "sdi", "output", "bnc"),

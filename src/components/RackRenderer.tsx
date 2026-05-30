@@ -22,6 +22,7 @@ import {
   isShelfOffsetValid,
   gravitySnapShelfY,
   computeShelfSnaps,
+  SHELF_HEIGHT_PRESETS,
 } from "../rackUtils";
 import type { ShelfSnapGuides } from "../rackUtils";
 import { computeRackStats, formatStatsLine } from "../rackStats";
@@ -1177,6 +1178,24 @@ function AccessoryMenu({
         />
         <span className="text-neutral-500">U</span>
       </label>
+      {isShelf && (
+        <div className="flex flex-wrap gap-1 px-3 pb-1.5">
+          {SHELF_HEIGHT_PRESETS.map((presetU) => (
+            <button
+              key={presetU}
+              type="button"
+              className={`px-2 py-0.5 rounded border text-[10px] ${
+                heightU === presetU
+                  ? "border-blue-500 bg-blue-50 text-blue-800"
+                  : "border-neutral-200 text-neutral-600 hover:bg-neutral-50"
+              }`}
+              onClick={() => setHeightU(presetU)}
+            >
+              {presetU}U
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex gap-1 px-3 py-1.5 border-t border-neutral-100">
         <button
           className="flex-1 px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
