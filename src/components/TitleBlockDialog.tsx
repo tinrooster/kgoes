@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useSchematicStore } from "../store";
 import type { TitleBlock, TitleBlockLayout, TitleBlockCell } from "../types";
 import { getCoveredPositions, nextCellId, createDefaultLayout, getFieldValue, getFieldLabel } from "../titleBlockLayout";
+import { RfLicensedEditor, SiteNetworkMetadataEditor } from "./RfMetadataEditor";
 
 interface TitleBlockDialogProps {
   onClose: () => void;
@@ -371,7 +372,38 @@ function DataTab({
         >
           + Add Custom Field
         </button>
+
+        <SiteLicensedSection inputClass={inputClass} />
       </div>
+    </div>
+  );
+}
+
+function SiteLicensedSection({ inputClass: _inputClass }: { inputClass: string }) {
+  const siteLicensed = useSchematicStore((s) => s.siteLicensed);
+  const siteNetwork = useSchematicStore((s) => s.siteNetwork);
+  const setSiteLicensed = useSchematicStore((s) => s.setSiteLicensed);
+  const setSiteNetwork = useSchematicStore((s) => s.setSiteNetwork);
+  const trackItTowerContext = useSchematicStore((s) => s.trackItTowerContext);
+
+  return (
+    <div className="mt-4 pt-3 border-t border-[var(--color-border)] space-y-3">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+        Site / licensed (tower drawings)
+      </div>
+      {trackItTowerContext?.callSign && !siteLicensed?.callSign && (
+        <p className="text-[9px] text-[var(--color-text-muted)]">
+          trackIT site call sign: {trackItTowerContext.callSign}
+        </p>
+      )}
+      <RfLicensedEditor
+        licensed={siteLicensed ?? undefined}
+        onChange={(v) => setSiteLicensed(v ?? null)}
+      />
+      <SiteNetworkMetadataEditor
+        network={siteNetwork ?? undefined}
+        onChange={(v) => setSiteNetwork(v ?? null)}
+      />
     </div>
   );
 }

@@ -14,6 +14,8 @@ import {
   type PortCapabilities,
   type RfPortMetadata,
   type RfInstallationMetadata,
+  type DbPinAssignment,
+  type SerialPortConfig,
   type AuxRow,
   type DeviceData,
   type DeviceNode,
@@ -30,7 +32,15 @@ import { isValidIpv4, isValidSubnetMask, isValidVlan, findDuplicateIps } from ".
 import IpInput from "./IpInput";
 import FacePlateEditor from "./FacePlateEditor";
 import ApplyRackMetadataDialog, { type ApplyRackMetadataPrompt } from "./ApplyRackMetadataDialog";
-import { RfInstallationEditor, RfPortMetadataEditor } from "./RfMetadataEditor";
+import {
+  DB_PINOUT_CONNECTORS,
+  DbPinoutEditor,
+  RF_METADATA_SIGNAL_TYPES,
+  RfInstallationEditor,
+  RfPortMetadataEditor,
+  SERIAL_SIGNAL_TYPES,
+  SerialPortConfigEditor,
+} from "./RfMetadataEditor";
 import type { FacePlateLayout } from "../types";
 import { AUX_FIELD_GROUPS, normalizeAuxRows, resolveAuxiliaryLine, trimTrailingEmpty } from "../auxiliaryData";
 import { deriveThermalBtuh } from "../thermal";
@@ -98,6 +108,8 @@ interface PortDraft {
   linkSpeed?: string;
   flipped?: boolean;
   rf?: RfPortMetadata;
+  dbPinout?: DbPinAssignment[];
+  serial?: SerialPortConfig;
   // Passthrough-only fields
   rearConnectorType?: ConnectorType;
   rearGender?: Gender;
@@ -296,6 +308,8 @@ export default function DeviceEditor() {
         frontGender: p.frontGender,
         inheritsSignal: p.inheritsSignal,
         rf: p.rf ? { ...p.rf } : undefined,
+        dbPinout: p.dbPinout ? p.dbPinout.map((row) => ({ ...row })) : undefined,
+        serial: p.serial ? { ...p.serial } : undefined,
       })),
     );
     setShowAllPorts(node.data.showAllPorts ?? false);
@@ -2392,6 +2406,13 @@ function PortRow({
   const [showSection, setShowSection] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [showRf, setShowRf] = useState(Boolean(port.rf && Object.keys(port.rf).length > 0));
+  const [showDbPinout, setShowDbPinout] = useState(Boolean(port.dbPinout?.length));
+  const [showSerial, setShowSerial] = useState(Boolean(port.serial && Object.keys(port.serial).length > 0));
+
+  const connectorType = port.connectorType ?? DEFAULT_CONNECTOR[port.signalType];
+  const isDbConnector = DB_PINOUT_CONNECTORS.has(connectorType);
+  const isRfMetadataSignal = RF_METADATA_SIGNAL_TYPES.has(port.signalType);
+  const isSerialSignal = SERIAL_SIGNAL_TYPES.has(port.signalType);
 
   const handleDragStart = (e: DragEvent) => {
     e.dataTransfer.setData(MIME, port.id);
@@ -2667,7 +2688,7 @@ function PortRow({
           {port.notes ? "N" : "N"}
         </button>
 
-        {port.signalType === "rf" && (
+        {isRfMetadataSignal && (
           <button
             onClick={() => setShowRf(!showRf)}
             className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 ${
@@ -2675,9 +2696,37 @@ function PortRow({
                 ? "bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
             }`}
-            title="RF port metadata (band, frequency, polarization, power, VSWR)"
+            title="RF / ASI / IF port metadata"
           >
             RF
+          </button>
+        )}
+
+        {isDbConnector && (
+          <button
+            onClick={() => setShowDbPinout(!showDbPinout)}
+            className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 ${
+              port.dbPinout?.length
+                ? "bg-slate-200 text-slate-800 hover:bg-slate-300"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
+            }`}
+            title="DB pin assignments"
+          >
+            DB
+          </button>
+        )}
+
+        {isSerialSignal && (
+          <button
+            onClick={() => setShowSerial(!showSerial)}
+            className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 ${
+              port.serial && Object.keys(port.serial).length > 0
+                ? "bg-slate-200 text-slate-800 hover:bg-slate-300"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
+            }`}
+            title="Serial port configuration"
+          >
+            SER
           </button>
         )}
 
@@ -2749,10 +2798,24 @@ function PortRow({
         </div>
       )}
 
-      {showRf && port.signalType === "rf" && (
+      {showRf && isRfMetadataSignal && (
         <RfPortMetadataEditor
           rf={port.rf}
           onChange={(rf) => onUpdate({ rf })}
+        />
+      )}
+
+      {showDbPinout && isDbConnector && (
+        <DbPinoutEditor
+          pinout={port.dbPinout}
+          onChange={(dbPinout) => onUpdate({ dbPinout })}
+        />
+      )}
+
+      {showSerial && isSerialSignal && (
+        <SerialPortConfigEditor
+          serial={port.serial}
+          onChange={(serial) => onUpdate({ serial })}
         />
       )}
 

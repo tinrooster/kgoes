@@ -37,7 +37,19 @@ import type {
   CustomTemplateMeta,
 } from "./types";
 import type { ReactFlowInstance } from "@xyflow/react";
-import type { SignalType, ScrollConfig, LineStyle, LabelCaseMode, DistanceSettings, PanMode, StubLabelPageMode, RfPathRole, MeasurementSystem } from "./types";
+import type {
+  SignalType,
+  ScrollConfig,
+  LineStyle,
+  LabelCaseMode,
+  DistanceSettings,
+  PanMode,
+  StubLabelPageMode,
+  RfPathRole,
+  MeasurementSystem,
+  RfLicensedMetadata,
+  SiteNetworkMetadata,
+} from "./types";
 import { applyRfPathDefaults } from "./rfPath";
 import { defaultFlyEndpointData, defaultFlyPlacement } from "./flyFormat";
 import { defaultStubPlacement } from "./stubPlacement";
@@ -897,6 +909,10 @@ interface SchematicState {
   setTrackItLink: (link: TrackItLinkContext | null) => void;
   trackItTowerContext: import("./types").TrackItTowerSiteContext | null;
   setTrackItTowerContext: (ctx: import("./types").TrackItTowerSiteContext | null) => void;
+  siteLicensed: RfLicensedMetadata | null;
+  setSiteLicensed: (meta: RfLicensedMetadata | null) => void;
+  siteNetwork: SiteNetworkMetadata | null;
+  setSiteNetwork: (meta: SiteNetworkMetadata | null) => void;
   trackItLastPushedAt: string | null;
   /** Active reservation for "assign next" (reservationId). */
   activeTrackItReservationId: string | null;
@@ -1476,6 +1492,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   activeTrackItReservationId: null,
   trackItLink: null,
   trackItTowerContext: null,
+  siteLicensed: null,
+  siteNetwork: null,
   towerDraftFocusRequest: null,
   trackItLastPushedAt: null,
   loadSeq: 0,
@@ -5456,6 +5474,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       cableCosts: state.cableCosts && Object.keys(state.cableCosts).length > 0 ? state.cableCosts : undefined,
       roomDistances: state.roomDistances && Object.keys(state.roomDistances).length > 0 ? state.roomDistances : undefined,
       distanceSettings: state.distanceSettings,
+      siteLicensed: state.siteLicensed ?? undefined,
+      siteNetwork: state.siteNetwork ?? undefined,
     };
     // Persist cloud identity alongside autosave (not part of SchematicFile export)
     const blob: Record<string, unknown> = { ...data };
@@ -5577,6 +5597,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         activeTrackItReservationId:
           pickDefaultActiveBlock(data.trackItNumbering?.blocks ?? [])?.reservationId ?? null,
         trackItLink: data.trackItLink ?? null,
+        siteLicensed: data.siteLicensed ?? null,
+        siteNetwork: data.siteNetwork ?? null,
         isDemo: false,
         // Restore cloud identity from autosave (not part of SchematicFile)
         cloudSchematicId: parsed.cloudSchematicId ?? null,
@@ -5672,6 +5694,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
           ? state.trackItNumbering
           : undefined,
       trackItLink: state.trackItLink ?? undefined,
+      siteLicensed: state.siteLicensed ?? undefined,
+      siteNetwork: state.siteNetwork ?? undefined,
     };
   },
 
@@ -5683,11 +5707,39 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     get().saveToLocalStorage();
   },
 
+  setSiteLicensed: (siteLicensed) => {
+    set({ siteLicensed });
+    get().saveToLocalStorage();
+  },
+
+  setSiteNetwork: (siteNetwork) => {
+    set({ siteNetwork });
+    get().saveToLocalStorage();
+  },
+
   setTrackItTowerContext: (trackItTowerContext) => {
     if (trackItTowerContext?.measurementSystem) {
       get().setMeasurementSystem(trackItTowerContext.measurementSystem);
     }
-    set({ trackItTowerContext });
+    const patch: {
+      trackItTowerContext: typeof trackItTowerContext;
+      siteLicensed?: RfLicensedMetadata | null;
+      titleBlock?: TitleBlock;
+    } = { trackItTowerContext };
+    if (trackItTowerContext?.callSign?.trim()) {
+      const prev = get().siteLicensed ?? {};
+      if (!prev.callSign?.trim()) {
+        patch.siteLicensed = { ...prev, callSign: trackItTowerContext.callSign.trim().toUpperCase() };
+      }
+    }
+    if (trackItTowerContext?.siteName?.trim()) {
+      const tb = get().titleBlock;
+      if (!tb.venue?.trim()) {
+        patch.titleBlock = { ...tb, venue: trackItTowerContext.siteName.trim() };
+      }
+    }
+    set(patch);
+    get().saveToLocalStorage();
   },
 
   setTrackItNumbering: (trackItNumbering) => {
@@ -5946,6 +5998,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       distanceSettings: data.distanceSettings ?? undefined,
       trackItNumbering: data.trackItNumbering ?? null,
       trackItLink: data.trackItLink ?? null,
+      siteLicensed: data.siteLicensed ?? null,
+      siteNetwork: data.siteNetwork ?? null,
       activeTrackItReservationId:
         pickDefaultActiveBlock(data.trackItNumbering?.blocks ?? [])?.reservationId ?? null,
       // File imports and shared schematics always start as local-only

@@ -1,4 +1,5 @@
 import type {
+  DbPinAssignment,
   OduMountType,
   RfInstallationMetadata,
   RfLicensedMetadata,
@@ -7,7 +8,28 @@ import type {
   RfPathMedium,
   RfPolarization,
   RfPortMetadata,
+  SerialPortConfig,
+  SignalType,
+  SiteNetworkMetadata,
 } from "../types";
+import IpInput from "./IpInput";
+import { isValidIpv4, isValidSubnetMask } from "../networkValidation";
+
+export const RF_METADATA_SIGNAL_TYPES: ReadonlySet<SignalType> = new Set([
+  "rf",
+  "asi",
+  "if",
+  "intercom",
+]);
+
+export const DB_PINOUT_CONNECTORS: ReadonlySet<string> = new Set([
+  "db9",
+  "db25",
+  "db37",
+  "db50",
+]);
+
+export const SERIAL_SIGNAL_TYPES: ReadonlySet<SignalType> = new Set(["serial", "rs422"]);
 
 const POLARIZATION_OPTIONS: { value: RfPolarization; label: string }[] = [
   { value: "horizontal", label: "Horizontal" },
@@ -441,5 +463,257 @@ export function RfPathMediumSelect({
         </option>
       ))}
     </select>
+  );
+}
+
+export function DbPinoutEditor({
+  pinout,
+  onChange,
+}: {
+  pinout?: DbPinAssignment[];
+  onChange: (next: DbPinAssignment[] | undefined) => void;
+}) {
+  const rows = pinout ?? [];
+  const inputClass =
+    "bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-0.5 text-[10px] outline-none focus:border-blue-500";
+
+  const patchRow = (index: number, updates: Partial<DbPinAssignment>) => {
+    const next = rows.map((r, i) => (i === index ? { ...r, ...updates } : r));
+    onChange(next.length > 0 ? next : undefined);
+  };
+
+  const addRow = () => {
+    const nextPin = rows.length > 0 ? Number(rows[rows.length - 1].pin) + 1 || rows.length + 1 : 1;
+    onChange([...rows, { pin: nextPin, label: "", signal: "" }]);
+  };
+
+  const removeRow = (index: number) => {
+    const next = rows.filter((_, i) => i !== index);
+    onChange(next.length > 0 ? next : undefined);
+  };
+
+  return (
+    <div className="flex flex-col gap-1 pl-6 pb-1">
+      <div className="text-[9px] text-[var(--color-text-muted)]">DB pinout</div>
+      {rows.map((row, i) => (
+        <div key={`${row.pin}-${i}`} className="flex items-center gap-1">
+          <input
+            className={`w-10 ${inputClass}`}
+            value={String(row.pin)}
+            onChange={(e) => {
+              const raw = e.target.value.trim();
+              const pin = /^\d+$/.test(raw) ? Number(raw) : raw;
+              patchRow(i, { pin });
+            }}
+            placeholder="#"
+            title="Pin number"
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+          <input
+            className={`flex-1 min-w-0 ${inputClass}`}
+            value={row.label}
+            onChange={(e) => patchRow(i, { label: e.target.value })}
+            placeholder="Label"
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+          <input
+            className={`w-20 ${inputClass}`}
+            value={row.signal ?? ""}
+            onChange={(e) => patchRow(i, { signal: e.target.value || undefined })}
+            placeholder="Signal"
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            onClick={() => removeRow(i)}
+            className="text-red-400/70 hover:text-red-500 text-sm cursor-pointer px-0.5"
+            title="Remove pin"
+          >
+            &times;
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={addRow}
+        className="self-start text-[9px] text-blue-600 hover:text-blue-500 cursor-pointer"
+      >
+        + Add pin
+      </button>
+    </div>
+  );
+}
+
+const SERIAL_PROTOCOL_OPTIONS: { value: NonNullable<SerialPortConfig["protocol"]>; label: string }[] = [
+  { value: "rs232", label: "RS-232" },
+  { value: "rs422", label: "RS-422" },
+  { value: "rs485", label: "RS-485" },
+];
+
+export function SerialPortConfigEditor({
+  serial,
+  onChange,
+}: {
+  serial?: SerialPortConfig;
+  onChange: (next: SerialPortConfig | undefined) => void;
+}) {
+  const value = serial ?? {};
+  const patch = (updates: Partial<SerialPortConfig>) => {
+    onChange(cleanObject({ ...value, ...updates }));
+  };
+  const inputClass =
+    "w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-0.5 text-[10px] outline-none focus:border-blue-500";
+
+  return (
+    <div className="flex flex-col gap-1.5 pl-6 pb-1">
+      <div className="text-[9px] text-[var(--color-text-muted)]">Serial configuration</div>
+      <div className="grid grid-cols-3 gap-1.5">
+        <label className="space-y-0.5">
+          <span className="text-[9px] text-[var(--color-text-muted)]">Protocol</span>
+          <select
+            className={`${inputClass} cursor-pointer`}
+            value={value.protocol ?? ""}
+            onChange={(e) =>
+              patch({ protocol: (e.target.value || undefined) as SerialPortConfig["protocol"] })
+            }
+          >
+            <option value="">—</option>
+            {SERIAL_PROTOCOL_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-0.5">
+          <span className="text-[9px] text-[var(--color-text-muted)]">Baud</span>
+          <input
+            type="number"
+            className={inputClass}
+            value={value.baudRate ?? ""}
+            onChange={(e) =>
+              patch({ baudRate: e.target.value === "" ? undefined : Number(e.target.value) })
+            }
+            placeholder="9600"
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+        </label>
+        <label className="space-y-0.5">
+          <span className="text-[9px] text-[var(--color-text-muted)]">Data bits</span>
+          <select
+            className={`${inputClass} cursor-pointer`}
+            value={value.dataBits ?? ""}
+            onChange={(e) =>
+              patch({
+                dataBits: e.target.value ? (Number(e.target.value) as 7 | 8) : undefined,
+              })
+            }
+          >
+            <option value="">—</option>
+            <option value="7">7</option>
+            <option value="8">8</option>
+          </select>
+        </label>
+        <label className="space-y-0.5">
+          <span className="text-[9px] text-[var(--color-text-muted)]">Parity</span>
+          <select
+            className={`${inputClass} cursor-pointer`}
+            value={value.parity ?? ""}
+            onChange={(e) =>
+              patch({ parity: (e.target.value || undefined) as SerialPortConfig["parity"] })
+            }
+          >
+            <option value="">—</option>
+            <option value="none">None</option>
+            <option value="even">Even</option>
+            <option value="odd">Odd</option>
+          </select>
+        </label>
+        <label className="space-y-0.5">
+          <span className="text-[9px] text-[var(--color-text-muted)]">Stop bits</span>
+          <select
+            className={`${inputClass} cursor-pointer`}
+            value={value.stopBits ?? ""}
+            onChange={(e) =>
+              patch({
+                stopBits: e.target.value ? (Number(e.target.value) as 1 | 2) : undefined,
+              })
+            }
+          >
+            <option value="">—</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+          </select>
+        </label>
+        <label className="space-y-0.5">
+          <span className="text-[9px] text-[var(--color-text-muted)]">Flow control</span>
+          <select
+            className={`${inputClass} cursor-pointer`}
+            value={value.flowControl ?? ""}
+            onChange={(e) =>
+              patch({
+                flowControl: (e.target.value || undefined) as SerialPortConfig["flowControl"],
+              })
+            }
+          >
+            <option value="">—</option>
+            <option value="none">None</option>
+            <option value="rts_cts">RTS/CTS</option>
+            <option value="xon_xoff">XON/XOFF</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+export function SiteNetworkMetadataEditor({
+  network,
+  onChange,
+  compact,
+}: {
+  network?: SiteNetworkMetadata;
+  onChange: (next: SiteNetworkMetadata | undefined) => void;
+  compact?: boolean;
+}) {
+  const value = network ?? {};
+  const patch = (updates: Partial<SiteNetworkMetadata>) => {
+    onChange(cleanObject({ ...value, ...updates }));
+  };
+  return (
+    <div className={compact ? "space-y-1.5" : "space-y-2"}>
+      {!compact && (
+        <div className="text-[10px] font-medium text-[var(--color-text-heading)]">
+          Site management network
+        </div>
+      )}
+      <div className={`grid ${compact ? "grid-cols-2 gap-1.5" : "grid-cols-2 gap-2"}`}>
+        <IpInput
+          value={value.managementIp ?? ""}
+          onChange={(v) => patch({ managementIp: v || undefined })}
+          placeholder="Management IP"
+          validate={isValidIpv4}
+        />
+        <IpInput
+          value={value.subnetMask ?? ""}
+          onChange={(v) => patch({ subnetMask: v || undefined })}
+          placeholder="Subnet mask"
+          validate={isValidSubnetMask}
+        />
+        <IpInput
+          value={value.gateway ?? ""}
+          onChange={(v) => patch({ gateway: v || undefined })}
+          placeholder="Gateway"
+          validate={isValidIpv4}
+        />
+        <input
+          className={`col-span-2 bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-0.5 text-[10px] outline-none focus:border-blue-500`}
+          value={value.vlanSummary ?? ""}
+          onChange={(e) => patch({ vlanSummary: e.target.value || undefined })}
+          placeholder="VLAN summary (e.g. Mgmt 10, STL 20)"
+          onKeyDown={(e) => e.stopPropagation()}
+        />
+      </div>
+    </div>
   );
 }
