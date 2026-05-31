@@ -31,7 +31,7 @@ export const templates: DeviceTemplate[] = [
       "tower",
     ],
     mountingClass: "not-rackable",
-    rfInstallation: { azimuthDeg: 0, tiltDeg: 0 },
+    rfInstallation: { azimuthDeg: 0, tiltDeg: 0, feedType: "coax" },
     ports: [
       rfPort("ODU RF", "bidirectional", {
         rf: { band: "18 GHz" },
@@ -60,7 +60,7 @@ export const templates: DeviceTemplate[] = [
       "tower",
     ],
     mountingClass: "not-rackable",
-    rfInstallation: { azimuthDeg: 0, tiltDeg: 0 },
+    rfInstallation: { azimuthDeg: 0, tiltDeg: 0, feedType: "coax" },
     ports: [
       rfPort("ODU RF", "bidirectional", {
         rf: { band: "18 GHz" },
@@ -89,7 +89,7 @@ export const templates: DeviceTemplate[] = [
       "tower",
     ],
     mountingClass: "not-rackable",
-    rfInstallation: { azimuthDeg: 0, tiltDeg: 0 },
+    rfInstallation: { azimuthDeg: 0, tiltDeg: 0, feedType: "coax" },
     ports: [
       rfPort("ODU RF", "bidirectional", {
         rf: { band: "18 GHz" },
@@ -107,9 +107,14 @@ export const templates: DeviceTemplate[] = [
     modelNumber: "Licensed band ODU",
     searchTerms: ["odu", "outdoor unit", "microwave", "18ghz", "if", "rf"],
     mountingClass: "not-rackable",
+    rfInstallation: { oduMount: "direct_hub" },
     ports: [
       rfPort("Antenna", "bidirectional", { rf: { band: "18 GHz" }, connectorType: "n-connector" }),
-      rfPort("IF to IDU", "bidirectional", { rf: { band: "IF" }, connectorType: "bnc" }),
+      { ...port("IF to IDU", "if", "bidirectional", "bnc"), rf: { band: "IF" } },
+      {
+        ...port("Control", "serial", "bidirectional", "db9"),
+        serial: { protocol: "rs422", baudRate: 9600 },
+      },
     ],
   },
   {
@@ -137,7 +142,7 @@ export const templates: DeviceTemplate[] = [
     mountingClass: "rack-full",
     ports: [
       ...ports("GE", "ethernet", "bidirectional", 2, "rj45"),
-      rfPort("IF-ODU", "bidirectional", { rf: { band: "IF" }, connectorType: "bnc" }),
+      { ...port("IF-ODU", "if", "bidirectional", "bnc"), rf: { band: "IF" } },
       port("Mgmt", "ethernet", "bidirectional", "rj45"),
     ],
   },
@@ -157,7 +162,7 @@ export const templates: DeviceTemplate[] = [
     mountingClass: "rack-full",
     ports: [
       port("GE", "ethernet", "bidirectional", "rj45"),
-      rfPort("IF-ODU", "bidirectional", { rf: { band: "IF" }, connectorType: "bnc" }),
+      { ...port("IF-ODU", "if", "bidirectional", "bnc"), rf: { band: "IF" } },
     ],
   },
   {
@@ -186,9 +191,9 @@ export const templates: DeviceTemplate[] = [
     rackHeightU: 1,
     mountingClass: "rack-full",
     ports: [
-      port("ASI In", "sdi", "input", "bnc"),
-      port("ASI Out 1", "sdi", "output", "bnc"),
-      port("ASI Out 2", "sdi", "output", "bnc"),
+      port("ASI In", "asi", "input", "bnc"),
+      port("ASI Out 1", "asi", "output", "bnc"),
+      port("ASI Out 2", "asi", "output", "bnc"),
       port("IP", "ethernet", "bidirectional", "rj45"),
     ],
   },
@@ -207,7 +212,7 @@ export const templates: DeviceTemplate[] = [
     rackHeightU: 1,
     mountingClass: "rack-full",
     ports: [
-      port("ASI In", "sdi", "input", "bnc"),
+      port("ASI In", "asi", "input", "bnc"),
       port("HD-SDI Out", "sdi", "output", "bnc"),
       port("IP", "ethernet", "bidirectional", "rj45"),
     ],

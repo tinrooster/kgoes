@@ -1,7 +1,16 @@
 import { useState, useMemo } from "react";
 
 import { useSchematicStore } from "../store";
-import { LINE_STYLE_LABELS, LINE_STYLE_DASHARRAY, type LineStyle } from "../types";
+import { RfLinkMetadataEditor, RfPathMediumSelect } from "./RfMetadataEditor";
+import { ALL_RF_PATH_ROLES, RF_PATH_ROLE_LABELS } from "../rfPath";
+import {
+  LINE_STYLE_LABELS,
+  LINE_STYLE_DASHARRAY,
+  type LineStyle,
+  type RfLinkMetadata,
+  type RfPathMedium,
+  type RfPathRole,
+} from "../types";
 
 const LINE_STYLES: LineStyle[] = ["solid", "dashed", "dotted", "dash-dot"];
 
@@ -34,6 +43,12 @@ export default function BulkConnectionEditPanel({ onClose }: Props) {
   const [tgtLabelInput, setTgtLabelInput] = useState("");
 
   const hasEdges = selectedEdges.length >= 2;
+  const singleEdge = selectedEdges.length === 1 ? selectedEdges[0] : null;
+  const singleRfSignal =
+    singleEdge &&
+    ["rf", "if", "asi", "ethernet", "fiber"].includes(
+      (singleEdge.data?.signalType as string) ?? "",
+    );
 
   const lineStyles = selectedEdges.map((e) => (e.data?.lineStyle as LineStyle | undefined) ?? "solid");
   const allSameStyle = lineStyles.every((s) => s === lineStyles[0]);
@@ -142,10 +157,49 @@ export default function BulkConnectionEditPanel({ onClose }: Props) {
         </button>
       </div>
 
-      {!hasEdges && (
+      {!hasEdges && !singleRfSignal && (
         <p className="text-xs text-[var(--color-text-muted)] text-center py-3">
-          Select 2 or more connections to edit them.
+          Select 2 or more connections to edit them, or one RF/IF/ASI link for link metadata.
         </p>
+      )}
+
+      {singleRfSignal && singleEdge && (
+        <section className="mb-3 space-y-2">
+          <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)]">
+            RF / link
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-0.5 text-[10px] cursor-pointer"
+              value={(singleEdge.data?.rfPathRole as RfPathRole) ?? ""}
+              onChange={(e) => {
+                const role = (e.target.value || undefined) as RfPathRole | undefined;
+                useSchematicStore.getState().patchEdgeData(singleEdge.id, {
+                  rfPathRole: role,
+                });
+              }}
+            >
+              <option value="">Path role —</option>
+              {ALL_RF_PATH_ROLES.map((role) => (
+                <option key={role} value={role}>
+                  {RF_PATH_ROLE_LABELS[role]}
+                </option>
+              ))}
+            </select>
+            <RfPathMediumSelect
+              value={singleEdge.data?.rfPathMedium as RfPathMedium | undefined}
+              onChange={(rfPathMedium) =>
+                useSchematicStore.getState().patchEdgeData(singleEdge.id, { rfPathMedium })
+              }
+            />
+          </div>
+          <RfLinkMetadataEditor
+            rfLink={singleEdge.data?.rfLink as RfLinkMetadata | undefined}
+            onChange={(rfLink) =>
+              useSchematicStore.getState().patchEdgeData(singleEdge.id, { rfLink })
+            }
+          />
+        </section>
       )}
 
       {hasEdges && <>{/* Labels */}

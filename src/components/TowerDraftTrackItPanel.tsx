@@ -48,7 +48,13 @@ export default function TowerDraftTrackItPanel({ page, onSelectLevel }: TowerDra
           <div className="text-[var(--color-text-muted)]">
             {context.towerHeightFt}′ tower
             {context.towerCompany ? ` · ${context.towerCompany}` : ""}
+            {context.callSign ? ` · ${context.callSign}` : ""}
           </div>
+          {context.latitude != null && context.longitude != null ? (
+            <div className="text-[var(--color-text-muted)] font-mono tabular-nums">
+              {context.latitude.toFixed(5)}, {context.longitude.toFixed(5)}
+            </div>
+          ) : null}
           {context.antennaLevels.length === 0 ? (
             <p className="text-[var(--color-text-muted)]">No antenna levels in trackIT yet.</p>
           ) : (

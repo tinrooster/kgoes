@@ -1291,10 +1291,12 @@ export default function DeviceEditor() {
             />
           </div>
 
-          {deviceType.startsWith("rf-") && (
+          {(deviceType.startsWith("rf-") ||
+            deviceType.startsWith("microwave-") ||
+            deviceType === "eng-receiver-ird") && (
             <RfInstallationEditor
               rfInstallation={rfInstallation}
-              onChange={setRfInstallation}
+              onInstallationChange={setRfInstallation}
             />
           )}
 

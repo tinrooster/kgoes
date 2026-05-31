@@ -13,7 +13,8 @@ export type ConnectorType =
   | "mini-din-4" | "mini-din-7" | "mini-din-8"
   | "mini-hdmi" | "mini-displayport"
   | "rj11" | "rj12" | "usb-mini" | "usb-micro" | "trs-2.5mm"
-  | "reverse-tnc" | "n-connector" | "sma" | "db37"
+  | "reverse-tnc" | "tnc" | "n-connector" | "sma" | "db37" | "db50"
+  | "waveguide-flange" | "intercom-2wire" | "intercom-4wire"
   | "d-tap" | "v-mount" | "f-connector"
   | "lemo-2pin" | "lemo-4pin" | "lemo-5pin"
   | "wireless"
@@ -95,6 +96,9 @@ export type SignalType =
   | "aes67"
   | "ydif"
   | "rf"
+  | "asi"
+  | "if"
+  | "intercom"
   | "st2110"
   | "artnet"
   | "sacn"
@@ -146,13 +150,46 @@ export type Gender = "male" | "female";
 /** RF carrier polarization — aligned with trackIT EsRfPolarization. */
 export type RfPolarization = "horizontal" | "vertical" | "lhcp" | "rhcp" | "slant" | "other";
 
+export type RfModulation =
+  | "qpsk"
+  | "16qam"
+  | "64qam"
+  | "256qam"
+  | "fm"
+  | "am"
+  | "ofdm"
+  | "other";
+
+export type OduMountType = "direct_hub" | "pole_mount";
+
+export type RfPathMedium = "coax_lmr400" | "coax_rigid" | "waveguide" | "jumper";
+
+/** FCC / ITU station identifier and emission summary. */
+export interface RfLicensedMetadata {
+  callSign?: string;
+  emissionDesignator?: string;
+  channelLabel?: string;
+}
+
+/** Microwave / STL link parameters (edge or port scope). */
+export interface RfLinkMetadata {
+  dataRateMbps?: number;
+  modulation?: RfModulation | string;
+  bandwidthMhz?: number;
+  licensed?: RfLicensedMetadata;
+}
+
 /** RF port metadata for broadcast/transmission paths (band, power, VSWR). */
 export interface RfPortMetadata {
   band?: string;
   centerFrequencyMhz?: number;
+  txFrequencyMhz?: number;
+  rxFrequencyMhz?: number;
+  bandwidthMhz?: number;
   polarization?: RfPolarization;
   txPowerDbm?: number;
   vswr?: number;
+  licensed?: RfLicensedMetadata;
 }
 
 /** Antenna / tower installation metadata on RF-capable devices. */
@@ -160,6 +197,30 @@ export interface RfInstallationMetadata {
   azimuthDeg?: number;
   tiltDeg?: number;
   beamwidthDeg?: number;
+  oduMount?: OduMountType;
+  feedType?: "waveguide" | "coax";
+}
+
+export interface DbPinAssignment {
+  pin: number | string;
+  label: string;
+  signal?: string;
+}
+
+export interface SerialPortConfig {
+  protocol?: "rs232" | "rs422" | "rs485";
+  baudRate?: number;
+  dataBits?: 7 | 8;
+  parity?: "none" | "even" | "odd";
+  stopBits?: 1 | 2;
+  flowControl?: "none" | "rts_cts" | "xon_xoff";
+}
+
+export interface SiteNetworkMetadata {
+  managementIp?: string;
+  subnetMask?: string;
+  gateway?: string;
+  vlanSummary?: string;
 }
 
 /** TX/RX/bidirectional role for RF connection line styling and visibility. */
@@ -209,8 +270,12 @@ export interface Port {
   linkSpeed?: string;
   /** Stable link back to the template port this was cloned from — used for template-sync reconciliation. */
   templatePortId?: string;
-  /** RF transmission metadata when signalType is rf. */
+  /** RF transmission metadata when signalType is rf, if, or asi. */
   rf?: RfPortMetadata;
+  /** DB breakout pin assignments when connectorType is db9/db25/db37/db50. */
+  dbPinout?: DbPinAssignment[];
+  /** Serial port configuration when signalType is serial or rs422. */
+  serial?: SerialPortConfig;
 }
 
 export interface SlotDefinition {
@@ -532,6 +597,12 @@ export interface ConnectionData {
   lineStyle?: LineStyle;
   /** RF path role — drives default line style and visibility toggles for tower drawings. */
   rfPathRole?: RfPathRole;
+  /** Physical medium for RF/tower path-loss annotations. */
+  rfPathMedium?: RfPathMedium;
+  /** Microwave STL / licensed link parameters. */
+  rfLink?: RfLinkMetadata;
+  /** Comms backhaul role when signal is ethernet/fiber. */
+  pathRole?: "comms_backhaul";
   /** Per-connection color override (CSS color). Falls back to signal-type color. Ignored for direct-attach. */
   color?: string;
 }
@@ -959,6 +1030,10 @@ export interface SchematicFile {
   trackItNumbering?: TrackItNumberingState;
   /** When opened from trackIT Plant → Drawings, links save target to plant_drawings row. */
   trackItLink?: TrackItLinkContext;
+  /** Default licensed station metadata for tower / transmission drawings. */
+  siteLicensed?: RfLicensedMetadata;
+  /** Site-level management network block (title block / compound). */
+  siteNetwork?: SiteNetworkMetadata;
 }
 
 /** trackIT plant drawing this schematic belongs to (popup / embed integration). */
@@ -982,6 +1057,9 @@ export type TrackItTowerSiteContext = {
   measurementSystem?: MeasurementSystem;
   accessNotes?: string;
   towerCompany?: string;
+  latitude?: number;
+  longitude?: number;
+  callSign?: string;
   antennaLevels: {
     id: string;
     code: string;
@@ -1118,6 +1196,9 @@ export const SIGNAL_COLORS: Record<SignalType, string> = {
   aes67: "var(--color-aes67)",
   ydif: "var(--color-ydif)",
   rf: "var(--color-rf)",
+  asi: "var(--color-sdi)",
+  if: "var(--color-rf)",
+  intercom: "var(--color-analog-audio)",
   st2110: "var(--color-st2110)",
   artnet: "var(--color-artnet)",
   sacn: "var(--color-sacn)",
@@ -1216,9 +1297,14 @@ export const CONNECTOR_LABELS: Record<ConnectorType, string> = {
   "usb-micro": "Micro USB",
   "trs-2.5mm": "2.5mm TRS",
   "reverse-tnc": "Reverse TNC",
+  tnc: "TNC",
   "n-connector": "N-Type",
   sma: "SMA",
   db37: "DB37",
+  db50: "DB50 (50-pin)",
+  "waveguide-flange": "Waveguide",
+  "intercom-2wire": "Intercom 2-wire",
+  "intercom-4wire": "Intercom 4-wire",
   "d-tap": "D-Tap",
   "v-mount": "V-Mount",
   "f-connector": "F-Connector",
@@ -1285,6 +1371,9 @@ export const SIGNAL_LABELS: Record<SignalType, string> = {
   aes67: "AES67",
   ydif: "YDIF",
   rf: "RF",
+  asi: "ASI",
+  if: "IF",
+  intercom: "Intercom",
   st2110: "ST 2110",
   artnet: "Art-Net",
   sacn: "sACN",
@@ -1323,7 +1412,8 @@ export const SIGNAL_GROUPS: Record<string, SignalType[]> = {
   "Control / Data": ["dmx", "artnet", "sacn", "rs422", "serial", "gpio", "contact-closure", "ir", "midi", "tally", "usb", "thunderbolt", "dxlink", "ebus", "control-voltage", "cresnet", "sensor"],
   "Sync / Clock": ["genlock", "wordclock", "timecode", "dars", "gps"],
   "Power": ["power", "power-l1", "power-l2", "power-l3", "power-neutral", "power-ground"],
-  "Streaming": ["rtmp", "rtsp", "mpeg-ts", "rf"],
+  "Streaming": ["rtmp", "rtsp", "mpeg-ts", "asi", "rf", "if"],
+  "RF / Tower": ["intercom"],
   "Other": ["custom"],
 };
 
@@ -1333,10 +1423,11 @@ export const CONNECTOR_GROUPS: Record<string, ConnectorType[]> = {
   "Audio": ["xlr-3", "xlr-4", "xlr-5", "mini-xlr", "combo-xlr-trs", "trs-quarter", "trs-eighth", "trs-2.5mm", "rca", "din-5", "mini-din-4", "mini-din-7", "mini-din-8", "toslink"],
   "Network / Data": ["rj45", "ethercon", "sfp", "lc", "sc", "opticalcon", "qsfp", "qsfp28", "mpo", "rj11", "rj12"],
   "USB": ["usb-a", "usb-b", "usb-c", "usb-mini", "usb-micro"],
-  "D-Sub / Serial": ["db9", "db15", "db25", "db37", "db7w2", "lemo-5pin"],
+  "D-Sub / Serial": ["db9", "db15", "db25", "db37", "db50", "db7w2", "lemo-5pin"],
   "Power": ["iec", "iec-c5", "iec-c7", "iec-c15", "iec-c20", "powercon", "powercon-true1", "edison", "barrel", "l5-20", "l6-20", "l6-30", "l21-30", "cam-lok", "socapex", "pcie-6pin", "lemo-2pin", "lemo-4pin", "d-tap", "v-mount"],
   "Speaker": ["speakon", "banana", "binding-post", "binding-post-banana"],
   "Terminal": ["phoenix", "terminal-block", "multipin", "solder-cup", "punch-down-110", "punch-down-66", "krone-idc"],
-  "RF": ["reverse-tnc", "n-connector", "sma", "f-connector"],
+  "RF": ["reverse-tnc", "tnc", "n-connector", "sma", "f-connector", "bnc", "waveguide-flange"],
+  "Intercom": ["intercom-2wire", "intercom-4wire"],
   "Other": ["wireless", "digilink", "d-hole-insert", "none", "other"],
 };
