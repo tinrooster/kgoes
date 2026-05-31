@@ -1,6 +1,10 @@
 import { port, ports, rfPort } from "./_helpers";
 import type { DeviceTemplate } from "../types";
 
+/** Tower / headend coax (N-Type); land-mobile whip uses SMA. */
+const TOWER_RF = "n-connector" as const;
+const WHIP_RF = "sma" as const;
+
 /** Starter RF transmission templates for tower/headend interconnect drawings. */
 export const templates: DeviceTemplate[] = [
   {
@@ -14,7 +18,7 @@ export const templates: DeviceTemplate[] = [
     mountingClass: "not-rackable",
     rfInstallation: { azimuthDeg: 0, tiltDeg: 0, beamwidthDeg: 60 },
     ports: [
-      rfPort("RF Port", "bidirectional", { rf: { band: "UHF" }, connectorType: "f-connector" }),
+      rfPort("RF Port", "bidirectional", { rf: { band: "UHF" }, connectorType: TOWER_RF }),
     ],
   },
   {
@@ -31,9 +35,9 @@ export const templates: DeviceTemplate[] = [
     widthMm: 483,
     depthMm: 400,
     ports: [
-      rfPort("TX In", "input", { rf: { band: "UHF" }, connectorType: "f-connector" }),
-      rfPort("RX Out", "output", { rf: { band: "UHF" }, connectorType: "f-connector" }),
-      rfPort("Antenna", "bidirectional", { rf: { band: "UHF" }, connectorType: "f-connector" }),
+      rfPort("TX In", "input", { rf: { band: "UHF" }, connectorType: TOWER_RF }),
+      rfPort("RX Out", "output", { rf: { band: "UHF" }, connectorType: TOWER_RF }),
+      rfPort("Antenna", "bidirectional", { rf: { band: "UHF" }, connectorType: TOWER_RF }),
     ],
   },
   {
@@ -50,11 +54,11 @@ export const templates: DeviceTemplate[] = [
     widthMm: 483,
     depthMm: 450,
     ports: [
-      ...ports("Input", "rf", "input", 4, "f-connector").map((p) => ({
+      ...ports("Input", "rf", "input", 4, TOWER_RF).map((p) => ({
         ...p,
         rf: { band: "UHF" },
       })),
-      rfPort("Combined Out", "output", { rf: { band: "UHF" }, connectorType: "f-connector" }),
+      rfPort("Combined Out", "output", { rf: { band: "UHF" }, connectorType: TOWER_RF }),
     ],
   },
   {
@@ -71,8 +75,8 @@ export const templates: DeviceTemplate[] = [
     widthMm: 483,
     depthMm: 350,
     ports: [
-      rfPort("In", "input", { rf: { band: "UHF" }, connectorType: "f-connector" }),
-      rfPort("Out", "output", { rf: { band: "UHF" }, connectorType: "f-connector" }),
+      rfPort("In", "input", { rf: { band: "UHF" }, connectorType: TOWER_RF }),
+      rfPort("Out", "output", { rf: { band: "UHF" }, connectorType: TOWER_RF }),
     ],
   },
   {
@@ -85,8 +89,8 @@ export const templates: DeviceTemplate[] = [
     searchTerms: ["tma", "lna", "tower", "amplifier", "rf", "headend"],
     mountingClass: "not-rackable",
     ports: [
-      rfPort("Line", "bidirectional", { rf: { band: "UHF" }, connectorType: "f-connector" }),
-      rfPort("Antenna", "bidirectional", { rf: { band: "UHF" }, connectorType: "f-connector" }),
+      rfPort("Line", "bidirectional", { rf: { band: "UHF" }, connectorType: TOWER_RF }),
+      rfPort("Antenna", "bidirectional", { rf: { band: "UHF" }, connectorType: TOWER_RF }),
     ],
   },
   {
@@ -103,10 +107,10 @@ export const templates: DeviceTemplate[] = [
     widthMm: 483,
     depthMm: 200,
     ports: [
-      rfPort("Port A", "bidirectional", { connectorType: "f-connector" }),
-      rfPort("Port B", "bidirectional", { connectorType: "f-connector" }),
-      rfPort("Port C", "bidirectional", { connectorType: "f-connector" }),
-      rfPort("Port D", "bidirectional", { connectorType: "f-connector" }),
+      rfPort("Port A", "bidirectional", { connectorType: TOWER_RF }),
+      rfPort("Port B", "bidirectional", { connectorType: TOWER_RF }),
+      rfPort("Port C", "bidirectional", { connectorType: TOWER_RF }),
+      rfPort("Port D", "bidirectional", { connectorType: TOWER_RF }),
     ],
   },
   {
@@ -152,7 +156,7 @@ export const templates: DeviceTemplate[] = [
     mountingClass: "not-rackable",
     rfInstallation: { azimuthDeg: 0, tiltDeg: 0, beamwidthDeg: 360 },
     ports: [
-      rfPort("RF", "bidirectional", { rf: { band: "VHF/UHF" }, connectorType: "f-connector" }),
+      rfPort("RF", "bidirectional", { rf: { band: "VHF/UHF" }, connectorType: WHIP_RF }),
     ],
   },
   {
@@ -169,8 +173,8 @@ export const templates: DeviceTemplate[] = [
     widthMm: 483,
     depthMm: 300,
     ports: [
-      rfPort("Common", "bidirectional", { connectorType: "f-connector" }),
-      ...ports("Position", "rf", "bidirectional", 4, "f-connector"),
+      rfPort("Common", "bidirectional", { connectorType: TOWER_RF }),
+      ...ports("Position", "rf", "bidirectional", 4, TOWER_RF),
     ],
   },
   {
@@ -188,7 +192,7 @@ export const templates: DeviceTemplate[] = [
     depthMm: 600,
     ports: [
       rfPort("RF Out", "output", {
-        connectorType: "f-connector",
+        connectorType: TOWER_RF,
         rf: { band: "UHF", txPowerDbm: 50 },
       }),
       port("AC Power", "power", "input"),
@@ -208,7 +212,7 @@ export const templates: DeviceTemplate[] = [
     widthMm: 483,
     depthMm: 400,
     ports: [
-      rfPort("RF In", "input", { rf: { band: "UHF" }, connectorType: "f-connector" }),
+      rfPort("RF In", "input", { rf: { band: "UHF" }, connectorType: TOWER_RF }),
     ],
   },
 ];
