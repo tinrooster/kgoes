@@ -2,7 +2,7 @@ import type { TrackItLocationSnapshotEntry } from "./types";
 
 export function mergeLocationSnapshot(
   prev: TrackItLocationSnapshotEntry[] | null | undefined,
-  organizationId: string,
+  _organizationId: string,
   incoming: TrackItLocationSnapshotEntry[],
 ): TrackItLocationSnapshotEntry[] {
   if (!incoming.length) return prev ?? [];
