@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="public/favicon.svg" width="128" alt="EasySchematic logo"/>
+  <img src="public/favicon.svg" width="128" alt="KGO-ES logo"/>
 </p>
 
-<h1 align="center">EasySchematic</h1>
+<h1 align="center">KGO-ES</h1>
 
-<p align="center">A drag-and-drop AV signal flow diagram tool for designing and documenting AV system hook-ups.<br>Built for broadcast, live production, and AV integration workflows.</p>
+<p align="center">Broadcast and tower signal flow diagram tool for designing and documenting broadcast, live production, and AV integration workflows.</p>
 
 <p align="center"><b><a href="https://easyschematic.live">Try it live →</a></b> · <b><a href="https://docs.easyschematic.live">Documentation →</a></b> · <b><a href="https://docs.easyschematic.live/dev/">Developer Reference →</a></b> · <b><a href="https://devices.easyschematic.live">Device Database →</a></b> · <b><a href="https://discord.gg/dxXn3Jk2a6">Discord →</a></b> · <b><a href="https://ko-fi.com/duremovich">Support the project →</a></b></p>
 
