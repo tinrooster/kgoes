@@ -30,6 +30,7 @@ import { SIGNAL_COLORS } from "../types";
 import { ConnectorIcon, getConnectorSpec } from "./connectorIcons";
 import { draggedDeviceHeightU, draggedDeviceNodeId } from "./RackSidebar";
 import { getDevicesInRoom, proposeRackPlacements } from "../rackLink";
+import { confirmDialog, promptDialog } from "../appDialogStore";
 
 // ── Constants ──────────────────────────────────────────────────────
 
@@ -1512,7 +1513,6 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
     mode?: "direct" | "shelf-only" | "oversize";
   } | null>(null);
   // Confirm dialog state for shelf removal with occupants
-  const [shelfDeleteConfirm, setShelfDeleteConfirm] = useState<{ accessoryId: string; label: string; occupantCount: number } | null>(null);
 
   // In-rack drag (moving existing placements)
   const [inRackDrag, setInRackDrag] = useState<InRackDrag | null>(null);
@@ -2148,13 +2148,23 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
   }, [page.id, activeFace, addRackAccessory, isRackSlotAvailable, addToast]);
 
   const handleRemoveAccessory = useCallback((accessory: RackAccessory, occupantCount: number) => {
-    if (occupantCount > 0) {
-      setShelfDeleteConfirm({ accessoryId: accessory.id, label: accessory.label ?? RACK_ACCESSORY_LABELS[accessory.type], occupantCount });
-    } else {
-      removeRackAccessory(page.id, accessory.id);
-    }
     setAccessoryContextMenu(null);
-  }, [page.id, removeRackAccessory]);
+    void (async () => {
+      const label = accessory.label ?? RACK_ACCESSORY_LABELS[accessory.type];
+      if (occupantCount > 0) {
+        const ok = await confirmDialog({
+          title: "Remove shelf?",
+          message: `“${label}” has ${occupantCount} mounted device${occupantCount === 1 ? "" : "s"}. Removing the shelf will return ${occupantCount === 1 ? "it" : "them"} to the unracked sidebar pool.`,
+          tone: "danger",
+          confirmLabel: "Remove shelf & unrack devices",
+        });
+        if (!ok) return;
+        removeRackAccessoryWithOccupants(page.id, accessory.id);
+        return;
+      }
+      removeRackAccessory(page.id, accessory.id);
+    })();
+  }, [page.id, removeRackAccessory, removeRackAccessoryWithOccupants]);
 
   // ── Cursor style ─────────────────────────────────────────────────
 
@@ -2182,23 +2192,50 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
           className="absolute top-2 right-2 z-10 px-2 py-1 text-[10px] rounded border border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-50 shadow-sm"
           data-print-hide
           onClick={() => {
-            const labels = page.racks.map((r, i) => `${i + 1}: ${r.label}`).join("\n");
-            const fromIdx = window.prompt(`Cross-link FROM rack:\n${labels}\n\nEnter number (1–${page.racks.length}):`);
-            if (!fromIdx) return;
-            const toIdx = window.prompt(`Cross-link TO rack:\n${labels}\n\nEnter number (1–${page.racks.length}):`);
-            if (!toIdx) return;
-            const fi = Number(fromIdx) - 1;
-            const ti = Number(toIdx) - 1;
-            const fromRack = page.racks[fi];
-            const toRack = page.racks[ti];
-            if (!fromRack || !toRack || fi === ti) {
-              addToast("Pick two different racks", "error");
-              return;
-            }
-            const label = window.prompt("Callout label:", `${fromRack.label} → ${toRack.label}`)?.trim();
-            if (!label) return;
-            addRackCrossLink(page.id, { fromRackId: fromRack.id, toRackId: toRack.id, label });
-            addToast("Cross-link added", "success");
+            void (async () => {
+              const labels = page.racks.map((r, i) => `${i + 1}: ${r.label}`).join("\n");
+              const fromIdx = await promptDialog({
+                title: "Cross-link FROM rack",
+                message: labels,
+                label: `Rack number (1–${page.racks.length})`,
+                confirmLabel: "Next",
+                validate: (v) => {
+                  const n = Number(v);
+                  if (!Number.isFinite(n) || n < 1 || n > page.racks.length) return "Enter a valid rack number";
+                  return null;
+                },
+              });
+              if (!fromIdx) return;
+              const toIdx = await promptDialog({
+                title: "Cross-link TO rack",
+                message: labels,
+                label: `Rack number (1–${page.racks.length})`,
+                confirmLabel: "Next",
+                validate: (v) => {
+                  const n = Number(v);
+                  if (!Number.isFinite(n) || n < 1 || n > page.racks.length) return "Enter a valid rack number";
+                  return null;
+                },
+              });
+              if (!toIdx) return;
+              const fi = Number(fromIdx) - 1;
+              const ti = Number(toIdx) - 1;
+              const fromRack = page.racks[fi];
+              const toRack = page.racks[ti];
+              if (!fromRack || !toRack || fi === ti) {
+                addToast("Pick two different racks", "error");
+                return;
+              }
+              const label = await promptDialog({
+                title: "Cross-link label",
+                label: "Callout label",
+                defaultValue: `${fromRack.label} → ${toRack.label}`,
+                confirmLabel: "Add",
+              });
+              if (!label?.trim()) return;
+              addRackCrossLink(page.id, { fromRackId: fromRack.id, toRackId: toRack.id, label: label.trim() });
+              addToast("Cross-link added", "success");
+            })();
           }}
         >
           + Cross-link
@@ -2517,11 +2554,17 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
             if (r) setEditRackTarget(r);
           }}
           onDeleteRack={(rackId) => {
-            const r = page.racks.find((x) => x.id === rackId);
-            if (!r) return;
-            if (confirm(`Delete "${r.label}"? This removes all devices placed in it.`)) {
-              removeRack(page.id, rackId);
-            }
+            void (async () => {
+              const r = page.racks.find((x) => x.id === rackId);
+              if (!r) return;
+              const ok = await confirmDialog({
+                title: "Delete rack",
+                message: `Delete “${r.label}”? This removes all devices placed in it.`,
+                tone: "danger",
+                confirmLabel: "Delete",
+              });
+              if (ok) removeRack(page.id, rackId);
+            })();
           }}
           onClose={() => setSlotContextMenu(null)}
         />
@@ -2655,31 +2698,6 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
         onZoomOut={zoomOutView}
         onFitAll={fitAllView}
       />
-
-      {/* Shelf-delete confirm dialog (occupants present) */}
-      {shelfDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-[60]" onClick={() => setShelfDeleteConfirm(null)}>
-          <div className="bg-white rounded-lg shadow-xl p-4 w-80 text-xs" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-semibold text-sm mb-2">Remove shelf?</h3>
-            <p className="text-neutral-600 mb-3">
-              "{shelfDeleteConfirm.label}" has {shelfDeleteConfirm.occupantCount} mounted device{shelfDeleteConfirm.occupantCount === 1 ? "" : "s"}.
-              Removing the shelf will return {shelfDeleteConfirm.occupantCount === 1 ? "it" : "them"} to the unracked sidebar pool.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button className="px-3 py-1 rounded border border-neutral-300 hover:bg-neutral-50" onClick={() => setShelfDeleteConfirm(null)}>Cancel</button>
-              <button
-                className="px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700"
-                onClick={() => {
-                  removeRackAccessoryWithOccupants(page.id, shelfDeleteConfirm.accessoryId);
-                  setShelfDeleteConfirm(null);
-                }}
-              >
-                Remove shelf & unrack devices
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

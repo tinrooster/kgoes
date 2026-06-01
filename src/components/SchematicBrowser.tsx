@@ -11,6 +11,7 @@ import { useSchematicStore } from "../store";
 import { listSchematics, loadSchematic } from "../cloudSync";
 import type { CachedSchematic } from "../cloudCache";
 import type { SchematicFile } from "../types";
+import { confirmDialog } from "../appDialogStore";
 
 function formatDate(iso: string): string {
   if (!iso) return "";
@@ -62,7 +63,13 @@ export default function SchematicBrowser({ onClose }: { onClose: () => void }) {
   };
 
   const handleDelete = async (s: CloudSchematic) => {
-    if (!confirm(`Delete "${s.name}"? This cannot be undone.`)) return;
+    const ok = await confirmDialog({
+      title: "Delete schematic",
+      message: `Delete “${s.name}”? This cannot be undone.`,
+      tone: "danger",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       await deleteCloudSchematic(s.id);
       // If we just deleted the currently-open cloud schematic, clear the ID

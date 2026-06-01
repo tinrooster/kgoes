@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getBundledTemplates, fetchTemplates } from "../templateApi";
 import { useSchematicStore } from "../store";
+import { confirmDialog } from "../appDialogStore";
 import type { DeviceTemplate } from "../types";
 import {
   cloneForUserLibrary,
@@ -201,13 +202,19 @@ export default function DeviceLibraryAdminPanel() {
 
   const handleDelete = useCallback(
     (template: DeviceTemplate) => {
-      const key = templateKey(template);
-      if (!window.confirm(`Remove “${template.label}” from your library? A backup is saved automatically.`)) {
-        return;
-      }
-      removeLibraryTemplateWithBackup(key, `Deleted: ${template.label}`);
-      addToast(`Removed ${template.label} (backup saved)`, "success");
-      setBackups(listLibraryBackups());
+      void (async () => {
+        const key = templateKey(template);
+        const ok = await confirmDialog({
+          title: "Remove from library",
+          message: `Remove “${template.label}” from your library? A backup is saved automatically.`,
+          tone: "danger",
+          confirmLabel: "Remove",
+        });
+        if (!ok) return;
+        removeLibraryTemplateWithBackup(key, `Deleted: ${template.label}`);
+        addToast(`Removed ${template.label} (backup saved)`, "success");
+        setBackups(listLibraryBackups());
+      })();
     },
     [removeLibraryTemplateWithBackup, addToast],
   );

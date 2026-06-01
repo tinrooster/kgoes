@@ -6,6 +6,7 @@ import { LINE_STYLE_LABELS, LINE_STYLE_DASHARRAY, type DeviceData, type LineStyl
 import { useContextMenuPosition } from "../hooks/useContextMenuPosition";
 import MenuSubmenu from "./MenuSubmenu";
 import { activeReservedBlocks } from "../trackitNumberingUtils";
+import { promptDialog } from "../appDialogStore";
 
 /** Project a point onto the nearest segment and return the projected point. */
 function projectOntoSegments(
@@ -237,12 +238,24 @@ export default function EdgeContextMenu() {
     useSchematicStore.setState({ edgeContextMenu: null });
   }, []);
   const setTrackItCableIdManual = useCallback(() => {
-    const raw = window.prompt("Cable number (digits only):", "");
-    if (raw == null) return;
-    const n = Number.parseInt(raw.replace(/\D/g, ""), 10);
-    if (!Number.isFinite(n)) return;
-    useSchematicStore.getState().assignManualCableNumberToSelection(n, { allowOutsideBlock: true });
-    useSchematicStore.setState({ edgeContextMenu: null });
+    void (async () => {
+      const raw = await promptDialog({
+        title: "Cable number",
+        label: "Digits only",
+        defaultValue: "",
+        confirmLabel: "Assign",
+        validate: (v) => {
+          const n = Number.parseInt(v.replace(/\D/g, ""), 10);
+          if (!Number.isFinite(n)) return "Enter a valid number";
+          return null;
+        },
+      });
+      if (raw == null) return;
+      const n = Number.parseInt(raw.replace(/\D/g, ""), 10);
+      if (!Number.isFinite(n)) return;
+      useSchematicStore.getState().assignManualCableNumberToSelection(n, { allowOutsideBlock: true });
+      useSchematicStore.setState({ edgeContextMenu: null });
+    })();
   }, []);
 
   const setEdgeColor = useCallback((hex: string) => {

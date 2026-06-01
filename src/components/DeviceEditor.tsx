@@ -3396,12 +3396,19 @@ function SlotEditSection({
             <select
               value={slot.cardTemplateId ?? ""}
               onChange={(e) => {
-                const newCardId = e.target.value || null;
-                if (newCardId === slot.cardTemplateId) return;
-                if (connCount > 0) {
-                  if (!confirm(`Swapping this card will disconnect ${connCount} connection(s). Continue?`)) return;
-                }
-                swapCard(nodeId, slot.slotId, newCardId);
+                void (async () => {
+                  const newCardId = e.target.value || null;
+                  if (newCardId === slot.cardTemplateId) return;
+                  if (connCount > 0) {
+                    const ok = await confirmDialog({
+                      title: "Swap card",
+                      message: `Swapping this card will disconnect ${connCount} connection(s). Continue?`,
+                      confirmLabel: "Continue",
+                    });
+                    if (!ok) return;
+                  }
+                  swapCard(nodeId, slot.slotId, newCardId);
+                })();
               }}
               disabled={!isNested && !slot.slotFamily}
               className="w-full bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border)] rounded px-1.5 py-1 text-xs outline-none focus:border-blue-500 disabled:opacity-50"

@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from "react";
 import { useContextMenuPosition } from "../hooks/useContextMenuPosition";
 import { useSchematicStore } from "../store";
+import { confirmDialog, promptDialog } from "../appDialogStore";
 import type { CustomTemplateGroup, DeviceTemplate } from "../types";
 import {
   cloneForUserLibrary,
@@ -159,8 +160,12 @@ export default function DeviceLibraryTemplateContextMenu({
           label="New group..."
           indent
           onClick={() =>
-            run(() => {
-              const label = window.prompt("Group name:");
+            run(async () => {
+              const label = await promptDialog({
+                title: "New group",
+                label: "Group name",
+                confirmLabel: "Create",
+              });
               if (!label?.trim()) return;
               const groupId = addCustomTemplateGroup(label.trim());
               moveCustomTemplateToGroup(key, groupId);
@@ -216,8 +221,14 @@ export default function DeviceLibraryTemplateContextMenu({
         label="Remove from library…"
         danger
         onClick={() =>
-          run(() => {
-            if (!window.confirm(`Remove “${template.label}”? A backup is saved automatically.`)) return;
+          run(async () => {
+            const ok = await confirmDialog({
+              title: "Remove from library",
+              message: `Remove “${template.label}”? A backup is saved automatically.`,
+              tone: "danger",
+              confirmLabel: "Remove",
+            });
+            if (!ok) return;
             removeLibraryTemplateWithBackup(key, `Deleted: ${template.label}`);
             addToast(`Removed ${template.label} (backup saved)`, "success");
           })
