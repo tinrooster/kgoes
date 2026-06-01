@@ -118,5 +118,52 @@ export const templates: DeviceTemplate[] = [
   
       port("24V-OUT", "power", "output"),
     ],
-  }
+  },
+
+  {
+    id: "kgo-mr-0003-0000-4000-8000-000000000003",
+    deviceType: "ip-encoder-gateway",
+    label: "MRC TSM2080 (T-VIP)",
+    shortName: "TSM2080",
+    manufacturer: "Microwave Radio Communications",
+    modelNumber: "TSM2080",
+    referenceUrl:
+      "https://www.manualslib.com/brand/microwave-radio-communications/",
+
+    searchTerms: [
+      "MRC",
+      "Microwave Radio Communications",
+      "TSM2080",
+      "TSM 2080",
+      "T-VIP",
+      "transport mux",
+      "ASI encoder",
+      "IP gateway",
+      "MPEG transport",
+      "ENG receive site",
+      "Vislink MRC",
+      "kgo-es-deviceadd",
+    ],
+
+    widthMm: 482.6,
+    heightMm: 44.45,
+    depthMm: 330,
+
+    rackForm: "full",
+    rackHeightU: 1,
+    color: "#1a1a1a",
+
+    ports: [
+      port("ASI-IN", "asi", "input", "bnc"),
+      port("ASI-OUT", "asi", "output", "bnc"),
+
+      port("DATA-1", "ethernet", "output", "rj45"),
+      port("DATA-2", "ethernet", "output", "rj45"),
+      port("CONTROL", "ethernet", "bidirectional", "rj45"),
+
+      port("SERIAL", "rs422", "bidirectional"),
+
+      port("ALARM", "gpio", "output"),
+    ],
+  },
 ];

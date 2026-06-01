@@ -46,7 +46,7 @@ import {
 } from "../towerSiteCadInsert";
 import TrackItModeBadge from "./TrackItModeBadge";
 import DrawingProjectDropdown from "./DrawingProjectDropdown";
-import { resolveActiveDrawingPage } from "../drawingPageUtils";
+import { isDrawingCanvasActive, resolveActiveDrawingPage } from "../drawingPageUtils";
 import { useAppBuildInfo } from "../buildVersion";
 import DeviceLibraryAdminPanel from "./DeviceLibraryAdminPanel";
 import { useUiChromeStore } from "../uiChromeStore";
@@ -168,6 +168,7 @@ export default function MenuBar() {
     setSchematicName,
     exportToJSON,
     importFromJSON,
+    importDrawingIntoActivePage,
     newSchematic,
     undo,
     redo,
@@ -194,6 +195,7 @@ export default function MenuBar() {
 
   const reactFlowInstance = useReactFlow();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const importDrawingInputRef = useRef<HTMLInputElement>(null);
   const archiveInputRef = useRef<HTMLInputElement>(null);
   const menuBarRef = useRef<HTMLDivElement>(null);
   const projectChipRef = useRef<HTMLButtonElement>(null);
@@ -318,6 +320,7 @@ export default function MenuBar() {
   const activeDrawingPage = resolveActiveDrawingPage(activePage, pages);
   const projectChipDisplay =
     activeDrawingPage?.label ?? projectChipLabel;
+  const onDrawingCanvas = isDrawingCanvasActive(activePage, pages);
 
   // Save: reuse existing handle/cloud, or prompt for first save
   const handleSave = useCallback(async () => {
@@ -461,6 +464,52 @@ export default function MenuBar() {
       e.target.value = "";
     },
     [importFromJSON],
+  );
+
+  const handleImportIntoDrawing = useCallback(async () => {
+    if ("showOpenFilePicker" in window) {
+      try {
+        const [handle] = await window.showOpenFilePicker({
+          types: [{ description: `${KGO_ES_NAME} files`, accept: { "application/json": [".json"] } }],
+          multiple: false,
+        });
+        const file = await handle.getFile();
+        if (file.size > 10 * 1024 * 1024) {
+          useSchematicStore.getState().addToast("File is too large (max 10 MB)", "error");
+          return;
+        }
+        const data = JSON.parse(await file.text()) as SchematicFile;
+        importDrawingIntoActivePage(data);
+      } catch {
+        // cancelled
+      }
+      return;
+    }
+    importDrawingInputRef.current?.click();
+  }, [importDrawingIntoActivePage]);
+
+  const handleImportIntoDrawingFile = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (file.size > 10 * 1024 * 1024) {
+        useSchematicStore.getState().addToast("File is too large (max 10 MB)", "error");
+        e.target.value = "";
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result as string) as SchematicFile;
+          importDrawingIntoActivePage(data);
+        } catch {
+          useSchematicStore.getState().addToast("Invalid schematic file", "error");
+        }
+      };
+      reader.readAsText(file, "UTF-8");
+      e.target.value = "";
+    },
+    [importDrawingIntoActivePage],
   );
 
   const handleSaveArchive = useCallback(() => {
@@ -710,6 +759,16 @@ export default function MenuBar() {
         : []),
       { type: "item", label: "Save As...", shortcut: "Ctrl+Shift+S", onClick: handleSaveAs },
       { type: "item", label: "Open...", shortcut: "Ctrl+O", onClick: handleOpen },
+      ...(onDrawingCanvas
+        ? [
+            {
+              type: "item" as const,
+              label: "Import into drawing…",
+              title: "Merge another ES JSON file into this drawing sheet",
+              onClick: handleImportIntoDrawing,
+            },
+          ]
+        : []),
       { type: "separator" },
       { type: "item", label: cloudSaving ? "Saving..." : isOnline ? "Save to Cloud" : "Save to Cloud (Offline)", disabled: cloudSaving || !isOnline, onClick: handleCloudSave },
       { type: "item", label: "My Schematics...", disabled: !isLoggedIn, title: isLoggedIn ? undefined : "Must be logged in", onClick: () => setShowSchematicBrowser(true) },
@@ -1373,6 +1432,13 @@ export default function MenuBar() {
         accept=".json"
         className="hidden"
         onChange={handleImport}
+      />
+      <input
+        ref={importDrawingInputRef}
+        type="file"
+        accept=".json"
+        className="hidden"
+        onChange={handleImportIntoDrawingFile}
       />
       <input
         ref={archiveInputRef}

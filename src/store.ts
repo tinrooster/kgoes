@@ -63,6 +63,7 @@ import type { Orientation } from "./printConfig";
 import { computeAlignment, resolveAlignmentOverlaps, type AlignOperation } from "./alignUtils";
 import { CURRENT_SCHEMA_VERSION, migrateSchematic } from "./migrations";
 import {
+  activeDrawingPageId,
   createDrawingPage,
   ensureDrawingPageGraphs,
   isDrawingCanvasActive,
@@ -113,6 +114,12 @@ import {
   pickDefaultActiveBlock,
 } from "./trackitNumberingUtils";
 import { computeAutoFitRoomUpdates } from "./containerLayers";
+import {
+  computeImportPlacementOffset,
+  extractDrawingGraphFromFile,
+  offsetImportedNodes,
+  remapImportedGraph,
+} from "./importDrawingGraph";
 
 /** Fix UTF-8 → Windows-1252 double-encoding in string values (e.g. → becomes â†').
  *  Applied on import so old/corrupted saves display correctly. */
@@ -943,6 +950,8 @@ interface SchematicState {
   loadAutosaveFromKey: (storageKey: string) => boolean;
   exportToJSON: () => SchematicFile;
   importFromJSON: (data: SchematicFile) => void;
+  /** Merge nodes/edges from an ES JSON file into the active drawing sheet. */
+  importDrawingIntoActivePage: (data: SchematicFile) => void;
   importCsvData: (newNodes: SchematicNode[], newEdges: ConnectionEdge[]) => void;
   newSchematic: (templateData?: SchematicFile) => void;
   setSchematicName: (name: string) => void;
@@ -6371,6 +6380,115 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     });
     if (data.pages?.length) syncRackCounters(data.pages);
     saveCategoryOrder(data.categoryOrder ?? null);
+    get().saveToLocalStorage();
+  },
+
+  importDrawingIntoActivePage: (rawData) => {
+    const state = get();
+    const drawingId = activeDrawingPageId(state.activePage, state.pages);
+    if (!drawingId) {
+      get().addToast("Open a drawing tab to import into", "info");
+      return;
+    }
+
+    rawData = repairMojibake(rawData) as SchematicFile;
+    const extracted = extractDrawingGraphFromFile(rawData);
+    if (extracted.nodes.length === 0) {
+      get().addToast("No drawing content found in that file", "info");
+      return;
+    }
+
+    let importNodes = extracted.nodes;
+    let importEdges = extracted.edges;
+    const facePlateDefinitionLayouts = resolveFacePlateDefinitionLayouts(
+      importNodes,
+      rawData.facePlateDefinitionLayouts,
+    );
+    const deviceDefinitionRackMetadata = resolveDeviceDefinitionRackMetadata(
+      importNodes,
+      rawData.deviceDefinitionRackMetadata,
+    );
+    importNodes = mergeFacePlateLayoutsIntoNodes(importNodes, facePlateDefinitionLayouts);
+    importNodes = mergeRackDefaultsIntoNodes(importNodes, deviceDefinitionRackMetadata);
+    const importTemplateExtras = [...state.customTemplates, ...(rawData.customTemplates ?? [])];
+    importNodes = applyTemplateRackDefaultsToNodes(importNodes, importTemplateExtras);
+    importNodes = applyGenericThrowdownDefaultsToNodes(importNodes);
+
+    for (const node of importNodes) {
+      if (node.type === "note" && node.data && "html" in node.data) {
+        (node.data as { html: string }).html = sanitizeNoteHtml((node.data as { html: string }).html);
+      }
+    }
+
+    const { nodes: remappedNodes, edges: remappedEdges } = remapImportedGraph(importNodes, importEdges, {
+      nextNodeId,
+      nextRoomId,
+      nextNoteId,
+      nextEdgeId,
+      clonePorts,
+    });
+
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+
+    const pagesWithFlush = persistActiveDrawingGraph(state.pages, state.activePage, state.nodes, state.edges);
+    const existingNodes = structuredClone(state.nodes);
+    const existingEdges = structuredClone(state.edges);
+
+    const { dx, dy } = computeImportPlacementOffset(existingNodes, remappedNodes);
+    offsetImportedNodes(remappedNodes, dx, dy);
+
+    const mergedNodes = [...existingNodes, ...remappedNodes];
+    const mergedEdges = [...existingEdges, ...remappedEdges];
+
+    snapNodesToGrid(mergedNodes);
+    applyRoomLockState(mergedNodes);
+    syncCounters(mergedNodes, mergedEdges);
+    const cleanedEdges = removeOrphanedEdges(mergedNodes, mergedEdges);
+    const finalNodes = renumberNodes(reconcileWaypointNodes(mergedNodes, cleanedEdges));
+    const finalEdges = cleanedEdges;
+
+    const mergedFacePlates = {
+      ...state.facePlateDefinitionLayouts,
+      ...facePlateDefinitionLayouts,
+    };
+    const mergedRackMeta = {
+      ...state.deviceDefinitionRackMetadata,
+      ...deviceDefinitionRackMetadata,
+    };
+
+    if (rawData.customTemplates?.length) {
+      const existingKeys = new Set(state.customTemplates.map((t) => templateKey(t)));
+      const newTemplates = rawData.customTemplates.filter((t) => !existingKeys.has(templateKey(t)));
+      if (newTemplates.length > 0) {
+        const mergedTemplates = [...state.customTemplates, ...newTemplates];
+        set({ customTemplates: mergedTemplates });
+        saveCustomTemplates(mergedTemplates);
+      }
+    }
+
+    const persistedEdges = stripEdgesForPersist(finalEdges);
+    const pages = mapDrawingPage(pagesWithFlush, drawingId, (p) => ({
+      ...p,
+      nodes: structuredClone(finalNodes),
+      edges: structuredClone(persistedEdges),
+    }));
+
+    set({
+      pages,
+      nodes: finalNodes,
+      edges: finalEdges,
+      facePlateDefinitionLayouts: mergedFacePlates,
+      deviceDefinitionRackMetadata: mergedRackMeta,
+      loadSeq: state.loadSeq + 1,
+      undoSize: undoStack.length,
+      redoSize: 0,
+    });
+
+    get().addToast(
+      `Imported “${extracted.sourceLabel}”: ${remappedNodes.length} items, ${remappedEdges.length} connections`,
+      "success",
+      5000,
+    );
     get().saveToLocalStorage();
   },
 

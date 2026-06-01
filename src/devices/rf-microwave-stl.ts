@@ -268,4 +268,42 @@ export const templates: DeviceTemplate[] = [
       rfPort("End B", "bidirectional", { connectorType: "n-connector" }),
     ],
   },
+  {
+    id: "kgo-rf-mw-0007-0000-4000-8000-000000000007",
+    deviceType: "microwave-radio-idu",
+    label: "Cambium PTP 820S IDU (11 GHz)",
+    shortName: "PTP820S",
+    manufacturer: "Cambium Networks",
+    modelNumber: "PTP 820S",
+    referenceUrl:
+      "https://www.cambiumnetworks.com/products/backhaul/ptp-820/",
+    searchTerms: [
+      "cambium",
+      "ptp820",
+      "ptp 820",
+      "ptp820s",
+      "11ghz",
+      "11 ghz",
+      "microwave backhaul",
+      "point to point",
+      "idu",
+      "indoor unit",
+      "kgo-es-deviceadd",
+    ],
+
+    widthMm: 482.6,
+    heightMm: 44.45,
+    depthMm: 300,
+
+    rackForm: "full",
+    rackHeightU: 1,
+    mountingClass: "rack-full",
+    color: "#2a2a2a",
+
+    ports: [
+      ...ports("GE", "ethernet", "bidirectional", 2, "rj45"),
+      { ...port("IF-ODU", "if", "bidirectional", "rj45"), rf: { band: "IF", centerFrequencyMhz: 11000 } },
+      port("Mgmt", "ethernet", "bidirectional", "rj45"),
+    ],
+  },
 ];
