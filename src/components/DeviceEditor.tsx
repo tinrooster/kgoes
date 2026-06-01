@@ -109,6 +109,8 @@ interface PortDraft {
   flipped?: boolean;
   rf?: RfPortMetadata;
   dbPinout?: DbPinAssignment[];
+  rearDbPinout?: DbPinAssignment[];
+  frontDbPinout?: DbPinAssignment[];
   serial?: SerialPortConfig;
   // Passthrough-only fields
   rearConnectorType?: ConnectorType;
@@ -309,6 +311,8 @@ export default function DeviceEditor() {
         inheritsSignal: p.inheritsSignal,
         rf: p.rf ? { ...p.rf } : undefined,
         dbPinout: p.dbPinout ? p.dbPinout.map((row) => ({ ...row })) : undefined,
+        rearDbPinout: p.rearDbPinout ? p.rearDbPinout.map((row) => ({ ...row })) : undefined,
+        frontDbPinout: p.frontDbPinout ? p.frontDbPinout.map((row) => ({ ...row })) : undefined,
         serial: p.serial ? { ...p.serial } : undefined,
       })),
     );
@@ -2406,11 +2410,69 @@ function PortRow({
   const [showSection, setShowSection] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [showRf, setShowRf] = useState(Boolean(port.rf && Object.keys(port.rf).length > 0));
-  const [showDbPinout, setShowDbPinout] = useState(Boolean(port.dbPinout?.length));
+  const [showDbPinout, setShowDbPinout] = useState(
+    Boolean(
+      port.dbPinout?.length || port.rearDbPinout?.length || port.frontDbPinout?.length,
+    ),
+  );
   const [showSerial, setShowSerial] = useState(Boolean(port.serial && Object.keys(port.serial).length > 0));
 
-  const connectorType = port.connectorType ?? DEFAULT_CONNECTOR[port.signalType];
-  const isDbConnector = DB_PINOUT_CONNECTORS.has(connectorType);
+  type DbPinoutField = "dbPinout" | "rearDbPinout" | "frontDbPinout";
+  type DbFace = {
+    id: string;
+    sectionLabel: string;
+    connector: string;
+    pinout?: DbPinAssignment[];
+    field: DbPinoutField;
+  };
+
+  const dbFaces = useMemo((): DbFace[] => {
+    const faces: DbFace[] = [];
+    if (direction !== "passthrough") {
+      const ct = port.connectorType ?? DEFAULT_CONNECTOR[port.signalType];
+      if (DB_PINOUT_CONNECTORS.has(ct)) {
+        faces.push({
+          id: "primary",
+          sectionLabel: "DB pinout",
+          connector: ct,
+          pinout: port.dbPinout,
+          field: "dbPinout",
+        });
+      }
+      return faces;
+    }
+    if (port.rearConnectorType && DB_PINOUT_CONNECTORS.has(port.rearConnectorType)) {
+      faces.push({
+        id: "rear",
+        sectionLabel: "Rear DB pinout",
+        connector: port.rearConnectorType,
+        pinout: port.rearDbPinout,
+        field: "rearDbPinout",
+      });
+    }
+    if (port.frontConnectorType && DB_PINOUT_CONNECTORS.has(port.frontConnectorType)) {
+      faces.push({
+        id: "front",
+        sectionLabel: "Front DB pinout",
+        connector: port.frontConnectorType,
+        pinout: port.frontDbPinout,
+        field: "frontDbPinout",
+      });
+    }
+    return faces;
+  }, [
+    direction,
+    port.connectorType,
+    port.signalType,
+    port.rearConnectorType,
+    port.frontConnectorType,
+    port.dbPinout,
+    port.rearDbPinout,
+    port.frontDbPinout,
+  ]);
+
+  const isDbConnector = dbFaces.length > 0;
+  const dbPinCount = dbFaces.reduce((n, f) => n + (f.pinout?.length ?? 0), 0);
   const isRfMetadataSignal = RF_METADATA_SIGNAL_TYPES.has(port.signalType);
   const isSerialSignal = SERIAL_SIGNAL_TYPES.has(port.signalType);
 
@@ -2718,7 +2780,7 @@ function PortRow({
             }`}
             title="DB pin assignments — click to edit pinout table"
           >
-            DB{port.dbPinout?.length ? ` (${port.dbPinout.length})` : ""}
+            DB{dbPinCount > 0 ? ` (${dbPinCount})` : ""}
           </button>
         )}
 
@@ -2811,13 +2873,17 @@ function PortRow({
         />
       )}
 
-      {showDbPinout && isDbConnector && (
-        <DbPinoutEditor
-          pinout={port.dbPinout}
-          connectorType={connectorType}
-          onChange={(dbPinout) => onUpdate({ dbPinout })}
-        />
-      )}
+      {showDbPinout &&
+        isDbConnector &&
+        dbFaces.map((face) => (
+          <DbPinoutEditor
+            key={face.id}
+            pinout={face.pinout}
+            connectorType={face.connector}
+            sectionLabel={face.sectionLabel}
+            onChange={(pinout) => onUpdate({ [face.field]: pinout } as Partial<PortDraft>)}
+          />
+        ))}
 
       {showSerial && isSerialSignal && (
         <SerialPortConfigEditor
@@ -2835,7 +2901,13 @@ function PortRow({
               <select
                 className="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1 py-1 text-[10px] text-[var(--color-text-heading)] outline-none focus:border-blue-500 cursor-pointer"
                 value={port.rearConnectorType ?? ""}
-                onChange={(e) => onUpdate({ rearConnectorType: e.target.value ? (e.target.value as ConnectorType) : undefined })}
+                onChange={(e) => {
+                  const ct = e.target.value ? (e.target.value as ConnectorType) : undefined;
+                  onUpdate({ rearConnectorType: ct });
+                  if (ct && DB_PINOUT_CONNECTORS.has(ct)) {
+                    setShowDbPinout(true);
+                  }
+                }}
                 title="Rear connector type"
               >
                 <option value="">(unset)</option>
@@ -2870,7 +2942,13 @@ function PortRow({
               <select
                 className="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1 py-1 text-[10px] text-[var(--color-text-heading)] outline-none focus:border-blue-500 cursor-pointer"
                 value={port.frontConnectorType ?? ""}
-                onChange={(e) => onUpdate({ frontConnectorType: e.target.value ? (e.target.value as ConnectorType) : undefined })}
+                onChange={(e) => {
+                  const ct = e.target.value ? (e.target.value as ConnectorType) : undefined;
+                  onUpdate({ frontConnectorType: ct });
+                  if (ct && DB_PINOUT_CONNECTORS.has(ct)) {
+                    setShowDbPinout(true);
+                  }
+                }}
                 title="Front connector type"
               >
                 <option value="">(unset)</option>

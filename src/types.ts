@@ -274,6 +274,10 @@ export interface Port {
   rf?: RfPortMetadata;
   /** DB breakout pin assignments when connectorType is db9/db25/db37/db50. */
   dbPinout?: DbPinAssignment[];
+  /** Passthrough: rear-face HD50/DB pinout (field side). */
+  rearDbPinout?: DbPinAssignment[];
+  /** Passthrough: front-face DB pinout (patch side). */
+  frontDbPinout?: DbPinAssignment[];
   /** Serial port configuration when signalType is serial or rs422. */
   serial?: SerialPortConfig;
 }

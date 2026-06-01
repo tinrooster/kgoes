@@ -1,6 +1,6 @@
 import { port, ports, rfPort } from "./_helpers";
+import { cloneOduHd50Pinout } from "./oduHd50Pinout";
 import type { DeviceTemplate } from "../types";
-
 /**
  * Generic microwave STL / ENG link templates for mountaintop ↔ studio compound diagrams.
  * Product names reflect common industry equipment; not org-specific site data.
@@ -112,8 +112,29 @@ export const templates: DeviceTemplate[] = [
       rfPort("Antenna", "bidirectional", { rf: { band: "18 GHz" }, connectorType: "n-connector" }),
       { ...port("IF to IDU", "if", "bidirectional", "bnc"), rf: { band: "IF" } },
       {
-        ...port("Control", "serial", "bidirectional", "db9"),
-        serial: { protocol: "rs422", baudRate: 9600 },
+        ...port("Control (HD50)", "serial", "bidirectional", "db50"),
+        serial: { protocol: "rs422", baudRate: 19200, dataBits: 8, parity: "none", stopBits: 1 },
+        dbPinout: cloneOduHd50Pinout(),
+      },
+    ],
+  },
+  {
+    id: "kgo-rf-mw-0014-0000-4000-8000-000000000014",
+    deviceType: "wall-plate",
+    category: "RF Transmission",
+    label: "ODU HD50 Control Harness",
+    shortName: "HD50 harness",
+    manufacturer: "Generic",
+    modelNumber: "ODU ↔ IDU control (50-pin)",
+    searchTerms: ["hd50", "db50", "odu", "control", "harness", "passthrough", "50 pin"],
+    mountingClass: "not-rackable",
+    ports: [
+      {
+        ...port("Control circuit", "serial", "passthrough"),
+        rearConnectorType: "db50",
+        frontConnectorType: "db50",
+        rearDbPinout: cloneOduHd50Pinout(),
+        serial: { protocol: "rs422", baudRate: 19200 },
       },
     ],
   },

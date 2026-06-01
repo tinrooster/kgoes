@@ -12,6 +12,7 @@ import type {
   SignalType,
   SiteNetworkMetadata,
 } from "../types";
+import { cloneOduHd50Pinout } from "../devices/oduHd50Pinout";
 import IpInput from "./IpInput";
 import { isValidIpv4, isValidSubnetMask } from "../networkValidation";
 
@@ -478,10 +479,12 @@ export function DbPinoutEditor({
   pinout,
   onChange,
   connectorType,
+  sectionLabel,
 }: {
   pinout?: DbPinAssignment[];
   onChange: (next: DbPinAssignment[] | undefined) => void;
   connectorType?: string;
+  sectionLabel?: string;
 }) {
   const rows = pinout ?? [];
   const seedCount =
@@ -519,8 +522,10 @@ export function DbPinoutEditor({
 
   return (
     <div className="flex flex-col gap-1 pl-6 pb-1">
-      <div className="flex items-center gap-2">
-        <span className="text-[9px] text-[var(--color-text-muted)]">DB pinout</span>
+      <div className="flex items-center flex-wrap gap-2">
+        <span className="text-[9px] text-[var(--color-text-muted)]">
+          {sectionLabel ?? "DB pinout"}
+        </span>
         {seedCount != null && (
           <button
             type="button"
@@ -529,6 +534,16 @@ export function DbPinoutEditor({
             title={`Create pins 1–${seedCount} with default labels`}
           >
             Seed {seedCount} pins
+          </button>
+        )}
+        {connectorType === "db50" && (
+          <button
+            type="button"
+            onClick={() => onChange(cloneOduHd50Pinout())}
+            className="text-[9px] text-emerald-700 hover:text-emerald-600 cursor-pointer"
+            title="Import generic ODU HD50 harness (verify vs vendor datasheet)"
+          >
+            Import ODU HD50 template
           </button>
         )}
       </div>
