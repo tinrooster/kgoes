@@ -8,6 +8,7 @@ import {
 } from "../signalColors";
 import { useSchematicStore } from "../store";
 import { useSidebarStore } from "../sidebarStore";
+import { SidebarPanelHeader, SidebarPanelShell, SidebarRail } from "./sidebarChrome";
 
 const SIGNAL_TYPES = Object.keys(DEFAULT_SIGNAL_COLORS) as SignalType[];
 
@@ -55,43 +56,17 @@ export default function SignalColorPanel({ mobile, onClose }: { mobile?: boolean
 
   if (!mobile && collapsed) {
     return (
-      <div className="w-8 bg-[var(--color-surface)] border-l border-[var(--color-border)] flex flex-col items-center h-full">
-        <button
-          onClick={() => expandRightPanel("colors")}
-          className="py-3 cursor-pointer hover:bg-[var(--color-surface-hover)] w-full flex justify-center transition-colors"
-          title="Show signal colors"
-        >
-          <svg viewBox="0 0 16 16" className="w-4 h-4 text-[var(--color-text-muted)]" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d="M10 3l-5 5 5 5" />
-          </svg>
-        </button>
-        <div
-          className="text-[10px] uppercase tracking-widest text-[var(--color-text-muted)] mt-2 select-none"
-          style={{ writingMode: "vertical-rl" }}
-        >
-          Colors
-        </div>
-      </div>
+      <SidebarRail label="Colors" title="Signal colors" onExpand={() => expandRightPanel("colors")} />
     );
   }
 
   return (
-    <div className={`${mobile ? "w-full" : "w-48"} bg-[var(--color-surface)] ${mobile ? "" : "border-l"} border-[var(--color-border)] flex flex-col h-full overflow-hidden`}>
-      {/* Header */}
-      <div className="px-3 py-2 border-b border-[var(--color-border)] flex items-center justify-between">
-        <h2 className="text-xs font-semibold text-[var(--color-text-heading)] uppercase tracking-wider">
-          Signal Colors
-        </h2>
-        <button
-          onClick={() => (mobile ? onClose?.() : setRightExpanded(false))}
-          className="cursor-pointer hover:bg-[var(--color-surface-hover)] rounded p-0.5 transition-colors"
-          title={mobile ? "Close" : "Collapse"}
-        >
-          <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-[var(--color-text-muted)]" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d={mobile ? "M4 4l8 8M12 4l-8 8" : "M6 3l5 5-5 5"} />
-          </svg>
-        </button>
-      </div>
+    <SidebarPanelShell widthClass="w-48" mobile={mobile}>
+      <SidebarPanelHeader
+        title="Signal colors"
+        onCollapse={() => (mobile ? onClose?.() : setRightExpanded(false))}
+        closeMode={!!mobile}
+      />
 
       {/* Color list */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -129,6 +104,6 @@ export default function SignalColorPanel({ mobile, onClose }: { mobile?: boolean
           Reset all to defaults
         </button>
       </div>
-    </div>
+    </SidebarPanelShell>
   );
 }

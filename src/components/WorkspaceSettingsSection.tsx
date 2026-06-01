@@ -9,10 +9,11 @@ import {
 
 const PANEL_LABELS: { key: keyof ReturnType<typeof useSidebarStore.getState>["panelsVisible"]; label: string }[] = [
   { key: "devices", label: "Devices (left)" },
-  { key: "viewOptions", label: "View options" },
   { key: "trackItNumbers", label: "trackIT numbers" },
+  { key: "viewOptions", label: "View options" },
   { key: "showInfo", label: "Show info" },
   { key: "colors", label: "Colors" },
+  { key: "cadTools", label: "CAD tools" },
 ];
 
 export default function WorkspaceSettingsSection() {
@@ -20,6 +21,8 @@ export default function WorkspaceSettingsSection() {
   const setPanelVisible = useSidebarStore((s) => s.setPanelVisible);
   const quickToolbarVisible = useSidebarStore((s) => s.quickToolbarVisible);
   const setQuickToolbarVisible = useSidebarStore((s) => s.setQuickToolbarVisible);
+  const toolPaletteIconOnly = useSidebarStore((s) => s.toolPaletteIconOnly);
+  const setToolPaletteIconOnly = useSidebarStore((s) => s.setToolPaletteIconOnly);
   const enabled = useQuickToolbarStore((s) => s.enabled);
   const order = useQuickToolbarStore((s) => s.order);
   const setEnabled = useQuickToolbarStore((s) => s.setEnabled);
@@ -71,6 +74,18 @@ export default function WorkspaceSettingsSection() {
             </label>
           ))}
         </div>
+        <label className="flex items-center justify-between py-1 mt-2 cursor-pointer">
+          <span className="text-xs text-[var(--color-text)]">Icon-only tool palettes</span>
+          <input
+            type="checkbox"
+            checked={toolPaletteIconOnly}
+            onChange={(e) => setToolPaletteIconOnly(e.target.checked)}
+            className="accent-blue-600 cursor-pointer"
+          />
+        </label>
+        <p className="text-[10px] text-[var(--color-text-muted)]">
+          Compact icon buttons for CAD tools and similar sidebars. Toggle also in each palette header.
+        </p>
       </div>
 
       <div>

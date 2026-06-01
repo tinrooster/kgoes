@@ -4,6 +4,7 @@
  */
 
 import { shouldShowCadTools } from "./cadDrawingUtils";
+import { reconcileTrackItNumberingFromEdges } from "./trackitNumberingReconcile";
 import {
   markSchematicStorageHydrated,
   trackItAutosaveKey,
@@ -97,7 +98,11 @@ export function saveToTrackItParent(opts?: { silent?: boolean }): boolean {
   }
 
   const store = useSchematicStore.getState();
-  const file = store.exportToJSON();
+  const reconciled = reconcileTrackItNumberingFromEdges(store.trackItNumbering, store.edges);
+  if (reconciled) {
+    store.setTrackItNumbering(reconciled);
+  }
+  const file = useSchematicStore.getState().exportToJSON();
   notifyTrackItParentSaved(file, { silent: opts?.silent });
   useSchematicStore.setState({ trackItLastPushedAt: new Date().toISOString() });
 

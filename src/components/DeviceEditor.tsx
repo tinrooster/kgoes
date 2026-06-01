@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useRef, useMemo, type DragEvent } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, useId, type DragEvent } from "react";
 import { useSchematicStore } from "../store";
+import { findLocationByCode } from "../trackitLocationMerge";
 import {
   SIGNAL_LABELS,
   SIGNAL_COLORS,
@@ -166,6 +167,8 @@ export default function DeviceEditor() {
   const patchDeviceData = useSchematicStore((s) => s.patchDeviceData);
   const pages = useSchematicStore((s) => s.pages);
   const measurementSystem = useSchematicStore((s) => s.measurementSystem);
+  const trackItLocations = useSchematicStore((s) => s.trackItLocations);
+  const locationListId = useId();
 
   const node = nodes.find((n) => n.id === editingNodeId && n.type === "device") as DeviceNode | undefined;
 
@@ -185,6 +188,11 @@ export default function DeviceEditor() {
   const [modelNumber, setModelNumber] = useState("");
   const [designation, setDesignation] = useState("");
   const [rackLocation, setRackLocation] = useState("");
+  const locationOptions = useMemo(() => trackItLocations ?? [], [trackItLocations]);
+  const rackLocationMatch = useMemo(
+    () => (rackLocation.trim() ? findLocationByCode(locationOptions, rackLocation) : undefined),
+    [locationOptions, rackLocation],
+  );
   const [frameSlot, setFrameSlot] = useState("");
   const [deviceTypeCode, setDeviceTypeCode] = useState("");
   const [managementIp, setManagementIp] = useState("");
@@ -1132,11 +1140,30 @@ export default function DeviceEditor() {
               </Field>
               <Field label="Rack location">
                 <input
+                  list={locationOptions.length > 0 ? locationListId : undefined}
                   className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs outline-none focus:border-blue-500"
                   value={rackLocation}
                   onChange={(e) => setRackLocation(e.target.value)}
                   placeholder="e.g. RK CB03, TH-03"
                 />
+                {locationOptions.length > 0 ? (
+                  <datalist id={locationListId}>
+                    {locationOptions.map((loc) => (
+                      <option key={loc.id} value={loc.code}>
+                        {loc.name}
+                      </option>
+                    ))}
+                  </datalist>
+                ) : null}
+                {rackLocation.trim() && locationOptions.length > 0 ? (
+                  <p
+                    className={`mt-1 text-[10px] ${rackLocationMatch ? "text-emerald-600" : "text-amber-600"}`}
+                  >
+                    {rackLocationMatch
+                      ? `trackIT: ${rackLocationMatch.name}`
+                      : "No matching plant location — add under trackIT Locations"}
+                  </p>
+                ) : null}
               </Field>
               <Field label="Frame / slot">
                 <input

@@ -25,7 +25,8 @@ export function schematicHasTowerSiteContent(nodes: SchematicNode[]): boolean {
   });
 }
 
-export function shouldShowCadTools(opts: {
+/** Whether this drawing is a tower/site CAD context (wireframe refresh, mountaintop tooling). */
+export function isCadContextDrawing(opts: {
   trackItLink?: TrackItLinkContext | null;
   nodes: SchematicNode[];
   schematicName?: string;
@@ -40,4 +41,13 @@ export function shouldShowCadTools(opts: {
     name.includes("site plan") ||
     name.includes("elevation")
   );
+}
+
+/** @deprecated Use panel visibility prefs; kept for callers that auto-suggest CAD UI. */
+export function shouldShowCadTools(opts: {
+  trackItLink?: TrackItLinkContext | null;
+  nodes: SchematicNode[];
+  schematicName?: string;
+}): boolean {
+  return isCadContextDrawing(opts);
 }

@@ -1,8 +1,7 @@
-import { useMemo } from "react";
+import type { ReactNode } from "react";
 import { schematicFlowRef } from "../schematicFlowRef";
 import { useSchematicStore } from "../store";
 import { useSidebarStore } from "../sidebarStore";
-import { shouldShowCadTools } from "../cadDrawingUtils";
 import {
   insertCadDiagonalLine,
   insertCadDimensionLine,
@@ -10,37 +9,25 @@ import {
   insertCadLeader,
   insertCadNorthArrow,
   insertCadScaleBar,
-  insertTowerCadElevation,
-  insertTowerCadFullSheet,
-  insertTowerCadSection,
-  insertTowerCadSitePlan,
 } from "../towerSiteCadInsert";
+import ToolPalettePanel, { type ToolPaletteSection } from "./ToolPalettePanel";
+import { TiIcon } from "./ti/TiBase";
 
-type CadBtn = { label: string; title?: string; onClick: () => void };
+const iconStroke = { fill: "none", stroke: "currentColor", strokeWidth: 1.6 };
+
+function CadIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" aria-hidden>
+      {children}
+    </svg>
+  );
+}
 
 export default function CadToolsPanel({ mobile, onClose }: { mobile?: boolean; onClose?: () => void } = {}) {
-  const schematicName = useSchematicStore((s) => s.schematicName);
-  const nodeCount = useSchematicStore((s) => s.nodes.length);
-  const trackItLink = useSchematicStore((s) => s.trackItLink);
   const flowReady = useSchematicStore((s) => s.schematicCanvasReady);
   const setNoteCadLocked = useSchematicStore((s) => s.setNoteCadLocked);
   const rightExpanded = useSidebarStore((s) => s.rightCadToolsExpanded);
   const setRightExpanded = useSidebarStore((s) => s.setRightCadToolsExpanded);
-  const expandRightPanel = useSidebarStore((s) => s.expandRightPanel);
-
-  const visible = useMemo(
-    () =>
-      shouldShowCadTools({
-        trackItLink,
-        nodes: useSchematicStore.getState().nodes,
-        schematicName,
-      }),
-    [trackItLink, nodeCount, schematicName],
-  );
-
-  if (!visible) return null;
-
-  const collapsed = mobile ? false : !rightExpanded;
 
   const run = (fn: (rf: NonNullable<typeof schematicFlowRef.current>) => void) => {
     const rf = schematicFlowRef.current;
@@ -52,37 +39,21 @@ export default function CadToolsPanel({ mobile, onClose }: { mobile?: boolean; o
     onClose?.();
   };
 
-  const wireframe: CadBtn[] = [
-    { label: "Tower elevation wireframe", onClick: () => run(insertTowerCadElevation) },
-    { label: "Tower section wireframe", onClick: () => run(insertTowerCadSection) },
-    { label: "Site plan wireframe", onClick: () => run(insertTowerCadSitePlan) },
-    { label: "Full CAD sheet", onClick: () => run(insertTowerCadFullSheet) },
-  ];
-
-  const markup: CadBtn[] = [
-    { label: "Dimension line", onClick: () => run(insertCadDimensionLine) },
-    { label: "Dashed fence frame", onClick: () => run(insertCadFenceFrame) },
-    { label: "North arrow", onClick: () => run(insertCadNorthArrow) },
-    { label: "Scale bar (100′)", onClick: () => run(insertCadScaleBar) },
-    { label: "Leader / callout", onClick: () => run(insertCadLeader) },
-    { label: "Diagonal line", onClick: () => run(insertCadDiagonalLine) },
-  ];
-
-  const unlockSelectedWireframe = () => {
+  const unlockSelectedCad = () => {
     const locked = useSchematicStore
       .getState()
       .nodes.filter((n) => n.selected && n.type === "note" && (n.data as { cadLocked?: boolean }).cadLocked);
     if (locked.length === 0) {
-      useSchematicStore.getState().addToast("Select a locked CAD wireframe note to unlock", "info", 2800);
+      useSchematicStore.getState().addToast("Select a locked CAD note to unlock", "info", 2800);
       return;
     }
     for (const n of locked) {
       setNoteCadLocked(n.id, false);
     }
-    useSchematicStore.getState().addToast(`Unlocked ${locked.length} wireframe note(s)`, "success", 2500);
+    useSchematicStore.getState().addToast(`Unlocked ${locked.length} note(s)`, "success", 2500);
   };
 
-  const lockSelectedWireframe = () => {
+  const lockSelectedCad = () => {
     const notes = useSchematicStore.getState().nodes.filter((n) => n.selected && n.type === "note");
     if (notes.length === 0) {
       useSchematicStore.getState().addToast("Select a note to lock as CAD layer", "info", 2800);
@@ -94,85 +65,128 @@ export default function CadToolsPanel({ mobile, onClose }: { mobile?: boolean; o
     useSchematicStore.getState().addToast(`Locked ${notes.length} note(s)`, "success", 2500);
   };
 
-  const section = (title: string, buttons: CadBtn[]) => (
-    <div className="space-y-1">
-      <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] px-1">{title}</div>
-      {buttons.map((b) => (
-        <button
-          key={b.label}
-          type="button"
-          title={b.title}
-          disabled={!flowReady}
-          onClick={b.onClick}
-          className="w-full text-left text-xs px-2 py-1.5 rounded border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-heading)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {b.label}
-        </button>
-      ))}
-    </div>
-  );
+  const disabled = !flowReady;
+
+  const sections: ToolPaletteSection[] = [
+    {
+      title: "Dimensions",
+      actions: [
+        {
+          id: "dimension",
+          label: "Dimension",
+          title: "Resizable dimension line at viewport center",
+          disabled,
+          icon: (
+            <CadIcon>
+              <path {...iconStroke} d="M3 12h10M3 10v4M13 10v4" />
+            </CadIcon>
+          ),
+          onClick: () => run(insertCadDimensionLine),
+        },
+        {
+          id: "callout",
+          label: "Callout",
+          title: "Leader with editable label",
+          disabled,
+          icon: <TiIcon name="flag" size={14} />,
+          onClick: () => run(insertCadLeader),
+        },
+      ],
+    },
+    {
+      title: "Sheet",
+      actions: [
+        {
+          id: "north",
+          label: "North",
+          title: "North arrow",
+          disabled,
+          icon: (
+            <CadIcon>
+              <path {...iconStroke} d="M8 3v10M8 3l-3 3M8 3l3 3" />
+            </CadIcon>
+          ),
+          onClick: () => run(insertCadNorthArrow),
+        },
+        {
+          id: "scale",
+          label: "Scale",
+          title: "100′ scale bar",
+          disabled,
+          icon: (
+            <CadIcon>
+              <path {...iconStroke} d="M2 10h12M2 8v4M14 8v4" />
+            </CadIcon>
+          ),
+          onClick: () => run(insertCadScaleBar),
+        },
+      ],
+    },
+    {
+      title: "Layout",
+      actions: [
+        {
+          id: "fence",
+          label: "Fence",
+          title: "Dashed compound / fence frame",
+          disabled,
+          icon: (
+            <CadIcon>
+              <rect {...iconStroke} x="3" y="4" width="10" height="8" strokeDasharray="2 2" />
+            </CadIcon>
+          ),
+          onClick: () => run(insertCadFenceFrame),
+        },
+        {
+          id: "diagonal",
+          label: "Diagonal",
+          disabled,
+          icon: (
+            <CadIcon>
+              <path {...iconStroke} d="M4 12L12 4" />
+            </CadIcon>
+          ),
+          onClick: () => run(insertCadDiagonalLine),
+        },
+      ],
+    },
+    {
+      title: "Layer",
+      actions: [
+        {
+          id: "unlock",
+          label: "Unlock",
+          title: "Unlock selected CAD notes",
+          tone: "warning",
+          icon: <TiIcon name="unlock" size={14} />,
+          onClick: unlockSelectedCad,
+        },
+        {
+          id: "lock",
+          label: "Lock",
+          title: "Lock selected notes as CAD layer",
+          icon: <TiIcon name="lock" size={14} />,
+          onClick: lockSelectedCad,
+        },
+      ],
+    },
+  ];
 
   return (
-    <div
-      className={`flex flex-col border-l border-[var(--color-border)] bg-[var(--color-surface-elevated)] shrink-0 ${
-        mobile ? "w-full max-w-sm" : collapsed ? "w-10" : "w-52"
-      }`}
-      data-print-hide
-    >
-      <button
-        type="button"
-        className="flex items-center gap-2 px-2 py-2 border-b border-[var(--color-border)] text-xs font-semibold text-[var(--color-text-heading)] hover:bg-[var(--color-surface-hover)] cursor-pointer"
-        onClick={() => {
-          if (mobile) onClose?.();
-          else setRightExpanded(!rightExpanded);
-        }}
-      >
-        <span className="text-base leading-none" aria-hidden>
-          📐
-        </span>
-        {!collapsed && <span>CAD tools</span>}
-      </button>
-      {!collapsed && (
-        <div className="flex-1 overflow-y-auto p-2 space-y-3 min-h-0">
-          {!flowReady ? (
-            <p className="text-[10px] text-[var(--color-text-muted)] px-1">Waiting for schematic canvas…</p>
-          ) : null}
-          {section("Wireframes", wireframe)}
-          {section("Markup", markup)}
-          <div className="space-y-1 pt-1 border-t border-[var(--color-border)]">
-            <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] px-1">
-              Wireframe notes
-            </div>
-            <button
-              type="button"
-              onClick={unlockSelectedWireframe}
-              className="w-full text-left text-xs px-2 py-1.5 rounded border border-amber-300/60 bg-amber-50/80 hover:bg-amber-100 text-amber-950 cursor-pointer"
-            >
-              Unlock selected
-            </button>
-            <button
-              type="button"
-              onClick={lockSelectedWireframe}
-              className="w-full text-left text-xs px-2 py-1.5 rounded border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] cursor-pointer"
-            >
-              Lock selected as CAD
-            </button>
-          </div>
-          <p className="text-[10px] text-[var(--color-text-muted)] leading-snug px-1">
-            Locked wireframes are view-only. Export DXF includes markup primitives.
-          </p>
-        </div>
-      )}
-      {collapsed && (
-        <button
-          type="button"
-          className="p-2 text-xs hover:bg-[var(--color-surface-hover)] cursor-pointer"
-          title="Expand CAD tools"
-          onClick={() => expandRightPanel("cadTools")}
-        >
-          ›
-        </button>
-      )}
-    </div>
+    <ToolPalettePanel
+      panelId="cadTools"
+      title="CAD tools"
+      railLabel="CAD"
+      expanded={mobile ? true : rightExpanded}
+      setExpanded={setRightExpanded}
+      sections={sections}
+      mobile={mobile}
+      onClose={onClose}
+      headerIcon={
+        <CadIcon>
+          <path {...iconStroke} d="M4 14L12 2M6 4h2v2M10 10h2v2" />
+        </CadIcon>
+      }
+    />
   );
 }

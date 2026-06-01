@@ -45,6 +45,21 @@ export function buildTrackItKgoEsUrl(tab?: string): string {
   return `${getTrackItAppOrigin()}/kgo-es${q ? `?${q}` : ""}`;
 }
 
+/** Bring the trackIT tab that opened this popup to the foreground (no navigation). */
+export function focusTrackItOpener(): boolean {
+  if (!isTrackItPopupOpener()) return false;
+  try {
+    const opener = window.opener;
+    if (opener && !opener.closed) {
+      opener.focus();
+      return true;
+    }
+  } catch {
+    // cross-origin opener
+  }
+  return false;
+}
+
 /** Focus trackIT opener when same-origin; otherwise open a new trackIT tab. */
 export function openTrackItUrl(url: string): void {
   if (isTrackItPopupOpener()) {

@@ -43,9 +43,6 @@ import {
   insertCadLeader,
   insertCadNorthArrow,
   insertCadScaleBar,
-  insertTowerCadElevation,
-  insertTowerCadFullSheet,
-  insertTowerCadSitePlan,
 } from "../towerSiteCadInsert";
 import TrackItModeBadge from "./TrackItModeBadge";
 import DrawingProjectDropdown from "./DrawingProjectDropdown";
@@ -771,34 +768,16 @@ export default function MenuBar() {
         onClick: () => insertTowerSitePlan(reactFlowInstance),
       },
       { type: "separator" },
-      { type: "caption", label: "CAD wireframes" },
+      { type: "caption", label: "CAD markup" },
       {
         type: "item",
-        label: "CAD tower elevation (wireframe)…",
-        title: "SVG lattice profile with height ticks — drag to align with as-built",
-        onClick: () => insertTowerCadElevation(reactFlowInstance),
-      },
-      {
-        type: "item",
-        label: "CAD site plan (wireframe)…",
-        onClick: () => insertTowerCadSitePlan(reactFlowInstance),
-      },
-      {
-        type: "item",
-        label: "CAD full sheet (symbols + wireframes)…",
-        onClick: () => insertTowerCadFullSheet(reactFlowInstance),
-      },
-      { type: "separator" },
-      { type: "caption", label: "CAD primitives" },
-      {
-        type: "item",
-        label: "Dimension line",
+        label: "Dimension…",
         onClick: () => insertCadDimensionLine(reactFlowInstance),
       },
       {
         type: "item",
-        label: "Dashed fence / compound frame",
-        onClick: () => insertCadFenceFrame(reactFlowInstance),
+        label: "Callout…",
+        onClick: () => insertCadLeader(reactFlowInstance),
       },
       {
         type: "item",
@@ -812,8 +791,8 @@ export default function MenuBar() {
       },
       {
         type: "item",
-        label: "Leader / callout…",
-        onClick: () => insertCadLeader(reactFlowInstance),
+        label: "Site fence (dashed)…",
+        onClick: () => insertCadFenceFrame(reactFlowInstance),
       },
       { type: "item", label: "Line (horizontal)", onClick: () => addAnnotation("hline") },
       { type: "item", label: "Line (vertical)", onClick: () => addAnnotation("vline") },
@@ -1123,28 +1102,9 @@ export default function MenuBar() {
           ))}
         </div>
 
-        {/* Center: trackIT linked pill + document title */}
+        {/* Center: trackIT link status badge + document title */}
         <div className="flex-1 flex items-center justify-center gap-2.5 min-w-0 px-3">
-          <span
-            title={trackItLinked ? "Linked to trackIT drawing" : "Standalone editor"}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              height: 20,
-              padding: "0 8px",
-              borderRadius: 999,
-              background: "var(--ti-accent-soft)",
-              color: "var(--ti-accent-ink)",
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: "0.01em",
-              flexShrink: 0,
-            }}
-          >
-            <span style={{ width: 5, height: 5, borderRadius: 999, background: "var(--ti-accent)" }} />
-            {trackItLinked ? "trackIT linked" : "standalone"}
-          </span>
+          <TrackItModeBadge />
           {editingName ? (
             <input
               style={{

@@ -13,7 +13,15 @@ import {
 import { hasTrackItDrawingAutosave } from "./store";
 import { mergeNumberingSnapshot, upsertTrackItBlock } from "./trackitNumberingMerge";
 import { useSchematicStore } from "./store";
-import type { SchematicFile, TrackItNumberBlock, TrackItNumberingState, TrackItLinkContext, TrackItTowerSiteContext } from "./types";
+import { mergeLocationSnapshot } from "./trackitLocationMerge";
+import type {
+  SchematicFile,
+  TrackItLocationSnapshotEntry,
+  TrackItNumberBlock,
+  TrackItNumberingState,
+  TrackItLinkContext,
+  TrackItTowerSiteContext,
+} from "./types";
 
 export type { TrackItNumberBlock, TrackItNumberingState, TrackItLinkContext };
 
@@ -42,6 +50,11 @@ export type TrackItNumberingSnapshotPayload = {
   blocks: TrackItNumberBlock[];
 };
 
+export type TrackItLocationSnapshotPayload = {
+  organizationId: string;
+  locations: TrackItLocationSnapshotEntry[];
+};
+
 export type TrackItTowerFocusPayload = {
   plantLocationId?: string;
   mountHeightFtAgl?: number;
@@ -54,7 +67,8 @@ type TrackItInboundMessage =
   | { type: "TRACKIT_NUMBERING_SYNC"; payload: TrackItNumberingSyncPayload }
   | { type: "TRACKIT_NUMBERING_SNAPSHOT"; payload: TrackItNumberingSnapshotPayload }
   | { type: "TRACKIT_TOWER_SITE_CONTEXT"; payload: TrackItTowerSiteContext }
-  | { type: "TRACKIT_TOWER_FOCUS"; payload: TrackItTowerFocusPayload };
+  | { type: "TRACKIT_TOWER_FOCUS"; payload: TrackItTowerFocusPayload }
+  | { type: "TRACKIT_LOCATION_SNAPSHOT"; payload: TrackItLocationSnapshotPayload };
 
 function isTrackItInbound(data: unknown): data is TrackItInboundMessage {
   if (!data || typeof data !== "object") return false;
@@ -65,7 +79,8 @@ function isTrackItInbound(data: unknown): data is TrackItInboundMessage {
     t === "TRACKIT_NUMBERING_SYNC" ||
     t === "TRACKIT_NUMBERING_SNAPSHOT" ||
     t === "TRACKIT_TOWER_SITE_CONTEXT" ||
-    t === "TRACKIT_TOWER_FOCUS"
+    t === "TRACKIT_TOWER_FOCUS" ||
+    t === "TRACKIT_LOCATION_SNAPSHOT"
   );
 }
 
@@ -290,6 +305,24 @@ export function startTrackItBridge(): void {
 
     if (event.data.type === "TRACKIT_TOWER_FOCUS") {
       applyTowerFocus(event.data.payload);
+      return;
+    }
+
+    if (event.data.type === "TRACKIT_LOCATION_SNAPSHOT") {
+      const payload = event.data.payload;
+      if (!payload?.locations?.length) return;
+      const store = useSchematicStore.getState();
+      const merged = mergeLocationSnapshot(
+        store.trackItLocations,
+        payload.organizationId,
+        payload.locations,
+      );
+      store.setTrackItLocations(merged);
+      store.addToast(
+        `trackIT locations updated · ${merged.length} rack/room code(s)`,
+        "info",
+        3000,
+      );
     }
   };
 

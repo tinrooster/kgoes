@@ -91,7 +91,12 @@ import { syncDeviceWithTemplate, type SyncResult } from "./templateSync";
 import { chooseNewHandleSuffix, type SwapPlan, type NewPortRef } from "./deviceSwap";
 import { getSignalColorOverrides, applySignalColors, loadSignalColors, saveSignalColors } from "./signalColors";
 import { computeCableSchedule } from "./cableSchedule";
-import type { TrackItLinkContext, TrackItNumberBlock, TrackItNumberingState } from "./types";
+import type {
+  TrackItLinkContext,
+  TrackItLocationSnapshotEntry,
+  TrackItNumberBlock,
+  TrackItNumberingState,
+} from "./types";
 import { scheduleTrackItAutosave } from "./trackitIntegration";
 import {
   createDefaultTowerDraftPage,
@@ -945,6 +950,8 @@ interface SchematicState {
   /** trackIT numbering write-back (reserved / allocated blocks). */
   trackItNumbering: TrackItNumberingState | null;
   setTrackItNumbering: (state: TrackItNumberingState) => void;
+  trackItLocations: TrackItLocationSnapshotEntry[] | null;
+  setTrackItLocations: (locations: TrackItLocationSnapshotEntry[] | null) => void;
   /** Plant drawing link when opened from trackIT (enables Save to trackIT). */
   trackItLink: TrackItLinkContext | null;
   setTrackItLink: (link: TrackItLinkContext | null) => void;
@@ -1564,6 +1571,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   edges: [],
   schematicName: "Untitled Schematic",
   trackItNumbering: null,
+  trackItLocations: null,
   activeTrackItReservationId: null,
   trackItLink: null,
   trackItTowerContext: null,
@@ -5872,6 +5880,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         roomDistances: data.roomDistances ?? undefined,
         distanceSettings: data.distanceSettings ?? undefined,
         trackItNumbering: data.trackItNumbering ?? null,
+        trackItLocations: data.trackItLocations ?? null,
         activeTrackItReservationId:
           pickDefaultActiveBlock(data.trackItNumbering?.blocks ?? [])?.reservationId ?? null,
         trackItLink: data.trackItLink ?? null,
@@ -5978,6 +5987,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         state.trackItNumbering && state.trackItNumbering.blocks.length > 0
           ? state.trackItNumbering
           : undefined,
+      trackItLocations:
+        state.trackItLocations && state.trackItLocations.length > 0
+          ? state.trackItLocations
+          : undefined,
       trackItLink: state.trackItLink ?? undefined,
       siteLicensed: state.siteLicensed ?? undefined,
       siteNetwork: state.siteNetwork ?? undefined,
@@ -6029,6 +6042,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
   setTrackItNumbering: (trackItNumbering) => {
     set({ trackItNumbering });
+    get().saveToLocalStorage();
+  },
+
+  setTrackItLocations: (trackItLocations) => {
+    set({ trackItLocations });
     get().saveToLocalStorage();
   },
 
@@ -6339,6 +6357,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       roomDistances: data.roomDistances ?? undefined,
       distanceSettings: data.distanceSettings ?? undefined,
       trackItNumbering: data.trackItNumbering ?? null,
+      trackItLocations: data.trackItLocations ?? null,
       trackItLink: data.trackItLink ?? null,
       siteLicensed: data.siteLicensed ?? null,
       siteNetwork: data.siteNetwork ?? null,

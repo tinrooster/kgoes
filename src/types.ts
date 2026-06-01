@@ -1063,6 +1063,8 @@ export interface SchematicFile {
   wrapDeviceLabels?: boolean;
   /** Cable number blocks synced from trackIT numbering suggester (write-back). */
   trackItNumbering?: TrackItNumberingState;
+  /** Facility locations from trackIT (rack / room autocomplete). */
+  trackItLocations?: TrackItLocationSnapshotEntry[];
   /** When opened from trackIT Plant → Drawings, links save target to plant_drawings row. */
   trackItLink?: TrackItLinkContext;
   /** Default licensed station metadata for tower / transmission drawings. */
@@ -1140,6 +1142,15 @@ export type TrackItNumberingState = {
   blocks: TrackItNumberBlock[];
   lastEventId?: string;
   lastEventAt?: string;
+};
+
+/** plant_locations facility row pushed from trackIT for rack/room matching. */
+export type TrackItLocationSnapshotEntry = {
+  id: string;
+  code: string;
+  name: string;
+  roomType: string;
+  parentId?: string | null;
 };
 
 export type LabelCaseMode = "as-typed" | "uppercase" | "lowercase" | "capitalize";

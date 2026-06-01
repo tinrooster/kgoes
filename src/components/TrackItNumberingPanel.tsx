@@ -14,7 +14,13 @@ import {
   activeReservedBlocks,
 } from "../trackitNumberingUtils";
 import { isTrackItDrawingLinked, saveToTrackItParent } from "../trackitIntegration";
-import { TiButton, TiIcon, TiIconButton } from "./ti/TiBase";
+import {
+  buildTrackItPlantDrawingsUrl,
+  focusTrackItOpener,
+  openTrackItUrl,
+} from "../trackitAppLinks";
+import { TiButton } from "./ti/TiBase";
+import { SidebarPanelHeader, SidebarPanelShell, SidebarRail } from "./sidebarChrome";
 
 const PROJECT_CLS_COLOR: Record<string, string> = {
   studio: "#3b82f6",
@@ -131,125 +137,41 @@ export default function TrackItNumberingPanel({
   );
 
   const focusTrackIt = useCallback(() => {
-    try {
-      window.opener?.focus();
-    } catch {
-      // cross-origin
-    }
+    if (!focusTrackItOpener()) openTrackItUrl(buildTrackItPlantDrawingsUrl());
   }, []);
-
-  const panelWidth = mobile ? "100%" : 312;
 
   if (!showPanel) return null;
 
   if (!mobile && collapsed) {
     return (
-      <div
-        style={{
-          width: 44,
-          background: "var(--ti-surface)",
-          borderLeft: "1px solid var(--ti-border)",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          height: "100%",
-          paddingTop: 10,
-          gap: 8,
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => expandRightPanel("trackIt")}
-          style={{
-            width: 28,
-            height: 28,
-            display: "grid",
-            placeItems: "center",
-            border: 0,
-            background: "transparent",
-            borderRadius: 7,
-            cursor: "pointer",
-            color: "var(--ti-muted)",
-          }}
-          title="Show TrackIt numbering"
-        >
-          <TiIcon name="hash" size={15} />
-        </button>
-        <div
-          style={{
-            writingMode: "vertical-rl",
-            fontSize: 10,
-            fontWeight: 600,
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
-            color: "var(--ti-muted)",
-            marginTop: 8,
-            fontFamily: "var(--ti-font-sans)",
-          }}
-        >
-          Numbers
-        </div>
-        {unnumberedCount > 0 && (
-          <span
-            style={{
-              fontSize: 9,
-              fontWeight: 700,
-              color: "var(--ti-warning)",
-              fontFamily: "var(--ti-font-mono)",
-            }}
-          >
-            {unnumberedCount}
-          </span>
-        )}
-      </div>
+      <SidebarRail
+        label="Numbers"
+        title="TrackIT cable numbering"
+        onExpand={() => expandRightPanel("trackIt")}
+        badge={
+          unnumberedCount > 0 ? (
+            <span className="text-[9px] font-bold text-amber-600 font-mono tabular-nums">
+              {unnumberedCount}
+            </span>
+          ) : undefined
+        }
+      />
     );
   }
 
   return (
-    <div
-      style={{
-        width: panelWidth,
-        background: "var(--ti-surface)",
-        borderLeft: mobile ? "none" : "1px solid var(--ti-border)",
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        overflow: "hidden",
-      }}
-    >
-      <div style={{ padding: "14px 14px 12px", borderBottom: "1px solid var(--ti-divider)", flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div
-            style={{
-              width: 26,
-              height: 26,
-              borderRadius: 7,
-              background: "var(--ti-accent)",
-              color: "var(--ti-on-accent)",
-              display: "grid",
-              placeItems: "center",
-              fontFamily: "var(--ti-font-mono)",
-              fontSize: 13,
-              fontWeight: 700,
-            }}
-          >
-            #
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14.5, fontWeight: 600, color: "var(--ti-ink)", fontFamily: "var(--ti-font-sans)" }}>
-              Cable numbering
-            </div>
-            <div style={{ fontSize: 11, color: "var(--ti-muted)", fontFamily: "var(--ti-font-sans)" }}>
-              Reserve · auto-assign · push to TrackIt
-            </div>
-          </div>
-          {!mobile ? (
-            <TiIconButton icon="x" variant="ghost" size="sm" onClick={() => setRightExpanded(false)} title="Collapse" />
-          ) : onClose ? (
-            <TiIconButton icon="x" variant="ghost" size="sm" onClick={onClose} title="Close" />
-          ) : null}
-        </div>
-        <div style={{ display: "flex", gap: 6, marginTop: 11 }}>
+    <SidebarPanelShell widthClass="w-[19.5rem]" mobile={mobile} className="!bg-[var(--ti-surface)] !border-[var(--ti-border)]">
+      <SidebarPanelHeader
+        title="Cable numbering"
+        onCollapse={() => (mobile ? onClose?.() : setRightExpanded(false))}
+        closeMode={!!mobile}
+        collapseTitle="Collapse numbering"
+      />
+      <div className="px-3 py-2 border-b border-[var(--ti-divider)] shrink-0">
+        <p className="text-[11px] text-[var(--ti-muted)] mb-2" style={{ fontFamily: "var(--ti-font-sans)" }}>
+          Reserve · auto-assign · push to trackIT
+        </p>
+        <div style={{ display: "flex", gap: 6 }}>
           {countChip("Numbered", numberedCount, "success")}
           {countChip("Unnumbered", unnumberedCount, unnumberedCount ? "warning" : "success")}
           {countChip("Blocks", reserved.length, "info")}
@@ -554,6 +476,6 @@ export default function TrackItNumberingPanel({
           </div>
         </div>
       )}
-    </div>
+    </SidebarPanelShell>
   );
 }

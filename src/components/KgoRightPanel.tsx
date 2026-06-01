@@ -13,6 +13,7 @@ import { useSidebarStore } from "../sidebarStore";
 import { SIGNAL_COLORS, SIGNAL_LABELS } from "../types";
 import type { DeviceData, ConnectionData, SignalType, Port } from "../types";
 import { TiIcon, TiIconButton, TiBadge, TiButton } from "./ti/TiBase";
+import { SidebarPanelHeader, SidebarPanelShell, SidebarRail } from "./sidebarChrome";
 import { isTrackItDrawingLinked } from "../trackitIntegration";
 import { buildTrackItPlantDrawingUrl, openTrackItUrl } from "../trackitAppLinks";
 import { resolveCableState } from "../kgoCableState";
@@ -408,57 +409,26 @@ function KgoRightPanel() {
 
   if (!rightOpen) {
     return (
-      <div
-        data-print-hide
-        style={{
-          width: 44, flexShrink: 0,
-          borderLeft: "1px solid var(--ti-border)",
-          background: "var(--ti-surface)",
-          display: "flex", flexDirection: "column",
-          alignItems: "center", paddingTop: 10, gap: 8,
-        }}
-      >
-        <TiIconButton icon="chevL" variant="ghost" size="sm" onClick={() => setRightOpen(true)} title="Open inspector" />
-        <div style={{
-          writingMode: "vertical-rl",
-          fontSize: 11, fontWeight: 600, letterSpacing: "0.12em",
-          textTransform: "uppercase", color: "var(--ti-muted)",
-          marginTop: 8, fontFamily: "var(--ti-font-sans)",
-        }}>Inspector</div>
-      </div>
+      <SidebarRail label="Inspector" title="Open inspector" onExpand={() => setRightOpen(true)} />
     );
   }
 
   return (
-    <div
-      data-print-hide
-      style={{
-        width: 312, flexShrink: 0,
-        borderLeft: "1px solid var(--ti-border)",
-        background: "var(--ti-surface)",
-        display: "flex", flexDirection: "column",
-        minHeight: 0,
-      }}
+    <SidebarPanelShell
+      widthClass="w-[19.5rem]"
+      className="!bg-[var(--ti-surface)] !border-[var(--ti-border)]"
     >
-      {/* Header */}
-      <div style={{
-        height: 44, padding: "0 8px 0 14px",
-        display: "flex", alignItems: "center", gap: 8,
-        borderBottom: "1px solid var(--ti-divider)",
-        flexShrink: 0,
-      }}>
-        <span style={{
-          flex: 1, fontSize: 11, fontWeight: 600, letterSpacing: "0.1em",
-          textTransform: "uppercase", color: "var(--ti-muted)",
-          fontFamily: "var(--ti-font-sans)",
-        }}>{label}</span>
-        {(selNodeId || selEdgeId) && (
-          <TiIconButton icon="x" variant="ghost" size="sm" onClick={clearCanvasSelection} title="Clear selection" />
-        )}
-        <TiIconButton icon="chevR" variant="ghost" size="sm" onClick={() => setRightOpen(false)} title="Collapse inspector" />
-      </div>
+      <SidebarPanelHeader
+        title={label}
+        onCollapse={() => setRightOpen(false)}
+        collapseTitle="Collapse inspector"
+        trailing={
+          selNodeId || selEdgeId ? (
+            <TiIconButton icon="x" variant="ghost" size="sm" onClick={clearCanvasSelection} title="Clear selection" />
+          ) : undefined
+        }
+      />
 
-      {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         {selNodeId
           ? <DeviceInspector nodeId={selNodeId} />
@@ -467,7 +437,7 @@ function KgoRightPanel() {
             : <EmptyState />
         }
       </div>
-    </div>
+    </SidebarPanelShell>
   );
 }
 

@@ -33,6 +33,8 @@ export interface SidebarPrefs {
   rightColorsExpanded: boolean;
   rightCadToolsExpanded: boolean;
   quickToolbarVisible: boolean;
+  /** Compact icon buttons for tool-palette sidebars (CAD tools, etc.) */
+  toolPaletteIconOnly: boolean;
   libraryBrowseMode: LibraryBrowseMode;
   panelsVisible: SidebarPanelVisibility;
   rightInspectorOpen: boolean;
@@ -42,11 +44,19 @@ function trackItSessionDefaults(): Partial<SidebarPrefs> {
   if (!isTrackItPopupOpener()) return {};
   return {
     leftExpanded: false,
-    rightTrackItExpanded: true,
+    rightTrackItExpanded: false,
     rightShowInfoExpanded: false,
     rightColorsExpanded: false,
     rightCadToolsExpanded: false,
     libraryBrowseMode: "userTemplatesOnly",
+    panelsVisible: {
+      devices: true,
+      viewOptions: false,
+      trackItNumbers: true,
+      showInfo: false,
+      colors: false,
+      cadTools: false,
+    },
   };
 }
 
@@ -61,12 +71,13 @@ function loadLibraryBrowseMode(): LibraryBrowseMode {
   return trackIt.libraryBrowseMode ?? "userTemplatesOnly";
 }
 
+/** Fresh installs: Devices + trackIT numbers only; other panels via Toolbar / Preferences. */
 const DEFAULT_PANELS_VISIBLE: SidebarPanelVisibility = {
   devices: true,
-  viewOptions: true,
+  viewOptions: false,
   trackItNumbers: true,
-  showInfo: true,
-  colors: true,
+  showInfo: false,
+  colors: false,
   cadTools: false,
 };
 
@@ -79,6 +90,7 @@ function loadSidebarPrefs(): SidebarPrefs {
     rightColorsExpanded: false,
     rightCadToolsExpanded: false,
     quickToolbarVisible: true,
+    toolPaletteIconOnly: false,
     libraryBrowseMode: loadLibraryBrowseMode(),
     panelsVisible: { ...DEFAULT_PANELS_VISIBLE },
     rightInspectorOpen: true,
@@ -121,6 +133,8 @@ interface SidebarState extends SidebarPrefs {
   setRightCadToolsExpanded: (v: boolean) => void;
   setQuickToolbarVisible: (v: boolean) => void;
   toggleQuickToolbarVisible: () => void;
+  setToolPaletteIconOnly: (v: boolean) => void;
+  toggleToolPaletteIconOnly: () => void;
   setLibraryBrowseMode: (mode: LibraryBrowseMode) => void;
   setPanelVisible: (panel: keyof SidebarPanelVisibility, visible: boolean) => void;
   setPanelsVisible: (next: Partial<SidebarPanelVisibility>) => void;
@@ -171,6 +185,17 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
     const quickToolbarVisible = !get().quickToolbarVisible;
     set({ quickToolbarVisible });
     persistSidebar({ ...get(), quickToolbarVisible });
+  },
+
+  setToolPaletteIconOnly: (toolPaletteIconOnly) => {
+    set({ toolPaletteIconOnly });
+    persistSidebar({ ...get(), toolPaletteIconOnly });
+  },
+
+  toggleToolPaletteIconOnly: () => {
+    const toolPaletteIconOnly = !get().toolPaletteIconOnly;
+    set({ toolPaletteIconOnly });
+    persistSidebar({ ...get(), toolPaletteIconOnly });
   },
 
   setLibraryBrowseMode: (libraryBrowseMode) => {

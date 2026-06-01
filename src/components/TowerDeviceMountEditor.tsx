@@ -4,7 +4,7 @@
  */
 
 import type { CSSProperties } from "react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSchematicStore } from "../store";
 import type { DeviceData, OduMountType, RfInstallationMetadata, TowerDraftPage } from "../types";
 import {
@@ -145,6 +145,13 @@ export default function TowerDeviceMountEditor({
       ? Math.round(ftToM(placement.mountHeightFtAgl) * 10) / 10
       : placement.mountHeightFtAgl;
 
+  /** Free-form string while focused — avoids m↔ft round-trip on every keystroke (e.g. "8" → 7.9 m). */
+  const [heightDraft, setHeightDraft] = useState<string | null>(null);
+
+  useEffect(() => {
+    setHeightDraft(null);
+  }, [placement.id, placement.mountHeightFtAgl, measurementSystem]);
+
   const remoteLinks = useMemo(() => {
     const out: { label: string; signal?: string }[] = [];
     for (const edge of edges) {
@@ -173,6 +180,18 @@ export default function TowerDeviceMountEditor({
     const ft =
       measurementSystem === "metric" ? Math.round(mToFt(raw)) : Math.round(raw);
     applyHeightFt(ft);
+  };
+
+  const commitHeightDraft = () => {
+    const raw = heightDraft?.trim() ?? "";
+    setHeightDraft(null);
+    if (raw === "" || raw === "-" || raw === ".") {
+      applyHeightFt(0);
+      return;
+    }
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return;
+    applyHeightInput(n);
   };
 
   const patchRf = (updates: Partial<RfInstallationMetadata>) => {
@@ -259,17 +278,20 @@ export default function TowerDeviceMountEditor({
             Height ({measurementSystem === "metric" ? "m" : "ft"} AGL)
           </div>
           <input
-            type="number"
-            min={0}
-            max={
-              measurementSystem === "metric"
-                ? Math.round(ftToM(page.towerHeightFtAgl) * 10) / 10
-                : page.towerHeightFtAgl
-            }
-            step={measurementSystem === "metric" ? 0.1 : 1}
-            value={heightDisplayValue}
-            onChange={(e) => applyHeightInput(Number(e.target.value) || 0)}
-            style={fieldInput}
+            type="text"
+            inputMode="decimal"
+            value={heightDraft ?? String(heightDisplayValue)}
+            onFocus={() => setHeightDraft(String(heightDisplayValue))}
+            onChange={(e) => setHeightDraft(e.target.value)}
+            onBlur={commitHeightDraft}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            style={{ ...fieldInput, fontFamily: "var(--ti-font-mono)" }}
+            aria-label={`Height (${measurementSystem === "metric" ? "m" : "ft"} AGL)`}
           />
         </label>
 
