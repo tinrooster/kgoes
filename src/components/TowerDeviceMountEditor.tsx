@@ -119,6 +119,27 @@ export default function TowerDeviceMountEditor({
   const lateral = mountLateralFromOffsetX(placement.offsetX);
   const bandLabel = data?.ports?.find((p) => p.rf?.band)?.rf?.band ?? "";
 
+  const feedEstFt = Math.round(placement.mountHeightFtAgl * 1.1 + 15);
+  const feedMedium =
+    rf.feedType === "waveguide"
+      ? "WG"
+      : data?.deviceType === "outdoor-ptz-camera" ||
+          data?.deviceType === "camera" ||
+          data?.deviceType === "ptz-camera"
+        ? "FIBER"
+        : "COAX";
+
+  // rfLink card: match azimuth from context catalog where possible (within ±12°)
+  const rfLinkCard = useMemo(() => {
+    if (resolvedAz == null) return null;
+    return (
+      trackItTowerContext?.rfLinks?.find((l) => {
+        const diff = Math.abs(l.azimuthDeg - resolvedAz) % 360;
+        return Math.min(diff, 360 - diff) < 12;
+      }) ?? null
+    );
+  }, [trackItTowerContext, resolvedAz]);
+
   const heightDisplayValue =
     measurementSystem === "metric"
       ? Math.round(ftToM(placement.mountHeightFtAgl) * 10) / 10
@@ -493,14 +514,94 @@ export default function TowerDeviceMountEditor({
         </div>
       )}
 
+      <div>
+        <div style={sectionTitle}>Feedline · est. run</div>
+        <div
+          style={{
+            borderRadius: 10,
+            border: "1px solid var(--ti-border)",
+            background: "var(--ti-surface-2)",
+            padding: 11,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontFamily: "var(--ti-font-mono)", fontSize: 19, fontWeight: 700, color: "var(--ti-ink)" }}>
+              ≈ {feedEstFt} ft
+            </span>
+            <span
+              style={{
+                height: 20,
+                padding: "0 7px",
+                borderRadius: 999,
+                border: "1px solid var(--ti-border)",
+                background: "var(--ti-surface)",
+                fontSize: 10,
+                fontWeight: 600,
+                fontFamily: "var(--ti-font-mono)",
+                color: "var(--ti-muted)",
+                display: "inline-flex",
+                alignItems: "center",
+              }}
+            >
+              {feedMedium}
+            </span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 9, fontSize: 12 }}>
+            <TiIcon name="pin" size={13} color="var(--ti-accent)" />
+            <span style={{ fontWeight: 600, fontFamily: "var(--ti-font-mono)" }}>
+              {Math.round(placement.mountHeightFtAgl)} ft
+            </span>
+            <span style={{ flex: 1, height: 1, borderTop: "1.5px dotted var(--ti-faint)" }} />
+            <TiIcon name="rack" size={13} color="var(--ti-muted)" />
+            <span style={{ color: "var(--ti-ink-2)" }}>Equip. bldg</span>
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--ti-faint)", marginTop: 7, lineHeight: 1.4 }}>
+            Vertical run + entry + 10% slack. Refine with measured length in trackIT.
+          </div>
+        </div>
+      </div>
+
+      {rfLinkCard && (
+        <div>
+          <div style={sectionTitle}>Link / path</div>
+          <div
+            style={{
+              borderRadius: 10,
+              border: "1px solid color-mix(in oklab, var(--ti-warning) 30%, transparent)",
+              background: "var(--ti-warning-soft)",
+              padding: 11,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <TiIcon name="signal" size={15} color="color-mix(in oklab, var(--ti-warning) 65%, var(--ti-ink))" />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ti-ink)" }}>{rfLinkCard.label}</div>
+                <div style={{ fontSize: 10.5, color: "var(--ti-muted)", fontFamily: "var(--ti-font-mono)", marginTop: 2 }}>
+                  {rfLinkCard.kind.replace("_", " ")}
+                  {rfLinkCard.distanceMi != null ? ` · ${rfLinkCard.distanceMi} mi` : ""}
+                </div>
+              </div>
+              <span style={{ fontFamily: "var(--ti-font-mono)", fontSize: 12, fontWeight: 600, color: "var(--ti-ink-2)" }}>
+                {rfLinkCard.azimuthDeg}°
+              </span>
+            </div>
+            {rfLinkCard.band && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "var(--ti-ink-2)" }}>
+                Band <b style={{ fontFamily: "var(--ti-font-mono)" }}>{rfLinkCard.band}</b>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {remoteLinks.length > 0 && (
         <div>
           <div style={sectionTitle}>Schematic links</div>
           <div
             style={{
               borderRadius: 10,
-              border: "1px solid color-mix(in oklab, var(--ti-warning) 30%, transparent)",
-              background: "var(--ti-warning-soft)",
+              border: "1px solid var(--ti-border)",
+              background: "var(--ti-surface-2)",
               padding: 10,
               display: "flex",
               flexDirection: "column",
@@ -512,7 +613,7 @@ export default function TowerDeviceMountEditor({
                 key={link.label}
                 style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}
               >
-                <TiIcon name="signal" size={14} color="var(--ti-warning)" />
+                <TiIcon name="signal" size={14} color="var(--ti-muted)" />
                 <span style={{ fontWeight: 600, color: "var(--ti-ink)" }}>{link.label}</span>
                 {link.signal && (
                   <span style={{ fontSize: 10, color: "var(--ti-muted)", fontFamily: "var(--ti-font-mono)" }}>

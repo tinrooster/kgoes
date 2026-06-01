@@ -97,6 +97,7 @@ import {
   createDefaultTowerDraftPage,
   ftAglToY,
   isTowerDraftEligibleDeviceType,
+  towerDraftGroundY,
   towerDraftTowerCenterX,
 } from "./towerDraftUtils";
 import {
@@ -5318,56 +5319,39 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const state = get();
     const page = state.pages.find((p) => p.id === pageId && p.type === "tower-draft") as TowerDraftPage | undefined;
     if (!page) return 0;
-    const placementByNode = new Map(page.placements.map((p) => [p.deviceNodeId, p]));
     const centerX = towerDraftTowerCenterX();
-    let added = 0;
+    const groundY = towerDraftGroundY(page.towerHeightFtAgl);
+    // equipment building anchor — matches renderer's equip. bldg label offset
+    const bldgX = centerX - 12;
+    const bldgY = groundY + 14;
 
-    const keptPolylines = page.polylines.filter(
-      (pl) => pl.cadLayer !== "generated" || (!pl.feedlineFromNodeId && !pl.feedlineToNodeId),
-    );
+    // drop all previously generated feedlines; regenerate fresh
+    const keptPolylines = page.polylines.filter((pl) => pl.cadLayer !== "generated" || !pl.feedlineFromNodeId);
     const newPolylines = [...keptPolylines];
 
-    for (const edge of state.edges) {
-      const sig = String(edge.data?.signalType ?? "").toLowerCase();
-      if (sig !== "rf" && !sig.includes("rf")) continue;
-      const fromPl = placementByNode.get(edge.source);
-      const toPl = placementByNode.get(edge.target);
-      if (!fromPl || !toPl) continue;
-
-      const pairKey = `${edge.source}|${edge.target}`;
-      const filtered = newPolylines.filter(
-        (pl) =>
-          !(pl.cadLayer === "generated" && `${pl.feedlineFromNodeId}|${pl.feedlineToNodeId}` === pairKey),
-      );
-      newPolylines.length = 0;
-      newPolylines.push(...filtered);
-
-      const fromY = ftAglToY(fromPl.mountHeightFtAgl, page.towerHeightFtAgl);
-      const toY = ftAglToY(toPl.mountHeightFtAgl, page.towerHeightFtAgl);
-      const fromX = centerX + (fromPl.offsetX ?? 0);
-      const toX = centerX + (toPl.offsetX ?? 0);
-      const midX = (fromX + toX) / 2 + 40;
-
+    for (const placement of page.placements) {
+      const y = ftAglToY(placement.mountHeightFtAgl, page.towerHeightFtAgl);
+      const px = centerX + (placement.offsetX ?? 0);
+      // hug the tower face: left side devices go to the left mast edge, right to the right
+      const edgeX = centerX + (px >= centerX ? 1 : -1) * 18;
       newPolylines.push({
         id: nextTowerDraftPolylineId(),
         points: [
-          { x: fromX, y: fromY },
-          { x: midX, y: fromY },
-          { x: midX, y: toY },
-          { x: toX, y: toY },
+          { x: px, y },
+          { x: edgeX, y },
+          { x: edgeX, y: groundY },
+          { x: bldgX, y: bldgY },
         ],
-        strokeColor: "#64748b",
         strokeWidth: 1,
         lineStyle: "dashed",
         cadLayer: "generated",
-        feedlineFromNodeId: edge.source,
-        feedlineToNodeId: edge.target,
+        feedlineFromNodeId: placement.deviceNodeId,
       });
-      added++;
     }
 
+    const added = newPolylines.length - keptPolylines.length;
     if (added === 0) {
-      get().addToast("No RF links between placed devices to suggest", "info");
+      get().addToast("No placed devices to suggest feedlines for", "info");
       return 0;
     }
 
@@ -5378,7 +5362,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       redoSize: 0,
     });
     get().saveToLocalStorage();
-    get().addToast(`Suggested ${added} feedline${added > 1 ? "s" : ""}`, "success");
+    get().addToast(`Suggested ${added} feedline run${added > 1 ? "s" : ""} to structure`, "success");
     return added;
   },
 
