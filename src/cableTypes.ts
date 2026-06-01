@@ -72,6 +72,7 @@ export const SIGNAL_TO_CABLE: Record<SignalType, string> = {
   "mpeg-ts": "Ethernet",
   ebus: "Phoenix",
   "control-voltage": "Phoenix",
+  "control-50pin": "50-Pin Control",
   "extron-exp": "Cat6",
   pots: "Phone (RJ11)",
   "blu-link": "BLU link",

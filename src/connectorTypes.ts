@@ -70,6 +70,7 @@ export const DEFAULT_CONNECTOR: Record<SignalType, ConnectorType> = {
   digilink: "digilink",
   ebus: "phoenix",
   "control-voltage": "phoenix",
+  "control-50pin": "other",
   "extron-exp": "rj45",
   pots: "rj11",
   "blu-link": "rj45",

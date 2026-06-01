@@ -120,6 +120,7 @@ export type SignalType =
   | "digilink"
   | "ebus"
   | "control-voltage"
+  | "control-50pin"
   | "extron-exp"
   | "pots"
   | "blu-link"
@@ -1273,6 +1274,7 @@ export const SIGNAL_COLORS: Record<SignalType, string> = {
   digilink: "var(--color-digilink)",
   ebus: "var(--color-ebus)",
   "control-voltage": "var(--color-control-voltage)",
+  "control-50pin": "var(--color-control-50pin)",
   "extron-exp": "var(--color-extron-exp)",
   pots: "var(--color-pots)",
   "blu-link": "var(--color-blu-link)",
@@ -1449,6 +1451,7 @@ export const SIGNAL_LABELS: Record<SignalType, string> = {
   digilink: "DigiLink",
   ebus: "eBUS",
   "control-voltage": "0-10V Control",
+  "control-50pin": "50-Pin Control",
   "extron-exp": "Extron EXP",
   pots: "POTS",
   "blu-link": "BLU link",
@@ -1463,7 +1466,7 @@ export const SIGNAL_GROUPS: Record<string, SignalType[]> = {
   "Video over IP": ["ndi", "srt", "hdbaset", "st2110"],
   "Audio": ["analog-audio", "speaker-level", "bluetooth", "aes", "dante", "avb", "aes67", "madi", "spdif", "adat", "ultranet", "aes50", "stageconnect", "ydif", "soundgrid", "gigaace", "dx5", "dsnake", "slink", "fibreace", "digilink", "extron-exp", "pots", "blu-link"],
   "Network": ["ethernet", "fiber"],
-  "Control / Data": ["dmx", "artnet", "sacn", "rs422", "serial", "gpio", "contact-closure", "ir", "midi", "tally", "usb", "thunderbolt", "dxlink", "ebus", "control-voltage", "cresnet", "sensor"],
+  "Control / Data": ["dmx", "artnet", "sacn", "rs422", "serial", "gpio", "contact-closure", "ir", "midi", "tally", "usb", "thunderbolt", "dxlink", "ebus", "control-voltage", "control-50pin", "cresnet", "sensor"],
   "Sync / Clock": ["genlock", "wordclock", "timecode", "dars", "gps"],
   "Power": ["power", "power-l1", "power-l2", "power-l3", "power-neutral", "power-ground"],
   "Streaming": ["rtmp", "rtsp", "mpeg-ts", "asi", "rf", "if"],

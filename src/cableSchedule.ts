@@ -107,6 +107,7 @@ const SIGNAL_PREFIX: Record<SignalType, string> = {
   "mpeg-ts": "MT",
   ebus: "EB",
   "control-voltage": "VC",
+  "control-50pin": "C50",
   "extron-exp": "EX",
   pots: "PT",
   "blu-link": "BL",
