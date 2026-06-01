@@ -2545,7 +2545,13 @@ function PortRow({
           <select
             className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1 py-1 text-[10px] text-[var(--color-text-heading)] outline-none focus:border-blue-500 cursor-pointer max-w-[80px]"
             value={port.connectorType ?? DEFAULT_CONNECTOR[port.signalType]}
-            onChange={(e) => onUpdate({ connectorType: e.target.value as ConnectorType })}
+            onChange={(e) => {
+              const ct = e.target.value as ConnectorType;
+              onUpdate({ connectorType: ct });
+              if (DB_PINOUT_CONNECTORS.has(ct)) {
+                setShowDbPinout(true);
+              }
+            }}
             title="Connector type"
           >
             {CONNECTOR_GROUP_ENTRIES.map(([groupName, types]) => (
@@ -2706,13 +2712,13 @@ function PortRow({
           <button
             onClick={() => setShowDbPinout(!showDbPinout)}
             className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 ${
-              port.dbPinout?.length
+              showDbPinout || port.dbPinout?.length
                 ? "bg-slate-200 text-slate-800 hover:bg-slate-300"
-                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
+                : "bg-blue-50 text-blue-700 hover:bg-blue-100 ring-1 ring-blue-200"
             }`}
-            title="DB pin assignments"
+            title="DB pin assignments — click to edit pinout table"
           >
-            DB
+            DB{port.dbPinout?.length ? ` (${port.dbPinout.length})` : ""}
           </button>
         )}
 
@@ -2808,6 +2814,7 @@ function PortRow({
       {showDbPinout && isDbConnector && (
         <DbPinoutEditor
           pinout={port.dbPinout}
+          connectorType={connectorType}
           onChange={(dbPinout) => onUpdate({ dbPinout })}
         />
       )}

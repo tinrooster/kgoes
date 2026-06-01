@@ -29,6 +29,14 @@ export const DB_PINOUT_CONNECTORS: ReadonlySet<string> = new Set([
   "db50",
 ]);
 
+/** Typical pin counts for quick seed in the pinout editor. */
+export const DB_CONNECTOR_PIN_COUNT: Record<string, number> = {
+  db9: 9,
+  db25: 25,
+  db37: 37,
+  db50: 50,
+};
+
 export const SERIAL_SIGNAL_TYPES: ReadonlySet<SignalType> = new Set(["serial", "rs422"]);
 
 const POLARIZATION_OPTIONS: { value: RfPolarization; label: string }[] = [
@@ -469,11 +477,17 @@ export function RfPathMediumSelect({
 export function DbPinoutEditor({
   pinout,
   onChange,
+  connectorType,
 }: {
   pinout?: DbPinAssignment[];
   onChange: (next: DbPinAssignment[] | undefined) => void;
+  connectorType?: string;
 }) {
   const rows = pinout ?? [];
+  const seedCount =
+    connectorType && DB_CONNECTOR_PIN_COUNT[connectorType]
+      ? DB_CONNECTOR_PIN_COUNT[connectorType]
+      : undefined;
   const inputClass =
     "bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-0.5 text-[10px] outline-none focus:border-blue-500";
 
@@ -487,6 +501,17 @@ export function DbPinoutEditor({
     onChange([...rows, { pin: nextPin, label: "", signal: "" }]);
   };
 
+  const seedRows = () => {
+    if (!seedCount) return;
+    onChange(
+      Array.from({ length: seedCount }, (_, i) => ({
+        pin: i + 1,
+        label: `Pin ${i + 1}`,
+        signal: "",
+      })),
+    );
+  };
+
   const removeRow = (index: number) => {
     const next = rows.filter((_, i) => i !== index);
     onChange(next.length > 0 ? next : undefined);
@@ -494,7 +519,26 @@ export function DbPinoutEditor({
 
   return (
     <div className="flex flex-col gap-1 pl-6 pb-1">
-      <div className="text-[9px] text-[var(--color-text-muted)]">DB pinout</div>
+      <div className="flex items-center gap-2">
+        <span className="text-[9px] text-[var(--color-text-muted)]">DB pinout</span>
+        {seedCount != null && (
+          <button
+            type="button"
+            onClick={seedRows}
+            className="text-[9px] text-blue-600 hover:text-blue-500 cursor-pointer"
+            title={`Create pins 1–${seedCount} with default labels`}
+          >
+            Seed {seedCount} pins
+          </button>
+        )}
+      </div>
+      {rows.length === 0 && (
+        <p className="text-[9px] text-[var(--color-text-muted)] italic">
+          {seedCount != null
+            ? `Click "Seed ${seedCount} pins" for a numbered template, or "+ Add pin" row by row.`
+            : 'Click "+ Add pin" to define assignments.'}
+        </p>
+      )}
       {rows.map((row, i) => (
         <div key={`${row.pin}-${i}`} className="flex items-center gap-1">
           <input
