@@ -13,6 +13,8 @@ import {
   parseCableNumberFromId,
   activeReservedBlocks,
 } from "../trackitNumberingUtils";
+import { isTrackItDrawingLinked, saveToTrackItParent } from "../trackitIntegration";
+import { TiButton, TiIcon, TiIconButton } from "./ti/TiBase";
 
 const PROJECT_CLS_COLOR: Record<string, string> = {
   studio: "#3b82f6",
@@ -25,6 +27,35 @@ const PROJECT_CLS_COLOR: Record<string, string> = {
 
 function blockKey(block: TrackItNumberBlock): string {
   return block.reservationId ?? `${block.start}-${block.end}-${block.updatedAt}`;
+}
+
+function countChip(label: string, value: number, tone: "success" | "warning" | "info") {
+  const color = `var(--ti-${tone})`;
+  return (
+    <div
+      key={label}
+      style={{
+        flex: 1,
+        borderRadius: 8,
+        border: `1px solid color-mix(in oklab, ${color} 30%, transparent)`,
+        background: `var(--ti-${tone}-soft)`,
+        padding: "7px 9px",
+      }}
+    >
+      <div
+        data-mono
+        style={{
+          fontSize: 17,
+          fontWeight: 700,
+          color: `color-mix(in oklab, ${color} 72%, var(--ti-ink))`,
+          fontFamily: "var(--ti-font-mono)",
+        }}
+      >
+        {value}
+      </div>
+      <div style={{ fontSize: 10.5, color: "var(--ti-ink-2)", fontFamily: "var(--ti-font-sans)" }}>{label}</div>
+    </div>
+  );
 }
 
 export default function TrackItNumberingPanel({
@@ -44,6 +75,7 @@ export default function TrackItNumberingPanel({
   const activeId = useSchematicStore((s) => s.activeTrackItReservationId);
   const setActiveId = useSchematicStore((s) => s.setActiveTrackItReservationId);
   const assignNext = useSchematicStore((s) => s.assignNextTrackItNumbersToSelection);
+  const assignAll = useSchematicStore((s) => s.assignAllUnnumberedTrackItNumbers);
   const assignManual = useSchematicStore((s) => s.assignManualCableNumberToSelection);
   const assignSlot = useSchematicStore((s) => s.assignSlotFromActiveBlockToSelection);
   const clearIds = useSchematicStore((s) => s.clearCableIdsOnSelection);
@@ -53,7 +85,17 @@ export default function TrackItNumberingPanel({
     [edges],
   );
 
+  const numberedCount = useMemo(
+    () => edges.filter((e) => !e.data?.directAttach && e.data?.cableId).length,
+    [edges],
+  );
+  const unnumberedCount = useMemo(
+    () => edges.filter((e) => !e.data?.directAttach && !e.data?.cableId && e.data?.signalType).length,
+    [edges],
+  );
+
   const isTrackItPopup = typeof window !== "undefined" && !!window.opener;
+  const isLinked = isTrackItDrawingLinked();
   const blocks = trackItNumbering?.blocks ?? [];
   const reserved = useMemo(() => sortBlocksForDisplay(activeReservedBlocks(blocks)), [blocks]);
   const showPanel =
@@ -96,121 +138,272 @@ export default function TrackItNumberingPanel({
     }
   }, []);
 
+  const panelWidth = mobile ? "100%" : 312;
+
   if (!showPanel) return null;
 
   if (!mobile && collapsed) {
     return (
-      <div className="w-8 bg-[var(--color-surface)] border-l border-[var(--color-border)] flex flex-col items-center h-full">
+      <div
+        style={{
+          width: 44,
+          background: "var(--ti-surface)",
+          borderLeft: "1px solid var(--ti-border)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          height: "100%",
+          paddingTop: 10,
+          gap: 8,
+        }}
+      >
         <button
           type="button"
           onClick={() => expandRightPanel("trackIt")}
-          className="py-3 cursor-pointer hover:bg-[var(--color-surface-hover)] w-full flex justify-center transition-colors"
-          title="Show trackIT numbering"
+          style={{
+            width: 28,
+            height: 28,
+            display: "grid",
+            placeItems: "center",
+            border: 0,
+            background: "transparent",
+            borderRadius: 7,
+            cursor: "pointer",
+            color: "var(--ti-muted)",
+          }}
+          title="Show TrackIt numbering"
         >
-          <svg viewBox="0 0 16 16" className="w-4 h-4 text-[var(--color-text-muted)]" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d="M10 3l-5 5 5 5" />
-          </svg>
+          <TiIcon name="hash" size={15} />
         </button>
         <div
-          className="text-[10px] uppercase tracking-widest text-[var(--color-text-muted)] mt-2 select-none"
-          style={{ writingMode: "vertical-rl" }}
+          style={{
+            writingMode: "vertical-rl",
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "var(--ti-muted)",
+            marginTop: 8,
+            fontFamily: "var(--ti-font-sans)",
+          }}
         >
-          trackIT
+          Numbers
         </div>
-        {reserved.length > 0 ? (
-          <span className="mt-1 text-[9px] font-mono text-blue-600">{reserved.length}</span>
-        ) : null}
+        {unnumberedCount > 0 && (
+          <span
+            style={{
+              fontSize: 9,
+              fontWeight: 700,
+              color: "var(--ti-warning)",
+              fontFamily: "var(--ti-font-mono)",
+            }}
+          >
+            {unnumberedCount}
+          </span>
+        )}
       </div>
     );
   }
 
   return (
     <div
-      className={`${mobile ? "w-full" : "w-64"} bg-[var(--color-surface)] ${mobile ? "" : "border-l"} border-[var(--color-border)] flex flex-col h-full overflow-hidden`}
+      style={{
+        width: panelWidth,
+        background: "var(--ti-surface)",
+        borderLeft: mobile ? "none" : "1px solid var(--ti-border)",
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        overflow: "hidden",
+      }}
     >
-      <div className="px-3 py-2 border-b border-[var(--color-border)] flex items-center justify-between gap-2">
-        <div>
-          <h2 className="text-xs font-semibold text-[var(--color-text-heading)] uppercase tracking-wider">
-            trackIT Numbers
-          </h2>
-          <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
-            {reserved.length} reserved · {blocks.length} total
-          </p>
-        </div>
-        {!mobile ? (
-          <button
-            type="button"
-            onClick={() => setRightExpanded(false)}
-            className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer p-0.5"
-            title="Collapse panel"
+      <div style={{ padding: "14px 14px 12px", borderBottom: "1px solid var(--ti-divider)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: 7,
+              background: "var(--ti-accent)",
+              color: "var(--ti-on-accent)",
+              display: "grid",
+              placeItems: "center",
+              fontFamily: "var(--ti-font-mono)",
+              fontSize: 13,
+              fontWeight: 700,
+            }}
           >
-            <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path d="M6 3l5 5-5 5" />
-            </svg>
-          </button>
-        ) : onClose ? (
-          <button type="button" onClick={onClose} className="text-xs text-[var(--color-text-muted)] cursor-pointer">
-            Close
-          </button>
-        ) : null}
+            #
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14.5, fontWeight: 600, color: "var(--ti-ink)", fontFamily: "var(--ti-font-sans)" }}>
+              Cable numbering
+            </div>
+            <div style={{ fontSize: 11, color: "var(--ti-muted)", fontFamily: "var(--ti-font-sans)" }}>
+              Reserve · auto-assign · push to TrackIt
+            </div>
+          </div>
+          {!mobile ? (
+            <TiIconButton icon="x" variant="ghost" size="sm" onClick={() => setRightExpanded(false)} title="Collapse" />
+          ) : onClose ? (
+            <TiIconButton icon="x" variant="ghost" size="sm" onClick={onClose} title="Close" />
+          ) : null}
+        </div>
+        <div style={{ display: "flex", gap: 6, marginTop: 11 }}>
+          {countChip("Numbered", numberedCount, "success")}
+          {countChip("Unnumbered", unnumberedCount, unnumberedCount ? "warning" : "success")}
+          {countChip("Blocks", reserved.length, "info")}
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3 text-xs">
+      <div style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div
+          style={{
+            borderRadius: 11,
+            border: `1px solid ${unnumberedCount ? "color-mix(in oklab, var(--ti-accent) 35%, transparent)" : "var(--ti-border)"}`,
+            background: unnumberedCount ? "var(--ti-accent-soft)" : "var(--ti-surface-2)",
+            padding: 13,
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ti-ink)", fontFamily: "var(--ti-font-sans)" }}>
+            Auto-assign from reserved blocks
+          </div>
+          <div
+            style={{
+              fontSize: 11.5,
+              color: "var(--ti-ink-2)",
+              marginTop: 3,
+              lineHeight: 1.45,
+              fontFamily: "var(--ti-font-sans)",
+            }}
+          >
+            {unnumberedCount
+              ? `Pull the next free number for each of the ${unnumberedCount} unnumbered run${unnumberedCount !== 1 ? "s" : ""} in the active block.`
+              : "Every cable on this drawing already carries a number."}
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 11, flexWrap: "wrap" }}>
+            <TiButton
+              variant="accent"
+              icon="hash"
+              disabled={!unnumberedCount || !activeBlock}
+              onClick={() => assignAll()}
+            >
+              Auto-assign all ({unnumberedCount})
+            </TiButton>
+            <TiButton
+              variant="outline"
+              icon="arrowR"
+              disabled={selectedEdges.length === 0 || freeSlots.length === 0}
+              onClick={() => assignNext()}
+            >
+              Assign next ({selectedEdges.length || 0})
+            </TiButton>
+          </div>
+        </div>
+
         {reserved.length === 0 ? (
-          <p className="text-[var(--color-text-muted)] leading-relaxed">
-            Reserve blocks in trackIT Numbering. With EasySchematic open, new reservations appear here automatically.
+          <p style={{ fontSize: 12.5, color: "var(--ti-ink-2)", lineHeight: 1.5, margin: 0, fontFamily: "var(--ti-font-sans)" }}>
+            Reserve blocks in trackIT Plant → Numbering. With KGO-ES open from a drawing, new reservations appear here
+            automatically.
           </p>
         ) : (
-          <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
-            <span className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)]">
+          <div>
+            <div
+              style={{
+                fontSize: 10.5,
+                fontWeight: 600,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: "var(--ti-muted)",
+                marginBottom: 8,
+                fontFamily: "var(--ti-font-sans)",
+              }}
+            >
               Reserved blocks — click to activate
-            </span>
-            {reserved.map((block) => {
-              const key = blockKey(block);
-              const isActive = activeBlock && blockKey(activeBlock) === key;
-              const color = PROJECT_CLS_COLOR[block.projectCls] ?? PROJECT_CLS_COLOR.other;
-              const free = freeSlotsForBlock(block, edges);
-              const slots = blockSlotNumbers(block.start, block.blockSize, block.offset);
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setActiveId(block.reservationId)}
-                  className={`w-full text-left rounded-md border px-2 py-1.5 transition-colors cursor-pointer ${
-                    isActive
-                      ? "border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/30"
-                      : "border-[var(--color-border)] hover:bg-[var(--color-surface-hover)]"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="font-mono font-semibold text-[var(--color-text)]">
-                      {formatBlockRange(block)}
-                    </span>
-                    <span
-                      className="text-[9px] uppercase tracking-wide px-1 py-0.5 rounded"
-                      style={{ background: `${color}22`, color }}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {reserved.map((block) => {
+                const key = blockKey(block);
+                const isActive = activeBlock && blockKey(activeBlock) === key;
+                const color = PROJECT_CLS_COLOR[block.projectCls] ?? PROJECT_CLS_COLOR.other;
+                const free = freeSlotsForBlock(block, edges);
+                const slots = blockSlotNumbers(block.start, block.blockSize, block.offset);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setActiveId(block.reservationId)}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      borderRadius: 10,
+                      border: `1px solid ${isActive ? "var(--ti-accent)" : "var(--ti-border)"}`,
+                      background: isActive ? "var(--ti-accent-soft)" : "var(--ti-surface)",
+                      boxShadow: isActive ? "0 0 0 2px var(--ti-accent-soft)" : "none",
+                      padding: "10px 11px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <span
+                        data-mono
+                        style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ti-ink)", fontFamily: "var(--ti-font-mono)" }}
+                      >
+                        {formatBlockRange(block)}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 600,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          padding: "2px 6px",
+                          borderRadius: 4,
+                          background: `color-mix(in oklab, ${color} 18%, transparent)`,
+                          color,
+                          fontFamily: "var(--ti-font-sans)",
+                        }}
+                      >
+                        {block.flag ?? "draft"}
+                      </span>
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 11, color, fontFamily: "var(--ti-font-sans)" }}>{block.project}</div>
+                    <div
+                      data-mono
+                      style={{ marginTop: 6, fontSize: 10.5, color: "var(--ti-muted)", fontFamily: "var(--ti-font-mono)" }}
                     >
-                      {block.flag ?? "draft"}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 truncate" style={{ color }}>
-                    {block.project}
-                  </div>
-                  <div className="mt-1 font-mono text-[10px] text-[var(--color-text-muted)]">
-                    {free.length}/{slots.length} free on drawing
-                  </div>
-                </button>
-              );
-            })}
+                      {free.length}/{slots.length} free on drawing
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
         {activeBlock?.status === "reserved" ? (
-          <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-canvas)]/40 p-2 space-y-2">
-            <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)]">
+          <div
+            style={{
+              borderRadius: 10,
+              border: "1px solid var(--ti-border)",
+              background: "var(--ti-surface-2)",
+              padding: 12,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10.5,
+                fontWeight: 600,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: "var(--ti-muted)",
+                marginBottom: 8,
+                fontFamily: "var(--ti-font-sans)",
+              }}
+            >
               Active: {formatBlockRange(activeBlock)}
             </div>
-            <div className="flex flex-wrap gap-1">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
               {blockSlotNumbers(activeBlock.start, activeBlock.blockSize, activeBlock.offset).map((n) => {
                 const usedDraw = numbersUsedOnDrawing(edges, activeBlock).has(n);
                 const usedReg = numbersUsedInTrackIt(activeBlock).has(n);
@@ -223,94 +416,144 @@ export default function TrackItNumberingPanel({
                     onClick={() => free && assignSlot(n)}
                     title={
                       usedDraw
-                        ? "On drawing — click selection then reassign"
+                        ? "On drawing"
                         : usedReg
                           ? "In trackIT register"
                           : "Assign to selected connection(s)"
                     }
-                    className={`font-mono text-[10px] px-1 py-0.5 rounded border cursor-pointer disabled:cursor-default ${
-                      free
-                        ? "border-emerald-500/50 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/15"
-                        : usedDraw
-                          ? "border-blue-500/50 bg-blue-500/15 text-blue-800 dark:text-blue-300"
-                          : "border-[var(--color-border)] text-[var(--color-text-muted)] line-through opacity-60"
-                    }`}
+                    data-mono
+                    style={{
+                      fontSize: 10,
+                      padding: "3px 6px",
+                      borderRadius: 6,
+                      border: `1px solid ${free ? "color-mix(in oklab, var(--ti-success) 45%, transparent)" : usedDraw ? "color-mix(in oklab, var(--ti-info) 45%, transparent)" : "var(--ti-border)"}`,
+                      background: free ? "transparent" : usedDraw ? "var(--ti-info-soft)" : "var(--ti-sunken)",
+                      color: free ? "var(--ti-success)" : usedDraw ? "var(--ti-info)" : "var(--ti-faint)",
+                      cursor: free ? "pointer" : "default",
+                      fontFamily: "var(--ti-font-mono)",
+                      textDecoration: !free && !usedDraw ? "line-through" : "none",
+                      opacity: !free && !usedDraw ? 0.65 : 1,
+                    }}
                   >
                     {formatCableNumber(n)}
                   </button>
                 );
               })}
             </div>
-            <button
-              type="button"
-              disabled={freeSlots.length === 0 || selectedEdges.length === 0}
-              onClick={() => assignNext()}
-              className="w-full py-1.5 rounded bg-blue-600 text-white text-[11px] font-medium hover:bg-blue-500 disabled:opacity-40 cursor-pointer"
-            >
-              Assign next ({selectedEdges.length || 0} selected)
-            </button>
           </div>
         ) : null}
 
-        <div className="rounded-md border border-[var(--color-border)] p-2 space-y-2">
-          <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)]">
+        <div
+          style={{
+            borderRadius: 10,
+            border: "1px solid var(--ti-border)",
+            padding: 12,
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 600,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "var(--ti-muted)",
+              fontFamily: "var(--ti-font-sans)",
+            }}
+          >
             Selection ({selectedEdges.length})
           </div>
           {selectionCableIds.length > 0 ? (
-            <p className="font-mono text-[11px]">
+            <p data-mono style={{ fontSize: 11.5, margin: 0, color: "var(--ti-ink)", fontFamily: "var(--ti-font-mono)" }}>
               Cable ID: {selectionCableIds.map(formatCableNumber).join(", ")}
             </p>
           ) : (
-            <p className="text-[var(--color-text-muted)]">No cable ID on selection</p>
+            <p style={{ fontSize: 12, margin: 0, color: "var(--ti-muted)", fontFamily: "var(--ti-font-sans)" }}>
+              No cable ID on selection
+            </p>
           )}
-          <div className="flex gap-1">
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder="#"
-              value={manualInput}
-              onChange={(e) => setManualInput(e.target.value.replace(/\D/g, ""))}
-              className="flex-1 min-w-0 rounded border border-[var(--color-border)] bg-[var(--color-canvas)] px-2 py-1 font-mono text-[11px]"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-1">
-            <button
-              type="button"
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="Manual #"
+            value={manualInput}
+            onChange={(e) => setManualInput(e.target.value.replace(/\D/g, ""))}
+            style={{
+              width: "100%",
+              height: 34,
+              padding: "0 10px",
+              borderRadius: 7,
+              border: "1px solid var(--ti-border)",
+              background: "var(--ti-bg)",
+              fontSize: 12.5,
+              fontFamily: "var(--ti-font-mono)",
+              outline: "none",
+            }}
+          />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <TiButton
+              variant="outline"
+              size="sm"
               disabled={!manualInput || selectedEdges.length === 0}
               onClick={() => onManualApply(false)}
-              className="py-1 rounded border border-[var(--color-border)] text-[10px] hover:bg-[var(--color-surface-hover)] disabled:opacity-40 cursor-pointer"
             >
               Set (active block)
-            </button>
-            <button
-              type="button"
+            </TiButton>
+            <TiButton
+              variant="outline"
+              size="sm"
               disabled={!manualInput || selectedEdges.length === 0}
               onClick={() => onManualApply(true)}
-              className="py-1 rounded border border-[var(--color-border)] text-[10px] hover:bg-[var(--color-surface-hover)] disabled:opacity-40 cursor-pointer"
             >
               Set any #
-            </button>
+            </TiButton>
           </div>
-          <button
-            type="button"
+          <TiButton
+            variant="ghost"
+            size="sm"
             disabled={selectedEdges.length === 0}
             onClick={() => clearIds()}
-            className="w-full py-1 rounded border border-red-500/40 text-[10px] text-red-700 dark:text-red-400 hover:bg-red-500/10 disabled:opacity-40 cursor-pointer"
+            style={{ color: "var(--ti-danger)" }}
           >
             Clear cable ID on selection
-          </button>
+          </TiButton>
         </div>
 
         {isTrackItPopup ? (
-          <button
-            type="button"
-            onClick={focusTrackIt}
-            className="w-full text-[11px] py-1.5 rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] cursor-pointer"
-          >
+          <TiButton variant="outline" fullWidth onClick={focusTrackIt}>
             Switch to trackIT
-          </button>
+          </TiButton>
         ) : null}
       </div>
+
+      {isLinked && (
+        <div
+          style={{
+            padding: 12,
+            borderTop: "1px solid var(--ti-divider)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            flexShrink: 0,
+          }}
+        >
+          <TiButton variant="accent" icon="upload" fullWidth onClick={() => saveToTrackItParent()}>
+            Push schedule to TrackIt
+          </TiButton>
+          <div
+            style={{
+              fontSize: 10.5,
+              color: "var(--ti-muted)",
+              textAlign: "center",
+              fontFamily: "var(--ti-font-sans)",
+            }}
+          >
+            Saves schematic JSON and cable IDs to the linked plant drawing.
+          </div>
+        </div>
+      )}
     </div>
   );
 }

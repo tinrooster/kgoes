@@ -12,11 +12,18 @@ export const TOWER_DRAFT_PX_PER_FT = 2.4;
 
 export const TOWER_DRAFT_RULER_W = 48;
 export const TOWER_DRAFT_PAD_X = 120;
-export const TOWER_DRAFT_PAD_TOP = 48;
+/** Space above tower peak for title band + stacked device labels. */
+export const TOWER_DRAFT_PAD_TOP = 96;
 export const TOWER_DRAFT_PAD_BOTTOM = 48;
+/** Y offset applied to drawable content below the fixed title/subtitle band. */
+export const TOWER_DRAFT_CONTENT_OFFSET_Y = 52;
 export const TOWER_DRAFT_COLUMN_W = 80;
-/** Column width per face in all-faces elevation view. */
-export const TOWER_DRAFT_ALL_FACES_COL_W = 96;
+/** Column pitch per face in all-faces view (design: 140px card + 16px gap). */
+export const TOWER_DRAFT_ALL_FACES_COL_W = 140;
+export const TOWER_DRAFT_ALL_FACES_COL_GAP = 16;
+export const TOWER_DRAFT_ALL_FACES_COL_START = 92;
+/** Extra content drop below title band on all-faces (design oy=36). */
+export const TOWER_DRAFT_FACES_BAND_OFFSET_Y = 36;
 
 /** Horizontal spacing when stacking antennas at similar heights. */
 export const TOWER_DRAFT_PLACEMENT_SPACING = 38;

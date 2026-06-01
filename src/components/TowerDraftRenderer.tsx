@@ -6,15 +6,27 @@ import { TowerDraftPlacementGlyph, dishDiameterMFromData } from "../towerDraftGl
 import {
   ftAglToY,
   suggestPlacementOffsetX,
-  TOWER_DRAFT_PX_PER_FT,
+  TOWER_DRAFT_CONTENT_OFFSET_Y,
+  TOWER_DRAFT_FACES_BAND_OFFSET_Y,
+  TOWER_DRAFT_ALL_FACES_COL_GAP,
+  TOWER_DRAFT_ALL_FACES_COL_START,
   TOWER_DRAFT_RULER_W,
+  towerDraftContentHeight,
   towerDraftGroundY,
   towerDraftPolylineDash,
   towerDraftTowerCenterX,
   yToFtAglWithSnap,
   TOWER_DRAFT_ALL_FACES_COL_W,
-  TOWER_DRAFT_PAD_X,
 } from "../towerDraftUtils";
+import { useCanvasPanZoom } from "../useCanvasPanZoom";
+import ViewNavBar from "./ViewNavBar";
+import type { ContentBounds } from "../viewNavUtils";
+import {
+  stackLabelY,
+  TOWER_DRAFT_FACES_HEADER_H,
+  towerHalfWidthAtY,
+  TOWER_FACE_TONE,
+} from "../towerDraftElevationLayout";
 import type { TowerElevationView, TowerFace } from "../towerDraftFaces";
 import {
   activeViewFace,
@@ -29,8 +41,6 @@ import {
   towerFaceColumnCenterX,
 } from "../towerDraftFaces";
 import { formatDistanceFromFt, formatHeightFtAgl, type MeasurementSystem } from "../measurementUnits";
-import ViewNavBar from "./ViewNavBar";
-import { stepViewZoom } from "../viewZoomUtils";
 import { resolveDeviceLabel } from "../displayName";
 import { draggedTowerDeviceNodeId, draggedTowerTemplateId } from "./TowerDraftSidebar";
 import type { TowerDraftDrawStyle } from "./TowerDraftToolbar";
@@ -52,6 +62,8 @@ interface TowerDraftRendererProps {
   onOpenContextMenu: (menu: TowerDraftContextMenuState) => void;
   onDrawLineFinished?: () => void;
   onExitDrawMode?: () => void;
+  /** When true, fills the design canvas card instead of owning the full page column. */
+  embeddedInChrome?: boolean;
 }
 
 export default function TowerDraftRenderer({
@@ -69,6 +81,7 @@ export default function TowerDraftRenderer({
   onOpenContextMenu,
   onDrawLineFinished,
   onExitDrawMode,
+  embeddedInChrome = false,
 }: TowerDraftRendererProps) {
   const nodes = useSchematicStore((s) => s.nodes);
   const customTemplates = useSchematicStore((s) => s.customTemplates);
@@ -87,8 +100,6 @@ export default function TowerDraftRenderer({
   const svgRef = useRef<SVGSVGElement>(null);
   const contentGroupRef = useRef<SVGGElement>(null);
   const suppressPlacementClickRef = useRef(false);
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 40, y: 20 });
   const [draggingPlacementId, setDraggingPlacementId] = useState<string | null>(null);
   const [hoverPlacementId, setHoverPlacementId] = useState<string | null>(null);
   const [draftPoints, setDraftPoints] = useState<{ x: number; y: number }[]>([]);
@@ -106,6 +117,25 @@ export default function TowerDraftRenderer({
   const centerX = towerDraftTowerCenterX();
   const viewFace = activeViewFace(elevationView);
   const towerType = page.towerType ?? "self_support";
+  const isProfile = elevationView === "profile";
+  const isAllFaces = elevationView === "all-faces";
+  const contentOffsetY =
+    TOWER_DRAFT_CONTENT_OFFSET_Y + (isAllFaces ? TOWER_DRAFT_FACES_BAND_OFFSET_Y : 0);
+  const svgH =
+    towerDraftContentHeight(page.towerHeightFtAgl) +
+    contentOffsetY +
+    (isAllFaces ? TOWER_DRAFT_FACES_HEADER_H : 0);
+  const gridRulerX = isAllFaces ? 70 : TOWER_DRAFT_RULER_W;
+  const profileLabelX = centerX + 96;
+
+  const viewBounds = useMemo((): ContentBounds => {
+    return { minX: 0, minY: 0, maxX: contentW, maxY: svgH };
+  }, [contentW, svgH]);
+
+  const panZoom = useCanvasPanZoom({
+    fitBounds: viewBounds,
+    fitDeps: [page.id, elevationView, contentW, svgH],
+  });
 
   /** Map screen coords into the panned/zoomed content group (fixes click offset). */
   const clientToContent = useCallback((clientX: number, clientY: number) => {
@@ -134,14 +164,9 @@ export default function TowerDraftRenderer({
     const pl = towerDraftFocusRequest.placementId
       ? page.placements.find((p) => p.id === towerDraftFocusRequest.placementId)
       : undefined;
-    const ft = pl?.mountHeightFtAgl ?? towerDraftFocusRequest.mountHeightFtAgl;
-    if (ft != null) {
-      const y = ftAglToY(ft, page.towerHeightFtAgl);
-      setPan({ x: 40, y: Math.max(20, 120 - y * zoom) });
-      if (pl) onSelectPlacement(pl.id);
-    }
+    if (pl) onSelectPlacement(pl.id);
     requestTowerDraftFocus(null);
-  }, [towerDraftFocusRequest, page.id, page.placements, page.towerHeightFtAgl, zoom, onSelectPlacement, requestTowerDraftFocus]);
+  }, [towerDraftFocusRequest, page.id, page.placements, onSelectPlacement, requestTowerDraftFocus]);
 
   useEffect(() => {
     if (!drawMode) {
@@ -174,9 +199,7 @@ export default function TowerDraftRenderer({
       const dropFace =
         elevationView === "all-faces"
           ? towerFaceAtContentX(x)
-          : elevationView !== "profile"
-            ? elevationView
-            : undefined;
+          : activeViewFace(elevationView);
       const colCenter =
         dropFace && elevationView === "all-faces"
           ? towerFaceColumnCenterX(dropFace)
@@ -264,71 +287,70 @@ export default function TowerDraftRenderer({
 
   const towerBody = useMemo(() => {
     const topY = ftAglToY(page.towerHeightFtAgl, page.towerHeightFtAgl);
-    const legL = centerX - 18;
-    const legR = centerX + 18;
-    const baseL = legL - 24;
-    const baseR = legR + 12;
+    const baseHalfW = 18;
+    const topHalfW = 12;
+    const lTop = centerX - topHalfW;
+    const rTop = centerX + topHalfW;
+    const lBase = centerX - baseHalfW;
+    const rBase = centerX + baseHalfW;
 
-    const renderFaceColumn = (colCx: number, face: TowerFace, showLabel: boolean) => {
-      const faceW = 56;
-      const faceL = colCx - faceW / 2;
+    const renderFaceColumn = (colCx: number, face: TowerFace, colIdx: number) => {
+      const colW = TOWER_DRAFT_ALL_FACES_COL_W - 12;
+      const fx = colCx - colW / 2;
+      const tone = TOWER_FACE_TONE[face] ?? "neutral";
+      const chipY = topY - 30 + 4;
       return (
         <g key={face}>
           <rect
-            x={faceL}
-            y={topY}
-            width={faceW}
-            height={groundY - topY}
-            fill="rgba(100, 116, 139, 0.14)"
-            stroke="#64748b"
-            strokeWidth={1.5}
+            x={fx}
+            y={topY - 4}
+            width={colW}
+            height={groundY - topY + 8}
+            rx={12}
+            fill={`color-mix(in oklab, var(--ti-ink) ${colIdx % 2 ? 4 : 9}%, transparent)`}
+            stroke="color-mix(in oklab, var(--ti-ink) 22%, transparent)"
+            strokeWidth={1.2}
           />
-          {[0.25, 0.5, 0.75].map((t) => {
-            const y = topY + (groundY - topY) * t;
-            return (
-              <line
-                key={t}
-                x1={faceL + 4}
-                y1={y}
-                x2={faceL + faceW - 4}
-                y2={y}
-                stroke="#94a3b8"
-                strokeWidth={0.6}
-                strokeDasharray="3 4"
-                opacity={0.35}
-              />
-            );
-          })}
-          {showLabel && (
-            <text
-              x={colCx}
-              y={topY - 8}
-              textAnchor="middle"
-              fontSize={9}
-              fontWeight={600}
-              fill="var(--color-text-muted)"
-            >
-              {face} · {TOWER_FACE_LABELS[face]}
-            </text>
-          )}
+          <rect
+            x={fx + 10}
+            y={chipY}
+            width={colW - 20}
+            height={22}
+            rx={7}
+            fill={`color-mix(in oklab, var(--ti-${tone}) 16%, var(--ti-surface))`}
+            stroke={`color-mix(in oklab, var(--ti-${tone}) 40%, transparent)`}
+            strokeWidth={1}
+          />
+          <circle cx={fx + 22} cy={chipY + 11} r={4} fill={`var(--ti-${tone})`} />
+          <text
+            x={fx + colW / 2 + 6}
+            y={chipY + 15}
+            textAnchor="middle"
+            fontSize={11}
+            fontWeight={700}
+            fill="var(--ti-ink)"
+          >
+            {face} · {TOWER_FACE_LABELS[face]}
+          </text>
         </g>
       );
     };
 
-    if (elevationView === "all-faces") {
-      const startX = TOWER_DRAFT_RULER_W + TOWER_DRAFT_PAD_X;
+    if (isAllFaces) {
+      const pitch = TOWER_DRAFT_ALL_FACES_COL_W + TOWER_DRAFT_ALL_FACES_COL_GAP;
       return (
         <g>
           {TOWER_FACE_ORDER.map((face, idx) => {
-            const colCx = startX + idx * TOWER_DRAFT_ALL_FACES_COL_W + TOWER_DRAFT_ALL_FACES_COL_W / 2;
-            return renderFaceColumn(colCx, face, true);
+            const colCx = TOWER_DRAFT_ALL_FACES_COL_START + idx * pitch + TOWER_DRAFT_ALL_FACES_COL_W / 2;
+            return renderFaceColumn(colCx, face, idx);
           })}
         </g>
       );
     }
 
-    if (elevationView !== "profile") {
-      return renderFaceColumn(centerX, elevationView, true);
+    const singleFace = activeViewFace(elevationView);
+    if (singleFace) {
+      return renderFaceColumn(centerX, singleFace, 0);
     }
 
     if (towerType === "monopole") {
@@ -339,105 +361,200 @@ export default function TowerDraftRenderer({
             cy={(topY + groundY) / 2}
             rx={14}
             ry={(groundY - topY) / 2}
-            fill="rgba(100, 116, 139, 0.12)"
+            fill="color-mix(in oklab, var(--ti-ink) 6%, var(--ti-surface))"
             stroke="none"
           />
-          <line x1={centerX} y1={topY} x2={centerX} y2={groundY} stroke="#64748b" strokeWidth={3} />
+          <line x1={centerX} y1={topY} x2={centerX} y2={groundY} stroke="var(--ti-ink-2)" strokeWidth={3} />
         </g>
       );
     }
 
+    const rows = 9;
+    const braces: string[] = [];
+    const struts: string[] = [];
+    for (let i = 0; i < rows; i++) {
+      const y1 = topY + ((groundY - topY) * i) / rows;
+      const y2 = topY + ((groundY - topY) * (i + 1)) / rows;
+      const hw1 = towerHalfWidthAtY(y1, topY, groundY, baseHalfW, topHalfW);
+      const hw2 = towerHalfWidthAtY(y2, topY, groundY, baseHalfW, topHalfW);
+      braces.push(
+        `M ${centerX - hw1} ${y1} L ${centerX + hw2} ${y2} M ${centerX + hw1} ${y1} L ${centerX - hw2} ${y2}`,
+      );
+      struts.push(`M ${centerX - hw2} ${y2} L ${centerX + hw2} ${y2}`);
+    }
+
     return (
       <g>
-        <polygon
-          points={`${legL},${topY} ${legR},${topY} ${baseR},${groundY} ${baseL},${groundY}`}
-          fill="rgba(100, 116, 139, 0.14)"
-          stroke="none"
+        <path
+          d={`M ${lBase} ${groundY} L ${lTop} ${topY} L ${rTop} ${topY} L ${rBase} ${groundY} Z`}
+          fill="color-mix(in oklab, var(--ti-ink) 5%, var(--ti-surface))"
+          stroke="var(--ti-ink-2)"
+          strokeWidth={1.6}
         />
-        <g stroke="#64748b" strokeWidth={1.5} fill="none">
-          <line x1={legL} y1={topY} x2={baseL} y2={groundY} />
-          <line x1={legR} y1={topY} x2={baseR} y2={groundY} />
-          <line x1={legL} y1={topY} x2={legR} y2={topY} />
-        </g>
+        <line x1={lBase} y1={groundY} x2={lTop} y2={topY} stroke="var(--ti-ink-2)" strokeWidth={1.6} />
+        <line x1={rBase} y1={groundY} x2={rTop} y2={topY} stroke="var(--ti-ink-2)" strokeWidth={1.6} />
+        <path d={struts.join(" ")} stroke="color-mix(in oklab, var(--ti-ink) 28%, transparent)" strokeWidth={0.9} fill="none" />
+        <path d={braces.join(" ")} stroke="color-mix(in oklab, var(--ti-ink) 32%, transparent)" strokeWidth={1} fill="none" />
       </g>
     );
-  }, [centerX, groundY, page.towerHeightFtAgl, towerType, elevationView]);
+  }, [centerX, groundY, page.towerHeightFtAgl, towerType, elevationView, isAllFaces]);
+
+  const profileLabelY = useMemo(() => {
+    if (!isProfile) return {} as Record<string, number>;
+    const items: { id: string; y: number }[] = [];
+    for (const pl of page.placements) {
+      const node = nodes.find((n) => n.id === pl.deviceNodeId);
+      const data = node?.data as DeviceData | undefined;
+      if (!placementVisibleInView(pl, data, elevationView, trackItTowerContext)) continue;
+      items.push({ id: pl.id, y: ftAglToY(pl.mountHeightFtAgl, page.towerHeightFtAgl) });
+    }
+    return stackLabelY(items, 30);
+  }, [isProfile, page.placements, page.towerHeightFtAgl, nodes, elevationView, trackItTowerContext]);
+
+  const facesLabelY = useMemo(() => {
+    if (!isAllFaces) return {} as Record<string, number>;
+    const out: Record<string, number> = {};
+    for (const face of TOWER_FACE_ORDER) {
+      const items: { id: string; y: number }[] = [];
+      for (const pl of page.placements) {
+        const node = nodes.find((n) => n.id === pl.deviceNodeId);
+        const data = node?.data as DeviceData | undefined;
+        if (!placementVisibleInView(pl, data, elevationView, trackItTowerContext)) continue;
+        if (resolvePlacementTowerFace(pl, data, trackItTowerContext) !== face) continue;
+        items.push({ id: pl.id, y: ftAglToY(pl.mountHeightFtAgl, page.towerHeightFtAgl) });
+      }
+      Object.assign(out, stackLabelY(items, 28));
+    }
+    return out;
+  }, [isAllFaces, page.placements, page.towerHeightFtAgl, nodes, elevationView, trackItTowerContext]);
 
   const previewCursor = cursorContent ? snapPoint(cursorContent.x, cursorContent.y) : null;
   const lastDraft = draftPoints[draftPoints.length - 1];
   const rulerTopY = ftAglToY(page.towerHeightFtAgl, page.towerHeightFtAgl);
-  const rulerHeight = page.towerHeightFtAgl * TOWER_DRAFT_PX_PER_FT;
+
+  const titleX = isProfile ? centerX : isAllFaces ? 70 : TOWER_DRAFT_RULER_W + 24;
+
+  const cursorStyle = drawMode ? "crosshair" : panZoom.isPanning ? "grabbing" : "default";
 
   return (
-    <div className="relative flex-1 min-h-0 bg-[var(--color-bg)] overflow-hidden">
-      <ViewNavBar
-        zoom={zoom}
-        onZoomIn={() => setZoom((z) => stepViewZoom(z, "in"))}
-        onZoomOut={() => setZoom((z) => stepViewZoom(z, "out"))}
-        onFitAll={() => {
-          setZoom(1);
-          setPan({ x: 40, y: 20 });
+    <div
+      ref={panZoom.containerRef}
+      className={embeddedInChrome ? "relative flex-1 min-h-[420px]" : "relative flex-1 min-h-0"}
+      style={{
+        fontFamily: "var(--ti-font-sans)",
+        overflow: "hidden",
+        cursor: cursorStyle,
+      }}
+      onMouseDown={panZoom.onMouseDown}
+      onMouseMove={panZoom.onMouseMove}
+      onMouseUp={panZoom.onMouseUp}
+      onMouseLeave={panZoom.onMouseUp}
+    >
+      <div
+        style={{
+          transform: panZoom.transform,
+          transformOrigin: "0 0",
+          width: contentW,
+          height: svgH,
         }}
-      />
-      <svg
-        ref={svgRef}
-        className="w-full h-full"
-        style={{ cursor: drawMode ? "crosshair" : "default" }}
-        onClick={onCanvasClick}
-        onDoubleClick={onCanvasDoubleClick}
-        onMouseMove={onMouseMove}
-        onMouseLeave={() => setCursorContent(null)}
-        onDrop={onDrop}
-        onDragOver={onDragOver}
       >
-        <rect width="100%" height="100%" fill="var(--color-bg)" />
-        <g ref={contentGroupRef} transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-          <line
-            x1={TOWER_DRAFT_RULER_W}
-            y1={groundY}
-            x2={contentW - 40}
-            y2={groundY}
-            stroke="var(--color-text-muted)"
-            strokeWidth={2}
-          />
-          <text x={TOWER_DRAFT_RULER_W + 8} y={groundY + 14} fontSize={9} fill="var(--color-text-muted)">
-            Grade
-          </text>
+        <svg
+          ref={svgRef}
+          width={contentW}
+          height={svgH}
+          viewBox={`0 0 ${contentW} ${svgH}`}
+          style={{
+            display: "block",
+            cursor: cursorStyle,
+          }}
+          onClick={onCanvasClick}
+          onDoubleClick={onCanvasDoubleClick}
+          onMouseMove={onMouseMove}
+          onMouseLeave={() => setCursorContent(null)}
+          onDrop={onDrop}
+          onDragOver={onDragOver}
+        >
+        <rect width={contentW} height={svgH} fill="var(--ti-surface)" />
+        <text x={titleX} y={22} fontSize={13} fontWeight={700} fill="var(--ti-ink)">
+          {isProfile
+            ? "Tower elevation (documentation scale)"
+            : isAllFaces
+              ? "All faces — equipment by azimuth / face"
+              : activeViewFace(elevationView)
+                ? `${TOWER_FACE_LABELS[activeViewFace(elevationView)!]} face — equipment layout`
+                : "Tower elevation"}
+        </text>
+        <text x={titleX} y={38} fontSize={10.5} fill="var(--ti-muted)">
+          {formatHeightFtAgl(page.towerHeightFtAgl, measurementSystem, { suffix: false })}{" "}
+          {towerType.replace("_", " ")} · click to select · drag to move · double-click device to edit
+        </text>
 
-          <rect
-            x={0}
-            y={rulerTopY}
-            width={TOWER_DRAFT_RULER_W - 4}
-            height={rulerHeight}
-            fill="var(--color-surface)"
-            stroke="var(--color-border)"
-            opacity={0.85}
+        <g ref={contentGroupRef} transform={`translate(0, ${contentOffsetY})`}>
+          <line
+            x1={gridRulerX}
+            y1={groundY}
+            x2={contentW - 24}
+            y2={groundY}
+            stroke="color-mix(in oklab, var(--ti-ink) 35%, transparent)"
+            strokeWidth={1.2}
+          />
+          {isProfile && (
+            <g>
+              <rect
+                x={centerX - 26}
+                y={groundY + 6}
+                width={56}
+                height={20}
+                rx={3}
+                fill="var(--ti-surface-2)"
+                stroke="var(--ti-border)"
+              />
+              <text x={centerX + 2} y={groundY + 19} textAnchor="middle" fontSize={8.5} fill="var(--ti-muted)">
+                Equip. bldg
+              </text>
+              <text x={TOWER_DRAFT_RULER_W + 8} y={groundY + 19} fontSize={9} fill="var(--ti-faint)">
+                Grade
+              </text>
+            </g>
+          )}
+          {!isProfile && (
+            <text x={TOWER_DRAFT_RULER_W + 8} y={groundY + 14} fontSize={9} fill="var(--ti-muted)">
+              Grade
+            </text>
+          )}
+
+          <line
+            x1={gridRulerX - 2}
+            y1={rulerTopY}
+            x2={gridRulerX - 2}
+            y2={groundY}
+            stroke="color-mix(in oklab, var(--ti-ink) 35%, transparent)"
+            strokeWidth={1.2}
           />
           {page.guideBandsFt.map((band) => {
             const y = ftAglToY(band.ftAgl, page.towerHeightFtAgl);
+            const bandLabel =
+              band.ftAgl === 0
+                ? "Base"
+                : band.label ?? `${formatDistanceFromFt(band.ftAgl, measurementSystem)}`;
             return (
               <g key={`${band.ftAgl}-${band.label ?? ""}`}>
                 <line
-                  x1={0}
+                  x1={gridRulerX}
                   y1={y}
-                  x2={contentW - 20}
+                  x2={contentW - 24}
                   y2={y}
-                  stroke="var(--color-border)"
-                  strokeDasharray="6 4"
-                />
-                <line
-                  x1={TOWER_DRAFT_RULER_W - 8}
-                  y1={y}
-                  x2={TOWER_DRAFT_RULER_W}
-                  y2={y}
-                  stroke="var(--color-text-muted)"
+                  stroke="color-mix(in oklab, var(--ti-ink) 24%, transparent)"
+                  strokeWidth={1}
+                  strokeDasharray="4 5"
                 />
                 <text
-                  x={4}
+                  x={gridRulerX - 6}
                   y={y + 3}
-                  fontSize={8}
-                  fill="var(--color-text-muted)"
-                  fontFamily="ui-monospace, monospace"
+                  textAnchor="end"
+                  fontSize={9.5}
+                  fill="var(--ti-muted)"
+                  fontFamily="var(--ti-font-mono)"
                   style={{ cursor: drawMode ? "default" : "pointer" }}
                   onClick={(ev) => {
                     if (drawMode) return;
@@ -449,7 +566,7 @@ export default function TowerDraftRenderer({
                     }
                   }}
                 >
-                  {band.label ?? formatDistanceFromFt(band.ftAgl, measurementSystem)}
+                  {bandLabel}
                 </text>
               </g>
             );
@@ -464,7 +581,7 @@ export default function TowerDraftRenderer({
                 key={pl.id}
                 points={pl.points.map((p) => `${p.x},${p.y}`).join(" ")}
                 fill="none"
-                stroke={selected ? "#2563eb" : pl.strokeColor ?? "#94a3b8"}
+                stroke={selected ? "var(--ti-accent)" : pl.strokeColor ?? "var(--ti-faint)"}
                 strokeWidth={(pl.strokeWidth ?? 1.5) + (selected ? 0.75 : 0)}
                 strokeDasharray={towerDraftPolylineDash(pl.lineStyle)}
                 vectorEffect="non-scaling-stroke"
@@ -481,9 +598,9 @@ export default function TowerDraftRenderer({
 
           {draftPoints.map((p, i) => (
             <g key={`draft-pt-${i}`}>
-              <circle cx={p.x} cy={p.y} r={5} fill="#2563eb" stroke="#fff" strokeWidth={1.5} />
+              <circle cx={p.x} cy={p.y} r={5} fill="var(--ti-accent)" stroke="var(--ti-surface)" strokeWidth={1.5} />
               {i === 0 && (
-                <text x={p.x + 8} y={p.y - 6} fontSize={8} fill="#2563eb" fontWeight={600}>
+                <text x={p.x + 8} y={p.y - 6} fontSize={8} fill="var(--ti-accent)" fontWeight={600}>
                   start
                 </text>
               )}
@@ -519,11 +636,11 @@ export default function TowerDraftRenderer({
                 cy={previewCursor.y}
                 r={5}
                 fill="none"
-                stroke="#2563eb"
+                stroke="var(--ti-accent)"
                 strokeWidth={1.5}
                 strokeDasharray="2 2"
               />
-              <text x={previewCursor.x + 8} y={previewCursor.y - 6} fontSize={8} fill="var(--color-text-muted)">
+              <text x={previewCursor.x + 8} y={previewCursor.y - 6} fontSize={8} fill="var(--ti-muted)">
                 click to start
               </text>
             </g>
@@ -535,6 +652,11 @@ export default function TowerDraftRenderer({
             if (!placementVisibleInView(pl, data, elevationView, trackItTowerContext)) return null;
             const label = data ? resolveDeviceLabel(data, { useShortNames }).text : pl.deviceNodeId;
             const y = ftAglToY(pl.mountHeightFtAgl, page.towerHeightFtAgl);
+            const ly = isProfile
+              ? (profileLabelY[pl.id] ?? y)
+              : isAllFaces
+                ? (facesLabelY[pl.id] ?? y)
+                : y;
             const plFace = resolvePlacementTowerFace(pl, data, trackItTowerContext);
             const colCenter = placementCenterX(pl, data, elevationView, trackItTowerContext);
             const x = colCenter + (pl.offsetX ?? 0);
@@ -631,9 +753,7 @@ export default function TowerDraftRenderer({
                     const dragFace =
                       elevationView === "all-faces"
                         ? towerFaceAtContentX(cur.x)
-                        : elevationView !== "profile"
-                          ? elevationView
-                          : undefined;
+                        : activeViewFace(elevationView);
                     const dragColCenter =
                       dragFace && elevationView === "all-faces"
                         ? towerFaceColumnCenterX(dragFace)
@@ -667,6 +787,23 @@ export default function TowerDraftRenderer({
                 }}
                 opacity={draggingPlacementId === pl.id ? 0.85 : 1}
               >
+                {isProfile && (labelLayers.designation || labelLayers.azimuth || labelLayers.band) && (
+                  <line
+                    x1={6}
+                    y1={0}
+                    x2={profileLabelX - x - 4}
+                    y2={ly - y}
+                    stroke={selected ? "var(--ti-accent)" : "var(--ti-faint)"}
+                    strokeWidth={selected ? 1.4 : 1}
+                    opacity={0.8}
+                  />
+                )}
+                {selected && (
+                  <>
+                    <circle cx={x} cy={y} r={18} fill="none" stroke="var(--ti-accent)" strokeWidth={1.5} opacity={0.5} strokeDasharray="3 3" />
+                    <rect x={x - 17} y={y - 17} width={34} height={34} rx={8} fill="color-mix(in oklab, var(--ti-accent) 8%, transparent)" />
+                  </>
+                )}
                 <TowerDraftPlacementGlyph
                   deviceType={data?.deviceType}
                   selected={selected}
@@ -679,51 +816,76 @@ export default function TowerDraftRenderer({
                   mountFlip={pl.mountFlip}
                 />
                 {(labelLayers.designation || labelLayers.azimuth || labelLayers.band) && (
-                  <g transform={`translate(8, 0)`} data-print-show>
+                  <g
+                    transform={`translate(${isProfile ? profileLabelX - x : 16}, ${isProfile || isAllFaces ? ly - y : 0})`}
+                    data-print-show
+                  >
                     {labelLayers.designation && (
-                      <text x={0} y={-4} fontSize={8} fill="var(--color-text)">
+                      <text x={0} y={isProfile ? -2 : -8} fontSize={isProfile ? 10.5 : 10} fontWeight={600} fill="var(--ti-ink)">
                         {label}
                       </text>
                     )}
                     {labelLayers.azimuth && azimuthDeg != null && (
-                      <text x={0} y={6} fontSize={7} fill="var(--color-text-muted)">
+                      <text x={0} y={isProfile ? 11 : 4} fontSize={9} fill="var(--ti-accent)" fontFamily="var(--ti-font-mono)">
                         {azimuthDeg}°
                       </text>
                     )}
                     {labelLayers.band && bandLabel && (
-                      <text x={0} y={labelLayers.azimuth && azimuthDeg != null ? 14 : 6} fontSize={7} fill="var(--color-text-muted)">
+                      <text
+                        x={isProfile ? 40 : labelLayers.azimuth && azimuthDeg != null ? 36 : 0}
+                        y={isProfile ? 11 : 4}
+                        fontSize={9}
+                        fill="var(--ti-muted)"
+                        fontFamily="var(--ti-font-mono)"
+                      >
                         {bandLabel}
                       </text>
+                    )}
+                    {!isProfile && isAllFaces && Math.abs(ly - y) > 1 && (
+                      <line
+                        x1={6}
+                        y1={0}
+                        x2={14}
+                        y2={ly - y}
+                        stroke={selected ? "var(--ti-accent)" : "var(--ti-faint)"}
+                        strokeWidth={1}
+                        opacity={0.7}
+                      />
                     )}
                   </g>
                 )}
               </g>
             );
           })}
-
-          <text x={centerX - 40} y={16} fontSize={10} fontWeight={600} fill="var(--color-text)">
-            {elevationView === "profile"
-              ? "Tower elevation (documentation scale)"
-              : elevationView === "all-faces"
-                ? "All faces — equipment by azimuth / face"
-                : `${TOWER_FACE_LABELS[elevationView]} face — equipment layout`}
-          </text>
-          <text x={centerX - 40} y={28} fontSize={8} fill="var(--color-text-muted)">
-            {formatHeightFtAgl(page.towerHeightFtAgl, measurementSystem, { suffix: false })}{" "}
-            {towerType.replace("_", " ")} · click to select · drag to move · double-click device to edit
-          </text>
         </g>
-      </svg>
+        </svg>
+      </div>
+
+      <ViewNavBar
+        zoom={panZoom.zoom}
+        onZoomIn={panZoom.zoomInView}
+        onZoomOut={panZoom.zoomOutView}
+        onFitAll={() => panZoom.fitAllView(viewBounds)}
+      />
 
       {hoverTip && !drawMode && (
         <div
-          className="pointer-events-none fixed z-50 max-w-[220px] rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-[11px] shadow-lg"
-          style={{ left: hoverTip.x + 14, top: hoverTip.y + 12 }}
+          className="pointer-events-none fixed z-50 max-w-[220px] rounded-md px-2 py-1.5 text-[11px] shadow-lg"
+          style={{
+            left: hoverTip.x + 14,
+            top: hoverTip.y + 12,
+            border: "1px solid var(--ti-border)",
+            background: "var(--ti-surface)",
+            fontFamily: "var(--ti-font-sans)",
+          }}
         >
           {hoverTip.lines.map((line, i) => (
             <div
               key={i}
-              className={i === 0 ? "font-semibold text-[var(--color-text)]" : "text-[var(--color-text-muted)]"}
+              style={{
+                fontWeight: i === 0 ? 600 : 400,
+                color: i === 0 ? "var(--ti-ink)" : "var(--ti-muted)",
+              }}
             >
               {line}
             </div>

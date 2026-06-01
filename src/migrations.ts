@@ -16,7 +16,7 @@ import { defaultStubPlacement } from "./stubPlacement";
 import { getPortAbsolutePositions } from "./snapUtils";
 import type { SchematicNode } from "./types";
 
-export const CURRENT_SCHEMA_VERSION = 40;
+export const CURRENT_SCHEMA_VERSION = 42;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Migration = (data: any) => any;
@@ -507,6 +507,41 @@ const migrations: Record<number, Migration> = {
       }
     }
     data.version = 40;
+    return data;
+  },
+
+  40: (data) => {
+    const pages = Array.isArray(data.pages) ? data.pages : [];
+    if (!pages.some((p: { type?: string }) => p?.type === "drawing")) {
+      pages.unshift({
+        id: "drawing-1",
+        label: "Drawing",
+        type: "drawing",
+        viewports: [{ id: "overview", label: "Overview", fit: "all" }],
+        nodes: [],
+        edges: [],
+      });
+      data.pages = pages;
+    }
+    data.version = 41;
+    return data;
+  },
+
+  41: (data) => {
+    const nodes = data.nodes ?? [];
+    const edges = data.edges ?? [];
+    const pages = Array.isArray(data.pages) ? data.pages : [];
+    let firstDrawing = true;
+    for (const p of pages) {
+      if (p?.type !== "drawing") continue;
+      if (!Array.isArray(p.nodes) || p.nodes.length === 0) {
+        p.nodes = firstDrawing ? nodes : [];
+        p.edges = firstDrawing ? edges : [];
+        firstDrawing = false;
+      }
+    }
+    data.pages = pages;
+    data.version = 42;
     return data;
   },
 

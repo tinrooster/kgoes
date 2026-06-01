@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSyncDrawerStore } from "../sidebarStore";
 import { useReactFlow } from "@xyflow/react";
 import {
   KGO_ES_DRAWING_TAB_LABEL,
@@ -47,9 +48,12 @@ import {
   insertTowerCadSitePlan,
 } from "../towerSiteCadInsert";
 import TrackItModeBadge from "./TrackItModeBadge";
+import DrawingProjectDropdown from "./DrawingProjectDropdown";
+import { resolveActiveDrawingPage } from "../drawingPageUtils";
 import { useAppBuildInfo } from "../buildVersion";
 import DeviceLibraryAdminPanel from "./DeviceLibraryAdminPanel";
 import { useUiChromeStore } from "../uiChromeStore";
+import { TiIcon } from "./ti/TiBase";
 
 // ─── Menu data types ─────────────────────────────────────────────
 
@@ -174,11 +178,20 @@ export default function MenuBar() {
     activePage,
     setActivePage,
     addRackPage,
+    addTowerDraftPage,
     addPrintSheetPage,
   } = useSchematicStore();
 
   const printView = useSchematicStore((s) => s.printView);
   const showOwnedGearPane = useSchematicStore((s) => s.showOwnedGearPane);
+  const toggleSyncDrawer = useSyncDrawerStore((s) => s.toggle);
+  const syncDrawerOpen = useSyncDrawerStore((s) => s.open);
+  const edges = useSchematicStore((s) => s.edges);
+  const trackItLastPushedAt = useSchematicStore((s) => s.trackItLastPushedAt);
+  const isDrawingLinked = isTrackItDrawingLinked();
+  const unnumberedCount = edges.filter((e) => !e.data?.directAttach && !e.data?.cableId && e.data?.signalType).length;
+  const syncPendingCount = unnumberedCount + (isDrawingLinked && !trackItLastPushedAt ? 1 : 0);
+  const syncPillWarning = syncPendingCount > 0 || syncDrawerOpen;
   const undoSize = useSchematicStore((s) => s.undoSize);
   const redoSize = useSchematicStore((s) => s.redoSize);
 
@@ -186,6 +199,8 @@ export default function MenuBar() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const archiveInputRef = useRef<HTMLInputElement>(null);
   const menuBarRef = useRef<HTMLDivElement>(null);
+  const projectChipRef = useRef<HTMLButtonElement>(null);
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
 
   const { isDark, toggle: toggleTheme } = useTheme();
 
@@ -211,10 +226,8 @@ export default function MenuBar() {
     checkSession().then((u) => setIsLoggedIn(!!u));
   }, []);
 
-  const cloudSchematicId = useSchematicStore((s) => s.cloudSchematicId);
-  const cloudSavedAt = useSchematicStore((s) => s.cloudSavedAt);
-  const fileHandle = useSchematicStore((s) => s.fileHandle);
   const isOnline = useSchematicStore((s) => s.isOnline);
+  const trackItLink = useSchematicStore((s) => s.trackItLink);
   const helpMenuActive = openMenu === "Help" || showAboutDialog;
   const { version: appVersion, commit: appCommit } = useAppBuildInfo(helpMenuActive);
 
@@ -304,6 +317,10 @@ export default function MenuBar() {
   }, []);
 
   const trackItLinked = isTrackItDrawingLinked();
+  const projectChipLabel = trackItLink?.dwgNumber?.trim() || "GenericENGTruck";
+  const activeDrawingPage = resolveActiveDrawingPage(activePage, pages);
+  const projectChipDisplay =
+    activeDrawingPage?.label ?? projectChipLabel;
 
   // Save: reuse existing handle/cloud, or prompt for first save
   const handleSave = useCallback(async () => {
@@ -637,6 +654,7 @@ export default function MenuBar() {
   const closeMenu = () => setOpenMenu(null);
 
   const rackPageCount = pages.filter((p) => p.type === "rack-elevation").length;
+  const towerDraftCount = pages.filter((p) => p.type === "tower-draft").length;
 
   const pagesMenuItems: MenuEntry[] = [
     {
@@ -663,6 +681,14 @@ export default function MenuBar() {
       onClick: () =>
         addRackPage(
           rackPageCount === 0 ? "Rack Elevations" : `Rack Elevations ${rackPageCount + 1}`,
+        ),
+    },
+    {
+      type: "item",
+      label: "New Tower Elevation page…",
+      onClick: () =>
+        addTowerDraftPage(
+          towerDraftCount === 0 ? "Tower Elevation" : `Tower Elevation ${towerDraftCount + 1}`,
         ),
     },
     {
@@ -1009,29 +1035,84 @@ export default function MenuBar() {
 
   return (
     <div ref={menuBarRef}>
-      {/* Desktop menu bar */}
-      <div className="hidden md:flex h-10 bg-[var(--color-surface)] border-b border-[var(--color-border)] items-center px-1 shrink-0 select-none">
-        {/* Left: logo + brand + menus */}
-        <div className="flex items-center">
-          <div className="flex items-center gap-2 px-3 shrink-0">
-            <img src="/favicon.svg" alt="" className="w-5 h-5" />
-            <span className="text-xs font-semibold text-[var(--color-text-heading)] tracking-tight">
-              {KGO_ES_NAME}
-            </span>
-          </div>
-          <div className="w-px h-5 bg-[var(--color-border)]" />
+      {/* Desktop top bar — design v2 (52px, --ti-* tokens) */}
+      <div
+        className="hidden md:flex items-center shrink-0 select-none gap-2.5"
+        style={{
+          height: 52,
+          padding: "0 14px",
+          borderBottom: "1px solid var(--ti-border)",
+          background: "var(--ti-surface)",
+        }}
+      >
+        {/* Left: ES chip + wordmark + divider + project chip + menu nav */}
+        <div className="flex items-center gap-2" style={{ flexShrink: 0 }}>
+          {/* ES logo chip */}
+          <div style={{
+            width: 28, height: 28, borderRadius: 7,
+            background: "var(--ti-ink)", color: "var(--ti-bg)",
+            display: "grid", placeItems: "center",
+            fontFamily: "var(--ti-font-mono)", fontSize: 11, fontWeight: 700, letterSpacing: "-0.03em",
+            flexShrink: 0,
+          }}>ES</div>
+          <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.01em", color: "var(--ti-ink)", fontFamily: "var(--ti-font-sans)" }}>
+            {KGO_ES_NAME}
+          </span>
+          <div style={{ width: 1, height: 22, background: "var(--ti-divider)", margin: "0 2px" }} />
+          <button
+            ref={projectChipRef}
+            type="button"
+            title={`${projectChipDisplay} — drawings, sheets, and viewports`}
+            aria-expanded={projectMenuOpen}
+            aria-haspopup="menu"
+            onClick={() => {
+              setProjectMenuOpen((o) => !o);
+              setOpenMenu(null);
+            }}
+            style={{
+              height: 28,
+              maxWidth: 200,
+              padding: "0 10px",
+              border: `1px solid ${projectMenuOpen ? "var(--ti-accent)" : "var(--ti-border)"}`,
+              borderRadius: 8,
+              background: projectMenuOpen ? "var(--ti-accent-soft)" : "var(--ti-surface)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              color: "var(--ti-ink-2)",
+              fontFamily: "var(--ti-font-sans)",
+              fontSize: 12.5,
+              fontWeight: 500,
+              cursor: "pointer",
+            }}
+          >
+            <TiIcon name="folder" size={13} color="var(--ti-muted)" />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{projectChipDisplay}</span>
+            <TiIcon name="chevD" size={12} color="var(--ti-faint)" />
+          </button>
+          <DrawingProjectDropdown
+            anchorRef={projectChipRef}
+            open={projectMenuOpen}
+            onClose={() => setProjectMenuOpen(false)}
+            projectLabel={projectChipLabel}
+            fileName={schematicName}
+          />
+          {/* Menu nav */}
           {menuNames.map((name) => (
             <div key={name} className="relative">
               <button
-                className={`px-3 py-1.5 text-xs rounded transition-colors cursor-pointer ${
-                  openMenu === name
-                    ? "bg-[var(--color-surface-hover)] text-[var(--color-text-heading)]"
-                    : "text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-heading)]"
-                }`}
-                onClick={() => setOpenMenu(openMenu === name ? null : name)}
-                onMouseEnter={() => {
-                  if (openMenu && openMenu !== name) setOpenMenu(name);
+                style={{
+                  height: 28, padding: "0 9px", border: 0,
+                  background: openMenu === name ? "var(--ti-surface-2)" : "transparent",
+                  borderRadius: 6,
+                  fontSize: 12.5, fontWeight: 500,
+                  color: openMenu === name ? "var(--ti-ink)" : "var(--ti-ink-2)",
+                  fontFamily: "var(--ti-font-sans)",
+                  cursor: "pointer", whiteSpace: "nowrap",
+                  transition: "background 100ms",
                 }}
+                onClick={() => setOpenMenu(openMenu === name ? null : name)}
+                onMouseEnter={() => { if (openMenu && openMenu !== name) setOpenMenu(name); }}
               >
                 {name}
               </button>
@@ -1042,11 +1123,37 @@ export default function MenuBar() {
           ))}
         </div>
 
-        {/* Center: schematic name */}
-        <div className="flex-1 flex justify-center">
+        {/* Center: trackIT linked pill + document title */}
+        <div className="flex-1 flex items-center justify-center gap-2.5 min-w-0 px-3">
+          <span
+            title={trackItLinked ? "Linked to trackIT drawing" : "Standalone editor"}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              height: 20,
+              padding: "0 8px",
+              borderRadius: 999,
+              background: "var(--ti-accent-soft)",
+              color: "var(--ti-accent-ink)",
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: "0.01em",
+              flexShrink: 0,
+            }}
+          >
+            <span style={{ width: 5, height: 5, borderRadius: 999, background: "var(--ti-accent)" }} />
+            {trackItLinked ? "trackIT linked" : "standalone"}
+          </span>
           {editingName ? (
             <input
-              className="bg-transparent text-[var(--color-text-heading)] text-sm font-semibold outline-none border-b border-blue-500 max-w-[200px] text-center"
+              style={{
+                background: "transparent", border: "none",
+                borderBottom: "2px solid var(--ti-accent)",
+                outline: "none", fontSize: 13, fontWeight: 600,
+                color: "var(--ti-ink)", fontFamily: "var(--ti-font-sans)",
+                maxWidth: 280, textAlign: "center",
+              }}
               value={nameValue}
               onChange={(e) => setNameValue(e.target.value)}
               onBlur={commitName}
@@ -1057,91 +1164,114 @@ export default function MenuBar() {
               autoFocus
             />
           ) : (
-            <span className="flex items-center gap-2 max-w-full">
-              <TrackItModeBadge />
-              <span
-                className="text-sm font-semibold text-[var(--color-text-heading)] cursor-pointer hover:text-blue-600 transition-colors truncate"
-                onDoubleClick={() => {
-                  setNameValue(schematicName);
-                  setEditingName(true);
-                }}
-                title="Double-click to rename"
-              >
-                {schematicName}
-              </span>
-              {cloudSchematicId && (
-                <span
-                  title={
-                    !isOnline ? "Offline — cloud sync paused" :
-                    cloudSavedAt ? `Cloud saved: ${new Date(cloudSavedAt + "Z").toLocaleString()}` : "Cloud-backed schematic"
-                  }
-                >
-                  <svg className={`w-3.5 h-3.5 ${isOnline ? "text-blue-500" : "text-amber-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                  </svg>
-                </span>
-              )}
-              {fileHandle && !cloudSchematicId && (
-                <span title={`Saving to: ${fileHandle.name}`}>
-                  <svg className="w-3.5 h-3.5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v18l7-5 7 5V3H5z" />
-                  </svg>
-                </span>
-              )}
-              {!isOnline && (
-                <span
-                  className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700"
-                  title="No internet connection. Editing works normally — save to your computer via File → Save."
-                >
-                  Offline
-                </span>
-              )}
+            <span
+              style={{
+                fontSize: 13, fontWeight: 600, color: "var(--ti-ink)",
+                fontFamily: "var(--ti-font-sans)",
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                cursor: "pointer",
+              }}
+              onDoubleClick={() => { setNameValue(schematicName); setEditingName(true); }}
+              title="Double-click to rename"
+            >
+              {schematicName}
+            </span>
+          )}
+          {!isOnline && (
+            <span style={{
+              fontSize: 10, fontWeight: 600, letterSpacing: "0.04em",
+              padding: "2px 7px", borderRadius: 999,
+              background: "var(--ti-warning-soft)",
+              color: "color-mix(in oklab, var(--ti-warning) 65%, var(--ti-ink))",
+              flexShrink: 0,
+            }} title="No internet connection. Editing works normally — save to your computer via File → Save.">
+              Offline
             </span>
           )}
         </div>
 
-        {/* Right: undo/redo + alignment */}
-        <div className="flex items-center gap-1">
+        {/* Right: TrackIt sync pill + utility buttons + avatar */}
+        <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={toggleSyncDrawer}
+            title="Open TrackIt sync drawer"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              height: 28,
+              padding: "0 10px",
+              borderRadius: 999,
+              border: `1px solid ${syncPillWarning ? "color-mix(in oklab, var(--ti-warning) 45%, transparent)" : "var(--ti-border)"}`,
+              background: syncPillWarning ? "var(--ti-warning-soft)" : "var(--ti-surface)",
+              color: syncPillWarning ? "color-mix(in oklab, var(--ti-warning) 70%, var(--ti-ink))" : "var(--ti-ink-2)",
+              cursor: "pointer",
+              fontFamily: "var(--ti-font-sans)",
+              fontSize: 11.5,
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 999,
+                background: syncPillWarning ? "var(--ti-warning)" : "var(--ti-success)",
+              }}
+            />
+            {syncPendingCount > 0 ? `${syncPendingCount} change${syncPendingCount !== 1 ? "s" : ""}` : "In sync"}
+            <TiIcon name="arrowSwap" size={12} color="currentColor" />
+          </button>
+          <div style={{ width: 1, height: 20, background: "var(--ti-divider)", margin: "0 4px" }} />
           <button
             title="Undo (Ctrl+Z)"
             disabled={undoSize === 0}
             onClick={undo}
-            className="p-1.5 rounded hover:bg-[var(--color-surface-hover)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer text-[var(--color-text)]"
+            style={{
+              width: 30, height: 30, display: "grid", placeItems: "center",
+              border: 0, background: "transparent", borderRadius: 7,
+              color: "var(--ti-ink-2)", cursor: undoSize === 0 ? "not-allowed" : "pointer",
+              opacity: undoSize === 0 ? 0.3 : 1, transition: "background 100ms",
+            }}
+            className="hover:bg-[var(--ti-surface-2,#f0eeea)]"
           >
-            <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 7h7a3 3 0 0 1 0 6H9" />
-              <path d="M6 4 3 7l3 3" />
+            <svg viewBox="0 0 16 16" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 7h7a3 3 0 0 1 0 6H9" /><path d="M6 4 3 7l3 3" />
             </svg>
           </button>
           <button
             title="Redo (Ctrl+Shift+Z)"
             disabled={redoSize === 0}
             onClick={redo}
-            className="p-1.5 rounded hover:bg-[var(--color-surface-hover)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer text-[var(--color-text)]"
+            style={{
+              width: 30, height: 30, display: "grid", placeItems: "center",
+              border: 0, background: "transparent", borderRadius: 7,
+              color: "var(--ti-ink-2)", cursor: redoSize === 0 ? "not-allowed" : "pointer",
+              opacity: redoSize === 0 ? 0.3 : 1, transition: "background 100ms",
+            }}
+            className="hover:bg-[var(--ti-surface-2,#f0eeea)]"
           >
-            <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M13 7H6a3 3 0 0 0 0 6h1" />
-              <path d="M10 4l3 3-3 3" />
+            <svg viewBox="0 0 16 16" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M13 7H6a3 3 0 0 0 0 6h1" /><path d="M10 4l3 3-3 3" />
             </svg>
           </button>
-          <div className="w-px h-5 bg-[var(--color-border)] mx-1" />
+          <div style={{ width: 1, height: 20, background: "var(--ti-divider)", margin: "0 4px" }} />
           <button
             onClick={toggleTheme}
             title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-            className="p-1.5 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer text-[var(--color-text)]"
+            style={{
+              width: 30, height: 30, display: "grid", placeItems: "center",
+              border: 0, background: "transparent", borderRadius: 7,
+              fontSize: 15, cursor: "pointer", color: "var(--ti-ink-2)",
+              transition: "background 100ms",
+            }}
+            className="hover:bg-[var(--ti-surface-2,#f0eeea)]"
           >
-            {isDark ? (
-              <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="8" cy="8" r="3.5" />
-                <path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 16 16" className="w-4 h-4" fill="currentColor">
-                <path d="M6 .278a.77.77 0 0 1 .08.858 7.208 7.208 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277.527 0 1.04-.055 1.533-.16a.787.787 0 0 1 .81.316.733.733 0 0 1-.031.893A8.349 8.349 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.752.752 0 0 1 6 .278z" />
-              </svg>
-            )}
+            {isDark ? "☀" : "☾"}
           </button>
-          <div className="w-px h-5 bg-[var(--color-border)] mx-1" />
+          <div style={{ width: 1, height: 20, background: "var(--ti-divider)", margin: "0 4px" }} />
           <UserMenuButton />
         </div>
       </div>

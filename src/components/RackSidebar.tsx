@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSchematicStore } from "../store";
+import { confirmDialog } from "../appDialogStore";
 import type { DeviceData, RackElevationPage, RackType, RackData, RoomData } from "../types";
 import { RACK_TYPE_LABELS } from "../types";
 import { getRackMountSummary, shelfThrowdownDimensionsMissing } from "../rackMount";
 import { aggregateRackStats, computeRackStats, formatStatsLine } from "../rackStats";
 import { getDevicesInRoom } from "../rackLink";
 import { resolveDeviceLabel } from "../displayName";
+import { TiIcon } from "./ti/TiBase";
 
 /** Shared drag state — set by sidebar, read by RackRenderer during dragOver.
  *  (dataTransfer.getData is blocked during dragover for security; this fallback
@@ -103,34 +105,132 @@ export default function RackSidebar({ page }: RackSidebarProps) {
     draggedDeviceNodeId = null;
   }, []);
 
+  const totalHeightU = pageStats?.uTotal ?? page.racks.reduce((sum, r) => sum + r.heightU, 0);
+  const usedU = pageStats?.uUsed ?? 0;
+  const freeU = Math.max(0, totalHeightU - usedU);
+
   return (
-    <div className="w-56 bg-white border-r border-neutral-300 flex flex-col text-xs overflow-hidden">
-      {/* Add Rack section */}
-      <div className="p-2 border-b border-neutral-200">
+    <div
+      className="flex flex-col text-xs overflow-hidden shrink-0"
+      style={{
+        width: 264,
+        background: "var(--ti-sunken)",
+        borderRight: "1px solid var(--ti-border)",
+        fontFamily: "var(--ti-font-sans)",
+      }}
+    >
+      <div style={{ padding: 14, borderBottom: "1px solid var(--ti-divider)" }}>
         <button
-          className="w-full px-2 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+          type="button"
           onClick={() => setShowAddRack(true)}
+          style={{
+            width: "100%",
+            height: 38,
+            borderRadius: 9,
+            border: 0,
+            background: "var(--ti-ink)",
+            color: "var(--ti-bg)",
+            fontSize: 13,
+            fontWeight: 600,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 7,
+            cursor: "pointer",
+            fontFamily: "var(--ti-font-sans)",
+          }}
         >
-          + Add Rack
+          <TiIcon name="plus" size={15} color="var(--ti-bg)" />
+          Add rack
         </button>
       </div>
 
-      {/* Page totals */}
       {pageStats && (
-        <div className="p-2 border-b border-neutral-200 bg-neutral-50">
-          <div className="font-semibold text-neutral-500 mb-1 uppercase tracking-wider" style={{ fontSize: 9 }}>
-            Page Totals
+        <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--ti-divider)" }}>
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 600,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "var(--ti-muted)",
+              marginBottom: 10,
+            }}
+          >
+            Page totals
           </div>
-          <div className="text-neutral-700 text-[11px] leading-tight">{formatStatsLine(pageStats)}</div>
-          {(pageStats.unknownDepthCount > 0 || pageStats.unknownWeightCount > 0 || pageStats.unknownPowerCount > 0) && (
-            <div className="text-neutral-400 text-[10px] mt-0.5">
-              {[
-                pageStats.unknownDepthCount > 0 ? `${pageStats.unknownDepthCount} unknown depth` : null,
-                pageStats.unknownWeightCount > 0 ? `${pageStats.unknownWeightCount} unknown weight` : null,
-                pageStats.unknownPowerCount > 0 ? `${pageStats.unknownPowerCount} unknown power` : null,
-              ].filter(Boolean).join(" · ")}
+          <div
+            style={{
+              borderRadius: 9,
+              border: "1px solid var(--ti-border)",
+              background: "var(--ti-surface)",
+              padding: "9px 11px",
+              marginBottom: 7,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 10, color: "var(--ti-muted)", fontWeight: 600 }}>CAPACITY</span>
+              {totalHeightU > 0 && (
+                <span
+                  data-mono
+                  style={{ fontSize: 11, color: "var(--ti-success)", fontWeight: 600, fontFamily: "var(--ti-font-mono)" }}
+                >
+                  {freeU}U free
+                </span>
+              )}
             </div>
-          )}
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 1 }}>
+              <span data-mono style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.1, fontFamily: "var(--ti-font-mono)" }}>
+                {usedU}U
+              </span>
+              <span data-mono style={{ fontSize: 11, color: "var(--ti-faint)", fontFamily: "var(--ti-font-mono)" }}>
+                of {totalHeightU}U
+              </span>
+            </div>
+            {totalHeightU > 0 && (
+              <div
+                style={{
+                  height: 6,
+                  borderRadius: 999,
+                  background: "var(--ti-sunken)",
+                  marginTop: 7,
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${Math.min(100, (usedU / totalHeightU) * 100)}%`,
+                    height: "100%",
+                    background: "var(--ti-accent)",
+                  }}
+                />
+              </div>
+            )}
+          </div>
+          <div
+            style={{
+              borderRadius: 9,
+              border: "1px solid var(--ti-border)",
+              background: "var(--ti-surface)",
+              padding: "9px 11px",
+            }}
+          >
+            <div style={{ fontSize: 10, color: "var(--ti-muted)", fontWeight: 600, marginBottom: 4 }}>POWER DRAW</div>
+            <div data-mono style={{ fontSize: 13, fontWeight: 600, color: "var(--ti-ink)", fontFamily: "var(--ti-font-mono)" }}>
+              {formatStatsLine(pageStats)}
+            </div>
+            {(pageStats.unknownDepthCount > 0 || pageStats.unknownWeightCount > 0 || pageStats.unknownPowerCount > 0) && (
+              <div style={{ fontSize: 10, color: "var(--ti-warning)", marginTop: 6 }}>
+                {[
+                  pageStats.unknownDepthCount > 0 ? `${pageStats.unknownDepthCount} unknown depth` : null,
+                  pageStats.unknownWeightCount > 0 ? `${pageStats.unknownWeightCount} unknown weight` : null,
+                  pageStats.unknownPowerCount > 0 ? `${pageStats.unknownPowerCount} unknown power` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -220,9 +320,15 @@ export default function RackSidebar({ page }: RackSidebarProps) {
                     className="text-neutral-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                     title={`Delete ${rack.label}`}
                     onClick={() => {
-                      if (confirm(`Delete "${rack.label}"? This removes all devices placed in it.`)) {
-                        removeRack(page.id, rack.id);
-                      }
+                      void (async () => {
+                        const ok = await confirmDialog({
+                          title: "Delete rack",
+                          message: `Delete “${rack.label}”? This removes all devices placed in it.`,
+                          tone: "danger",
+                          confirmLabel: "Delete",
+                        });
+                        if (ok) removeRack(page.id, rack.id);
+                      })();
                     }}
                   >
                     ×

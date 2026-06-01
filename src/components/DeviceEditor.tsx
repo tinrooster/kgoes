@@ -26,6 +26,7 @@ import { CONNECTORS_WITH_GENDER_VARIATION, DEFAULT_CONNECTOR, NETWORK_SIGNAL_TYP
 import { getBundledTemplates, getCardsByFamily, checkSession, createDraft, createHandoff } from "../templateApi";
 import { getTemplateDrift } from "../templateSync";
 import LoginDialog from "./LoginDialog";
+import { confirmDialog } from "../appDialogStore";
 import CardCreatorDialog from "./CardCreatorDialog";
 import TemplateSyncDialog from "./TemplateSyncDialog";
 import { isValidIpv4, isValidSubnetMask, isValidVlan, findDuplicateIps } from "../networkValidation";
@@ -57,6 +58,8 @@ import {
   rackMetadataChanged,
   resolveMountingClass,
 } from "../rackMount";
+import { findTowerPlacementForDevice } from "../towerDraftPlacementLookup";
+import TowerDeviceMountEditor from "./TowerDeviceMountEditor";
 
 const ALL_SIGNAL_TYPES = (Object.keys(SIGNAL_LABELS) as SignalType[]).sort(
   (a, b) => SIGNAL_LABELS[a].localeCompare(SIGNAL_LABELS[b]),
@@ -161,8 +164,15 @@ export default function DeviceEditor() {
   const templatePresets = useSchematicStore((s) => s.templatePresets);
   const setTemplatePreset = useSchematicStore((s) => s.setTemplatePreset);
   const patchDeviceData = useSchematicStore((s) => s.patchDeviceData);
+  const pages = useSchematicStore((s) => s.pages);
+  const measurementSystem = useSchematicStore((s) => s.measurementSystem);
 
   const node = nodes.find((n) => n.id === editingNodeId && n.type === "device") as DeviceNode | undefined;
+
+  const towerPlacementCtx = useMemo(
+    () => findTowerPlacementForDevice(pages, editingNodeId),
+    [pages, editingNodeId],
+  );
 
   const [label, setLabel] = useState("");
   const [shortName, setShortName] = useState("");
@@ -946,11 +956,15 @@ export default function DeviceEditor() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }} onKeyDownCapture={onCtrlEnter}>
       <div
-        className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg shadow-2xl w-[560px] max-h-[85vh] flex flex-col"
+        className={`bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg shadow-2xl max-h-[85vh] flex flex-col ${
+          towerPlacementCtx ? "w-[600px]" : "w-[560px]"
+        }`}
       >
         {/* Header */}
         <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-[var(--color-text-heading)]">Device Properties</h2>
+          <h2 className="text-sm font-semibold text-[var(--color-text-heading)]">
+            {towerPlacementCtx ? "Tower equipment · device properties" : "Device Properties"}
+          </h2>
           <button
             onClick={close}
             className="text-[var(--color-text-muted)] hover:text-[var(--color-text-heading)] text-lg leading-none cursor-pointer"
@@ -971,6 +985,25 @@ export default function DeviceEditor() {
             >
               Update
             </button>
+          </div>
+        )}
+
+        {towerPlacementCtx && (
+          <div
+            className="border-b border-[var(--color-border)] shrink-0 overflow-y-auto max-h-[min(52vh,520px)]"
+            style={{ background: "var(--ti-surface, var(--color-surface))" }}
+          >
+            <TowerDeviceMountEditor
+              page={towerPlacementCtx.page}
+              placementId={towerPlacementCtx.placement.id}
+              measurementSystem={measurementSystem}
+            />
+            <p
+              className="px-4 pb-3 text-[10px] text-[var(--color-text-muted)] border-t border-[var(--color-border)]"
+              style={{ margin: 0, paddingTop: 10 }}
+            >
+              Schematic device properties (ports, power, rack metadata) are below.
+            </p>
           </div>
         )}
 
@@ -1309,14 +1342,15 @@ export default function DeviceEditor() {
             />
           </div>
 
-          {(deviceType.startsWith("rf-") ||
-            deviceType.startsWith("microwave-") ||
-            deviceType === "eng-receiver-ird") && (
-            <RfInstallationEditor
-              rfInstallation={rfInstallation}
-              onInstallationChange={setRfInstallation}
-            />
-          )}
+          {!towerPlacementCtx &&
+            (deviceType.startsWith("rf-") ||
+              deviceType.startsWith("microwave-") ||
+              deviceType === "eng-receiver-ird") && (
+              <RfInstallationEditor
+                rfInstallation={rfInstallation}
+                onInstallationChange={setRfInstallation}
+              />
+            )}
 
           {/* Rack elevation */}
           <div className="border border-[var(--color-border)] rounded-md p-3 space-y-2">
@@ -3337,10 +3371,20 @@ function SlotEditSection({
                 <button
                   type="button"
                   onClick={() => {
-                    const warnConn = connCount > 0 ? `This slot has ${connCount} connection(s) that will be disconnected. ` : "";
-                    const warnCard = slot.cardTemplateId ? "The installed card and its ports will be removed. " : "";
-                    if ((warnConn || warnCard) && !confirm(`${warnConn}${warnCard}Remove slot "${slot.label}"?`)) return;
-                    removeSlot(nodeId, slot.slotId);
+                    void (async () => {
+                      const warnConn = connCount > 0 ? `This slot has ${connCount} connection(s) that will be disconnected. ` : "";
+                      const warnCard = slot.cardTemplateId ? "The installed card and its ports will be removed. " : "";
+                      if (warnConn || warnCard) {
+                        const ok = await confirmDialog({
+                          title: "Remove slot",
+                          message: `${warnConn}${warnCard}Remove slot “${slot.label}”?`,
+                          tone: "danger",
+                          confirmLabel: "Remove",
+                        });
+                        if (!ok) return;
+                      }
+                      removeSlot(nodeId, slot.slotId);
+                    })();
                   }}
                   className="text-red-400 hover:text-red-500 text-xs cursor-pointer px-1 leading-none"
                   title="Remove slot"

@@ -1,3 +1,110 @@
+/* ─── Design system tokens (design v2) ───────────────────────────────────────
+   Scoped to [data-ti] (set on <html> by index.html inline script + useTheme).
+   Theme via [data-theme="light|dark"], density via [data-density="compact|comfortable|touch"].
+   Uses OKLCH for perceptual consistency. IBM Plex type family throughout.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+@keyframes kgoSlide {
+  from { transform: translateX(16px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+[data-ti] {
+  /* LIGHT — "Production Cream" */
+  --ti-bg:           oklch(96.5% 0.008 80);
+  --ti-surface:      oklch(98.5% 0.005 80);
+  --ti-surface-2:    oklch(94% 0.010 80);
+  --ti-sunken:       oklch(92% 0.012 78);
+  --ti-border:       oklch(86% 0.012 75);
+  --ti-border-soft:  oklch(91% 0.010 75);
+  --ti-divider:      oklch(89% 0.011 75);
+  --ti-ink:          oklch(22% 0.012 70);
+  --ti-ink-2:        oklch(38% 0.014 72);
+  --ti-muted:        oklch(54% 0.011 75);
+  --ti-faint:        oklch(68% 0.010 75);
+
+  --ti-accent:       oklch(56% 0.085 195);
+  --ti-accent-soft:  oklch(92% 0.040 195);
+  --ti-accent-ink:   oklch(36% 0.075 200);
+  --ti-on-accent:    oklch(99% 0.005 80);
+
+  --ti-success:      oklch(55% 0.115 155);
+  --ti-success-soft: oklch(92% 0.055 155);
+  --ti-warning:      oklch(68% 0.135 70);
+  --ti-warning-soft: oklch(93% 0.065 80);
+  --ti-danger:       oklch(56% 0.180 25);
+  --ti-danger-soft:  oklch(93% 0.060 25);
+  --ti-info:         oklch(58% 0.110 240);
+  --ti-info-soft:    oklch(93% 0.045 240);
+
+  --ti-shadow-sm: 0 1px 0 oklch(20% 0.012 70 / .05);
+  --ti-shadow-md: 0 1px 2px oklch(20% 0.012 70 / .06), 0 4px 12px oklch(20% 0.012 70 / .04);
+  --ti-shadow-lg: 0 2px 4px oklch(20% 0.012 70 / .06), 0 12px 32px oklch(20% 0.012 70 / .08);
+
+  --ti-font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --ti-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --ti-font-cond: 'IBM Plex Sans Condensed', 'IBM Plex Sans', sans-serif;
+
+  --ti-radius-sm:   6px;
+  --ti-radius-md:   10px;
+  --ti-radius-lg:   14px;
+  --ti-radius-xl:   20px;
+  --ti-radius-pill: 999px;
+
+  /* Density defaults (comfortable) */
+  --ti-row:    38px;
+  --ti-ctrl:   38px;
+  --ti-pad-x:  14px;
+}
+
+[data-ti][data-density="compact"]     { --ti-row: 32px; --ti-ctrl: 32px; --ti-pad-x: 12px; }
+[data-ti][data-density="comfortable"] { --ti-row: 38px; --ti-ctrl: 38px; --ti-pad-x: 14px; }
+[data-ti][data-density="touch"]       { --ti-row: 44px; --ti-ctrl: 44px; --ti-pad-x: 16px; }
+
+[data-ti][data-theme="dark"] {
+  --ti-bg:           oklch(16% 0.012 245);
+  --ti-surface:      oklch(23% 0.014 238);
+  --ti-surface-2:    oklch(28% 0.016 235);
+  --ti-sunken:       oklch(13% 0.010 245);
+  --ti-border:       oklch(38% 0.018 232);
+  --ti-border-soft:  oklch(32% 0.014 235);
+  --ti-divider:      oklch(34% 0.014 235);
+  --ti-ink:          oklch(97% 0.006 90);
+  --ti-ink-2:        oklch(86% 0.010 82);
+  --ti-muted:        oklch(70% 0.012 80);
+  --ti-faint:        oklch(54% 0.012 80);
+
+  --ti-accent:       oklch(78% 0.130 195);
+  --ti-accent-soft:  oklch(34% 0.070 195);
+  --ti-accent-ink:   oklch(90% 0.085 195);
+  --ti-on-accent:    oklch(14% 0.012 245);
+
+  --ti-success:      oklch(76% 0.140 155);
+  --ti-success-soft: oklch(32% 0.070 155);
+  --ti-warning:      oklch(82% 0.150 75);
+  --ti-warning-soft: oklch(34% 0.080 75);
+  --ti-danger:       oklch(74% 0.180 25);
+  --ti-danger-soft:  oklch(32% 0.090 25);
+  --ti-info:         oklch(78% 0.130 240);
+  --ti-info-soft:    oklch(32% 0.070 240);
+
+  --ti-shadow-sm: 0 1px 0 oklch(0% 0 0 / .35);
+  --ti-shadow-md: 0 1px 2px oklch(0% 0 0 / .35), 0 6px 16px oklch(0% 0 0 / .35);
+  --ti-shadow-lg: 0 2px 4px oklch(0% 0 0 / .4), 0 18px 40px oklch(0% 0 0 / .45);
+}
+
+/* Utility classes keyed on the design system */
+.ti-card { background: var(--ti-surface); border: 1px solid var(--ti-border); border-radius: var(--ti-radius-md); }
+.ti-divider-h { height: 1px; background: var(--ti-divider); }
+.ti-row-hover:hover { background: var(--ti-surface-2); }
+
+/* Quiet scrollbars inside [data-ti] elements */
+[data-ti] ::-webkit-scrollbar { width: 10px; height: 10px; }
+[data-ti] ::-webkit-scrollbar-thumb { background: var(--ti-border); border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
+[data-ti] ::-webkit-scrollbar-thumb:hover { background: var(--ti-muted); background-clip: content-box; border: 2px solid transparent; }
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+
 :root {
   --color-bg: #ffffff;
   --color-surface: #f8f8f8;

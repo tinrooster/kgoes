@@ -3,16 +3,19 @@ import { DEVICE_TEMPLATES } from "../deviceLibraryRuntime";
 import { useSchematicStore } from "../store";
 import type { DeviceData, DeviceTemplate, TowerDraftPage } from "../types";
 import { isTowerDraftEligibleDeviceType, placementSyncStatus, towerDraftLibraryTemplates } from "../towerDraftUtils";
-import { formatHeightFtAgl, type MeasurementSystem } from "../measurementUnits";
+import type { MeasurementSystem } from "../measurementUnits";
 import { resolveDeviceLabel } from "../displayName";
 import type { TowerDraftContextMenuState } from "./TowerDraftContextMenu";
 import TowerDraftTrackItPanel from "./TowerDraftTrackItPanel";
+import { TiIcon, TiIconButton, TiInput } from "./ti/TiBase";
 
 export let draggedTowerDeviceNodeId: string | null = null;
 export let draggedTowerTemplateId: string | null = null;
 
 interface TowerDraftSidebarProps {
   page: TowerDraftPage;
+  leftOpen: boolean;
+  onLeftOpenChange: (open: boolean) => void;
   measurementSystem: MeasurementSystem;
   selectedPlacementId: string | null;
   selectedPolylineId: string | null;
@@ -30,7 +33,9 @@ function matchesSearch(label: string, deviceType: string | undefined, search: st
 
 export default function TowerDraftSidebar({
   page,
-  measurementSystem,
+  leftOpen,
+  onLeftOpenChange,
+  measurementSystem: _measurementSystem,
   selectedPlacementId,
   selectedPolylineId,
   onSelectPlacement,
@@ -42,9 +47,9 @@ export default function TowerDraftSidebar({
   const customTemplates = useSchematicStore((s) => s.customTemplates);
   const useShortNames = useSchematicStore((s) => s.useShortNames);
   const trackItTowerContext = useSchematicStore((s) => s.trackItTowerContext);
-  const removeTowerDraftPlacement = useSchematicStore((s) => s.removeTowerDraftPlacement);
   const removeTowerDraftPolyline = useSchematicStore((s) => s.removeTowerDraftPolyline);
   const [search, setSearch] = useState("");
+  const siteLabel = trackItTowerContext?.siteName?.trim() || page.label;
 
   const placedNodeIds = new Set(page.placements.map((p) => p.deviceNodeId));
 
@@ -108,10 +113,25 @@ export default function TowerDraftSidebar({
       onDragEnd={() => {
         draggedTowerTemplateId = null;
       }}
-      className="px-2 py-1.5 rounded border border-emerald-600/40 bg-emerald-950/20 text-xs cursor-grab hover:border-emerald-500/70 hover:bg-emerald-950/35"
+      className="ti-row-hover"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+        padding: "8px 8px",
+        borderRadius: 8,
+        cursor: "grab",
+        border: "1px solid var(--ti-divider)",
+        marginBottom: 6,
+        background: "var(--ti-surface)",
+      }}
     >
-      <div className="font-medium truncate text-[var(--color-text)]">{template.shortName ?? template.label}</div>
-      <div className="text-[10px] text-[var(--color-text-muted)] truncate">{template.deviceType}</div>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ti-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {template.shortName ?? template.label}
+      </div>
+      <div style={{ fontSize: 10, fontFamily: "var(--ti-font-mono)", color: "var(--ti-muted)", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {template.deviceType}
+      </div>
     </div>
   );
 
@@ -134,150 +154,242 @@ export default function TowerDraftSidebar({
           e.preventDefault();
           onOpenContextMenu({ kind: "device", nodeId: n.id, screenX: e.clientX, screenY: e.clientY });
         }}
-        className="px-2 py-1.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] text-xs cursor-grab hover:border-blue-400/70 hover:bg-[var(--color-surface-hover)]"
+        className="ti-row-hover"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+          padding: "8px 8px",
+          borderRadius: 8,
+          cursor: "grab",
+          border: "1px solid var(--ti-divider)",
+          marginBottom: 6,
+          background: "var(--ti-surface)",
+        }}
       >
-        <div className="font-medium truncate text-[var(--color-text)]">{label}</div>
-        <div className="text-[10px] text-[var(--color-text-muted)] truncate">{data.deviceType}</div>
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ti-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {label}
+        </div>
+        <div style={{ fontSize: 10, fontFamily: "var(--ti-font-mono)", color: "var(--ti-muted)", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {data.deviceType}
+        </div>
       </div>
     );
   };
 
+  if (!leftOpen) {
+    return (
+      <div
+        style={{
+          width: 44,
+          flexShrink: 0,
+          borderRight: "1px solid var(--ti-border)",
+          background: "var(--ti-sunken)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          paddingTop: 10,
+          gap: 8,
+        }}
+        data-print-hide
+      >
+        <TiIconButton icon="chevR" variant="ghost" size="sm" onClick={() => onLeftOpenChange(true)} title="Show equipment" />
+        <div
+          style={{
+            writingMode: "vertical-rl",
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "var(--ti-muted)",
+            marginTop: 8,
+          }}
+        >
+          Equipment
+        </div>
+      </div>
+    );
+  }
+
   return (
     <aside
-      className="w-60 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col min-h-0 overflow-hidden"
       data-print-hide
+      style={{
+        width: 268,
+        flexShrink: 0,
+        borderRight: "1px solid var(--ti-border)",
+        background: "var(--ti-sunken)",
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
+        overflow: "hidden",
+        fontFamily: "var(--ti-font-sans)",
+      }}
     >
+      <div
+        style={{
+          padding: "11px 14px",
+          borderBottom: "1px solid var(--ti-divider)",
+          display: "flex",
+          alignItems: "center",
+          gap: 7,
+          flexShrink: 0,
+        }}
+      >
+        <TiIcon name="pin" size={14} color="var(--ti-accent)" />
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ti-accent-ink)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {siteLabel}
+        </span>
+        <TiIconButton icon="chevL" variant="ghost" size="sm" onClick={() => onLeftOpenChange(false)} title="Dock library" />
+      </div>
+
       <TowerDraftTrackItPanel page={page} onSelectLevel={onSelectLevel} />
 
-      <div className="px-2 py-2 border-b border-[var(--color-border)]">
-        <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1">
+      <div style={{ padding: "11px 14px 9px", flexShrink: 0 }}>
+        <div
+          style={{
+            fontSize: 10.5,
+            fontWeight: 600,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "var(--ti-muted)",
+            marginBottom: 8,
+          }}
+        >
           Antennas, MW &amp; cameras
         </div>
-        <input
-          type="search"
-          placeholder="Filter…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full px-2 py-1 text-xs rounded border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)]"
-        />
-        <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5 leading-snug">
-          Drag onto the elevation. Right-click a drawing device for the edit menu.
-        </p>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-1.5 min-h-0 space-y-3">
-        <div>
-          <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1 px-0.5">
-            Available ({availableItems.length})
-          </div>
-          <div className="space-y-1">
-            {availableItems.length === 0 ? (
-              <p className="text-[11px] text-[var(--color-text-muted)] px-1">No matches.</p>
-            ) : (
-              availableItems.map((item) =>
-                item.kind === "template"
-                  ? renderDraggableTemplate(item.template)
-                  : renderDraggableNode(item.node),
-              )
-            )}
-          </div>
+        <TiInput icon="search" placeholder="Filter…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ height: 32, width: "100%" }} />
+        <div style={{ fontSize: 11, color: "var(--ti-muted)", marginTop: 8, lineHeight: 1.4 }}>
+          Drag onto the elevation or site plan. Right-click a placed device for the edit menu.
         </div>
       </div>
 
-      <div className="border-t border-[var(--color-border)] p-2 max-h-[38%] overflow-y-auto shrink-0">
-        <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1">
-          On this tower ({page.placements.length})
-        </div>
-        {page.placements.length > 0 && (
-          <p className="text-[10px] text-[var(--color-text-muted)] mb-1 leading-snug">
-            Click to select · right-click for menu
-          </p>
-        )}
-        {page.placements.length === 0 && page.polylines.length === 0 ? (
-          <p className="text-[11px] text-[var(--color-text-muted)]">Nothing placed yet — drag from list above or refresh from trackIT.</p>
+      <div style={{ flex: 1, overflowY: "auto", padding: "0 8px 8px", minHeight: 0 }}>
+        {availableItems.length === 0 ? (
+          <p style={{ fontSize: 12, color: "var(--ti-muted)", padding: "0 6px" }}>No matches.</p>
         ) : (
-          <>
-            {page.placements.map((pl) => {
-              const data = nodes.find((n) => n.id === pl.deviceNodeId)?.data as DeviceData | undefined;
-              const label = data ? resolveDeviceLabel(data, { useShortNames }).text : pl.deviceNodeId;
-              const isSelected = pl.id === selectedPlacementId;
-              return (
-                <button
-                  key={pl.id}
-                  type="button"
-                  className={`w-full flex items-center justify-between gap-1 text-[11px] py-1 px-1 rounded text-left ${
-                    isSelected ? "bg-blue-100 dark:bg-blue-900/40" : "hover:bg-[var(--color-surface-hover)]"
-                  }`}
-                  onClick={() => {
-                    onSelectPlacement(pl.id);
-                    onSelectPolyline(null);
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    onSelectPlacement(pl.id);
-                    onSelectPolyline(null);
-                    onOpenContextMenu({
-                      kind: "placement",
-                      pageId: page.id,
-                      placementId: pl.id,
-                      deviceNodeId: pl.deviceNodeId,
-                      plantLocationId: pl.plantLocationId,
-                      screenX: e.clientX,
-                      screenY: e.clientY,
-                    });
-                  }}
-                >
-                  <span className="truncate" title={label}>
-                    <span className="text-[10px] mr-1">{syncBadge(pl)}</span>
-                    {formatHeightFtAgl(pl.mountHeightFtAgl, measurementSystem, { suffix: false })} · {label}
-                  </span>
-                  <span
-                    role="button"
-                    tabIndex={-1}
-                    className="text-red-500 hover:text-red-700 shrink-0 px-1"
-                    title="Remove"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeTowerDraftPlacement(page.id, pl.id);
-                      if (selectedPlacementId === pl.id) onSelectPlacement(null);
-                    }}
-                  >
-                    ×
-                  </span>
-                </button>
-              );
-            })}
-            {page.polylines.map((pl) => {
-              const isSelected = pl.id === selectedPolylineId;
-              return (
-                <button
-                  key={pl.id}
-                  type="button"
-                  className={`w-full flex items-center justify-between text-[11px] py-1 px-1 rounded ${
-                    isSelected ? "bg-blue-100 dark:bg-blue-900/40" : "hover:bg-[var(--color-surface-hover)]"
-                  }`}
-                  onClick={() => onSelectPolyline(isSelected ? null : pl.id)}
-                >
-                  <span className="text-[var(--color-text-muted)]">
-                    Line · {pl.lineStyle ?? "solid"} · {pl.points.length} pts
-                  </span>
-                  <span
-                    role="button"
-                    tabIndex={-1}
-                    className="text-red-500 hover:text-red-700 px-1"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeTowerDraftPolyline(page.id, pl.id);
-                      if (selectedPolylineId === pl.id) onSelectPolyline(null);
-                    }}
-                  >
-                    ×
-                  </span>
-                </button>
-              );
-            })}
-          </>
+          availableItems.map((item) =>
+            item.kind === "template"
+              ? renderDraggableTemplate(item.template)
+              : renderDraggableNode(item.node),
+          )
         )}
+      </div>
+
+      <div
+        style={{
+          borderTop: "1px solid var(--ti-divider)",
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
+          maxHeight: "42%",
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ padding: "9px 14px 5px", display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ti-muted)" }}>
+            On this tower
+          </span>
+          <span style={{ fontSize: 11, fontFamily: "var(--ti-font-mono)", color: "var(--ti-faint)" }}>{page.placements.length}</span>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "0 8px 8px" }}>
+          {page.placements.length === 0 && page.polylines.length === 0 ? (
+            <p style={{ fontSize: 12, color: "var(--ti-muted)", lineHeight: 1.45, padding: "0 6px" }}>
+              Nothing placed yet — drag from the library or sync from the schematic.
+            </p>
+          ) : (
+            <>
+              {[...page.placements]
+                .sort((a, b) => b.mountHeightFtAgl - a.mountHeightFtAgl)
+                .map((pl) => {
+                  const data = nodes.find((n) => n.id === pl.deviceNodeId)?.data as DeviceData | undefined;
+                  const label = data ? resolveDeviceLabel(data, { useShortNames }).text : pl.deviceNodeId;
+                  const isSelected = pl.id === selectedPlacementId;
+                  return (
+                    <div
+                      key={pl.id}
+                      className="ti-row-hover"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        onSelectPlacement(pl.id);
+                        onSelectPolyline(null);
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        onSelectPlacement(pl.id);
+                        onSelectPolyline(null);
+                        onOpenContextMenu({
+                          kind: "placement",
+                          pageId: page.id,
+                          placementId: pl.id,
+                          deviceNodeId: pl.deviceNodeId,
+                          plantLocationId: pl.plantLocationId,
+                          screenX: e.clientX,
+                          screenY: e.clientY,
+                        });
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 9,
+                        padding: "6px 8px",
+                        borderRadius: 8,
+                        cursor: "pointer",
+                        background: isSelected ? "var(--ti-surface)" : "transparent",
+                      }}
+                    >
+                      <span style={{ fontSize: 10, width: 14, flexShrink: 0 }}>{syncBadge(pl)}</span>
+                      <span style={{ fontSize: 10.5, fontFamily: "var(--ti-font-mono)", color: "var(--ti-muted)", width: 38, flexShrink: 0 }}>
+                        {Math.round(pl.mountHeightFtAgl)} ft
+                      </span>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--ti-ink)" }}>
+                        {label}
+                      </span>
+                    </div>
+                  );
+                })}
+              {page.polylines.map((pl) => {
+                const isSelected = pl.id === selectedPolylineId;
+                return (
+                  <button
+                    key={pl.id}
+                    type="button"
+                    className="ti-row-hover"
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "6px 8px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: isSelected ? "var(--ti-surface)" : "transparent",
+                      fontSize: 12,
+                      color: "var(--ti-muted)",
+                      cursor: "pointer",
+                    }}
+                    onClick={() => onSelectPolyline(isSelected ? null : pl.id)}
+                  >
+                    <span>Line · {pl.points.length} pts</span>
+                    <span
+                      role="button"
+                      tabIndex={-1}
+                      style={{ color: "var(--ti-danger)", padding: "0 4px" }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeTowerDraftPolyline(page.id, pl.id);
+                        if (selectedPolylineId === pl.id) onSelectPolyline(null);
+                      }}
+                    >
+                      ×
+                    </span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+        </div>
       </div>
     </aside>
   );

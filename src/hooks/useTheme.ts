@@ -11,6 +11,7 @@ export function useTheme() {
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDark);
+    document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
     localStorage.setItem(STORAGE_KEY, isDark ? "dark" : "light");
   }, [isDark]);
 

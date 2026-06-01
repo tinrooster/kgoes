@@ -78,6 +78,9 @@ export const DEFAULT_SIGNAL_COLORS: Record<SignalType, string> = {
   custom: "#64748b",
 };
 
+/** Stable fallback for Zustand selectors — never use inline `?? {}`. */
+export const EMPTY_SIGNAL_COLOR_OVERRIDES: Partial<Record<SignalType, string>> = {};
+
 const STORAGE_KEY = "easyschematic-signal-colors";
 
 /** Apply signal colors to CSS custom properties. */

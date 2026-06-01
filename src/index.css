@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "@xyflow/react/dist/style.css";
 @import "./theme.css";
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap');
 
 /* Enable class-based dark mode for Tailwind dark: utilities */
 @variant dark (&:where(.dark, .dark *));

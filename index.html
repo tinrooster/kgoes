@@ -39,9 +39,11 @@
     <script>
       (function() {
         var stored = localStorage.getItem('easyschematic-theme');
-        if (stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-          document.documentElement.classList.add('dark');
-        }
+        var isDark = stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (isDark) document.documentElement.classList.add('dark');
+        document.documentElement.setAttribute('data-ti', '');
+        document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-density', 'comfortable');
       })();
     </script>
     <div id="root"></div>

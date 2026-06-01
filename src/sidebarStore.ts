@@ -35,6 +35,7 @@ export interface SidebarPrefs {
   quickToolbarVisible: boolean;
   libraryBrowseMode: LibraryBrowseMode;
   panelsVisible: SidebarPanelVisibility;
+  rightInspectorOpen: boolean;
 }
 
 function trackItSessionDefaults(): Partial<SidebarPrefs> {
@@ -80,6 +81,7 @@ function loadSidebarPrefs(): SidebarPrefs {
     quickToolbarVisible: true,
     libraryBrowseMode: loadLibraryBrowseMode(),
     panelsVisible: { ...DEFAULT_PANELS_VISIBLE },
+    rightInspectorOpen: true,
     ...trackItSessionDefaults(),
   };
   try {
@@ -124,6 +126,7 @@ interface SidebarState extends SidebarPrefs {
   setPanelsVisible: (next: Partial<SidebarPanelVisibility>) => void;
   /** Only one wide right panel at a time */
   expandRightPanel: (panel: RightPanelId) => void;
+  setRightInspectorOpen: (v: boolean) => void;
 }
 
 export const useSidebarStore = create<SidebarState>((set, get) => ({
@@ -198,4 +201,24 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
     set(next);
     persistSidebar({ ...get(), ...next });
   },
+
+  setRightInspectorOpen: (rightInspectorOpen) => {
+    set({ rightInspectorOpen });
+    persistSidebar({ ...get(), rightInspectorOpen });
+  },
+}));
+
+// ─── Sync drawer state (not persisted — session only) ──────────────────────
+import { create as createSyncStore } from "zustand";
+
+interface SyncDrawerState {
+  open: boolean;
+  setOpen: (v: boolean) => void;
+  toggle: () => void;
+}
+
+export const useSyncDrawerStore = createSyncStore<SyncDrawerState>((set, get) => ({
+  open: false,
+  setOpen: (open) => set({ open }),
+  toggle: () => set({ open: !get().open }),
 }));

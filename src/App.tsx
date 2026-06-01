@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import {
   ReactFlow,
   Background,
-  MiniMap,
   BackgroundVariant,
   ConnectionLineType,
   ConnectionMode,
@@ -30,14 +29,22 @@ import ShowInfoPanel from "./components/ShowInfoPanel";
 import ViewOptionsPanel from "./components/ViewOptionsPanel";
 import CadToolsPanel from "./components/CadToolsPanel";
 import QuickSettingsToolbar from "./components/QuickSettingsToolbar";
-import { useSidebarStore } from "./sidebarStore";
+import KgoCanvasToolbar from "./components/KgoCanvasToolbar";
+import ViewportEditorDialog from "./components/ViewportEditorDialog";
+import { DRAWING_VIEWPORT_EDITOR_EVENT } from "./drawingViewportEvents";
+import KgoRightPanel from "./components/KgoRightPanel";
+import KgoCommandBar from "./components/KgoCommandBar";
+import KgoSyncDrawer from "./components/KgoSyncDrawer";
+import { useSidebarStore, useSyncDrawerStore } from "./sidebarStore";
 import { KGO_ES_NAME, kgoEsDocumentTitle } from "./branding";
+import { isDrawingCanvasActive } from "./drawingPageUtils";
 import MenuBar from "./components/MenuBar";
 import EdgeContextMenu from "./components/EdgeContextMenu";
 import IncompatibleConnectionDialog from "./components/IncompatibleConnectionDialog";
 import DeviceSwapDialog from "./components/DeviceSwapDialog";
 import MobileGate from "./components/MobileGate";
 import ToastContainer from "./components/ToastContainer";
+import AppDialogHost from "./components/AppDialogHost";
 import PendingSubmissionBanner from "./components/PendingSubmissionBanner";
 import BetaBanner from "./components/BetaBanner";
 import PortContextMenu from "./components/PortContextMenu";
@@ -61,7 +68,6 @@ import AnnotationEditor from "./components/AnnotationEditor";
 import QuickAddDevice from "./components/QuickAddDevice";
 import DeviceCreatorPicker from "./components/DeviceCreatorPicker";
 import PageTabs from "./components/PageTabs";
-import SchematicViewNav from "./components/SchematicViewNav";
 import RackPage from "./components/RackPage";
 import TowerDraftPageView from "./components/TowerDraftPage";
 import PrintSheetPage from "./components/PrintSheetPage";
@@ -75,6 +81,7 @@ import { refreshCloudCache } from "./cloudSync";
 import { useTheme } from "./hooks/useTheme";
 import { isTrackItPopupOpener, restoreTrackItPopupAutosaveOnMount } from "./trackitIntegration";
 import { schematicFlowRef } from "./schematicFlowRef";
+import { applyCanvasLayerPresentation } from "./canvasLayerPresentation";
 
 /** Darkens the canvas area left of x=0 and above y=0, marking the printable origin. */
 function CanvasOriginOverlay() {
@@ -249,6 +256,24 @@ function SchematicCanvas() {
     loadFromLocalStorage,
   } = useSchematicStore();
 
+  const showContainers = useSchematicStore((s) => s.showContainers);
+  const sigSolo = useSchematicStore((s) => s.sigSolo);
+  const roomSolo = useSchematicStore((s) => s.roomSolo);
+  const hiddenRoomIds = useSchematicStore((s) => s.hiddenRoomIds);
+  const roomLayerOpacity = useSchematicStore((s) => s.roomLayerOpacity);
+
+  const displayNodes = useMemo(
+    () =>
+      applyCanvasLayerPresentation(nodes, {
+        showContainers,
+        sigSolo,
+        roomSolo,
+        hiddenRoomIds,
+        roomLayerOpacity,
+      }),
+    [nodes, showContainers, sigSolo, roomSolo, hiddenRoomIds, roomLayerOpacity],
+  );
+
   const rfInstance = useReactFlow();
   schematicFlowRef.current = rfInstance;
   useEffect(() => {
@@ -286,7 +311,7 @@ function SchematicCanvas() {
 
   // Zoom to a device when requested from rack elevation / context menus.
   useEffect(() => {
-    if (!schematicFocusRequest || activePage !== "schematic" || !nodesInitialized) return;
+    if (!schematicFocusRequest || !isDrawingCanvasActive(activePage, useSchematicStore.getState().pages) || !nodesInitialized) return;
     const { nodeId } = schematicFocusRequest;
     const timer = window.setTimeout(() => {
       void rfInstance.fitView({
@@ -594,6 +619,7 @@ function SchematicCanvas() {
   const printView = useSchematicStore((s) => s.printView);
   const hiddenSignalTypesStr = useSchematicStore((s) => s.hiddenSignalTypes);
   const hiddenRfPathRolesStr = useSchematicStore((s) => s.hiddenRfPathRoles);
+  const sigSoloStr = useSchematicStore((s) => s.sigSolo);
   const hideAdapters = useSchematicStore((s) => s.hideAdapters);
   const adapterVisibilityDigest = useSchematicStore((s) =>
     s.nodes.filter((n) => n.type === "device" && (n.data as DeviceData).deviceType === "adapter")
@@ -634,6 +660,15 @@ function SchematicCanvas() {
         return !role || !hiddenRoles.has(role);
       });
     }
+    if (sigSoloStr) {
+      list = list.map((e) => ({
+        ...e,
+        style: {
+          ...e.style,
+          opacity: e.data?.signalType === sigSoloStr ? 1 : 0.12,
+        },
+      }));
+    }
     if (!selectedRackPort) return list;
     const { deviceNodeId, portId } = selectedRackPort;
     const edgeTouchesPort = (e: ConnectionEdge) => {
@@ -657,7 +692,7 @@ function SchematicCanvas() {
         className: hit ? "rack-port-highlight-edge" : e.className,
       };
     });
-  }, [edges, hiddenSignalTypesStr, hiddenRfPathRolesStr, selectedRackPort]);
+  }, [edges, hiddenSignalTypesStr, hiddenRfPathRolesStr, sigSoloStr, selectedRackPort]);
 
   const autoRoute = useSchematicStore((s) => s.autoRoute);
   const edgeHitboxSize = useSchematicStore((s) => s.edgeHitboxSize);
@@ -1506,6 +1541,8 @@ function SchematicCanvas() {
       // smallest enclosing room so nested layouts still resolve correctly.
       if (draggedNode.type === "room") {
         reparentAllDevices({ skipUndo: true });
+      } else {
+        useSchematicStore.getState().autoFitUnlockedRooms({ skipUndo: true });
       }
       flushPendingSnapshot();
     },
@@ -1542,7 +1579,7 @@ function SchematicCanvas() {
         selectionDirection ? `selection-${selectionDirection}` : "",
         panMode === "pan-first" && !shiftHeld && !isMobile ? "pan-mode" : "",
       ].filter(Boolean).join(" ") || undefined}
-      nodes={nodes}
+      nodes={displayNodes}
       edges={visibleEdges}
       onNodesChange={onNodesChange}
       onNodeDragStart={onNodeDragStart}
@@ -1744,20 +1781,6 @@ function SchematicCanvas() {
       <Background variant={BackgroundVariant.Dots} gap={GRID_SIZE} size={1} color={isDark ? "#374151" : "#d4d4d4"} />
       <AutoRouteChip />
       <AutoRouteConfirmDialog />
-      <MiniMap
-        position="bottom-left"
-        className="view-nav-minimap"
-        pannable
-        zoomable
-        style={{ bottom: "var(--view-nav-bar-offset)" }}
-        bgColor={isDark ? "rgba(15, 23, 42, 0.22)" : "rgba(255, 255, 255, 0.18)"}
-        maskColor={isDark ? "rgba(15, 23, 42, 0.38)" : "rgba(148, 163, 184, 0.48)"}
-        maskStrokeColor={isDark ? "rgba(96, 165, 250, 0.78)" : "rgba(37, 99, 235, 0.9)"}
-        maskStrokeWidth={1.75}
-        nodeStrokeWidth={1}
-        nodeColor={(node) => node.type === "room" ? (isDark ? "#475569" : "#cbd5e1") : "#3b82f6"}
-      />
-      <SchematicViewNav />
       <RoutingDebugOverlay />
     </ReactFlow>
     <RoutingTuningPanel />
@@ -1830,15 +1853,25 @@ export default function App() {
   const schematicName = useSchematicStore((s) => s.schematicName);
   const printView = useSchematicStore((s) => s.printView);
   const activePage = useSchematicStore((s) => s.activePage);
+  const pages = useSchematicStore((s) => s.pages);
   const activePgType = useSchematicStore((s) => {
     if (!s.activePage || s.activePage === "schematic") return null;
     return s.pages.find((p) => p.id === s.activePage)?.type ?? null;
   });
-  const isSchematicActive = activePage === "schematic";
+  const isSchematicActive = isDrawingCanvasActive(activePage, pages);
   const undo = useSchematicStore((s) => s.undo);
   const redo = useSchematicStore((s) => s.redo);
   const panelsVisible = useSidebarStore((s) => s.panelsVisible);
   const quickToolbarVisible = useSidebarStore((s) => s.quickToolbarVisible);
+  const syncDrawerOpen = useSyncDrawerStore((s) => s.open);
+  const setSyncDrawerOpen = useSyncDrawerStore((s) => s.setOpen);
+  const [viewportEditorOpen, setViewportEditorOpen] = useState(false);
+
+  useEffect(() => {
+    const open = () => setViewportEditorOpen(true);
+    window.addEventListener(DRAWING_VIEWPORT_EDITOR_EVENT, open);
+    return () => window.removeEventListener(DRAWING_VIEWPORT_EDITOR_EVENT, open);
+  }, []);
 
   useEffect(() => {
     document.title = kgoEsDocumentTitle(schematicName);
@@ -1919,8 +1952,17 @@ export default function App() {
                 <DeviceLibrary />
               </div>
             )}
-            <div className="flex-1 min-w-0">
-              <SchematicCanvas />
+            <div className="flex flex-col flex-1 min-w-0 min-h-0">
+              <div className="relative flex-1 min-h-0">
+                <SchematicCanvas />
+                <KgoCanvasToolbar />
+                <ViewportEditorDialog
+                  open={viewportEditorOpen}
+                  onClose={() => setViewportEditorOpen(false)}
+                />
+                <KgoSyncDrawer open={syncDrawerOpen} onClose={() => setSyncDrawerOpen(false)} />
+              </div>
+              <KgoCommandBar />
             </div>
             <div data-print-hide className="hidden md:flex shrink-0">
               {panelsVisible.viewOptions && <ViewOptionsPanel />}
@@ -1929,6 +1971,7 @@ export default function App() {
               {panelsVisible.colors && <SignalColorPanel />}
               {panelsVisible.cadTools && <CadToolsPanel />}
             </div>
+            <KgoRightPanel />
           </div>
         </div>
       ) : activePgType === "print-sheet" ? (
@@ -1952,6 +1995,7 @@ export default function App() {
       <DeviceSwapDialog />
       <MobileGate />
       <ToastContainer />
+      <AppDialogHost />
       <DrawingCaptureHost />
     </div>
   );

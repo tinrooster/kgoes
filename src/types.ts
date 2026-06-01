@@ -920,7 +920,26 @@ export interface PrintSheetPage {
   showTitleBlock: boolean;
 }
 
-export type SchematicPage = RackElevationPage | PrintSheetPage | TowerDraftPage;
+/** Named saved view of the main signal-flow canvas (overview, room, or custom pan/zoom). */
+export interface DrawingViewportPreset {
+  id: string;
+  label: string;
+  fit: "all" | "room" | "custom";
+  roomNodeId?: string;
+  viewport?: { x: number; y: number; zoom: number };
+}
+
+/** Tabbed main drawing sheet — own schematic graph plus saved viewports. */
+export interface DrawingPage {
+  id: string;
+  label: string;
+  type: "drawing";
+  viewports: DrawingViewportPreset[];
+  nodes: SchematicNode[];
+  edges: ConnectionEdge[];
+}
+
+export type SchematicPage = RackElevationPage | PrintSheetPage | TowerDraftPage | DrawingPage;
 
 export interface SchematicFile {
   version: number;
@@ -944,6 +963,18 @@ export interface SchematicFile {
   hiddenPinSignalTypes?: SignalType[];
   /** Comma-separated rfPathRole values hidden on canvas (tx, rx, bidirectional). */
   hiddenRfPathRoles?: RfPathRole[];
+  /** Canvas layers panel — show room/rack container frames (default true). */
+  showContainers?: boolean;
+  /** Solo one signal type on canvas (dims other edges). */
+  sigSolo?: SignalType | string;
+  /** Solo one room container (dims nodes outside). */
+  roomSolo?: string;
+  /** Room node ids hidden via layers panel. */
+  hiddenRoomIds?: string[];
+  /** Display order for container layers in the left panel. */
+  roomLayerOrder?: string[];
+  /** Per-room frame opacity (0–1) from layers panel. */
+  roomLayerOpacity?: Record<string, number>;
   /** @deprecated Replaced in schema v27 by the {{deviceType}} auxiliary row. Kept on the file
    *  shape so the migration can honor the user's prior suppression intent. */
   hideDeviceTypes?: boolean;
@@ -1071,6 +1102,14 @@ export type TrackItTowerSiteContext = {
     mountHeightM?: number;
     sectorLabel?: string;
     azimuthDeg?: number;
+  }[];
+  rfLinks?: {
+    id: string;
+    label: string;
+    kind: string;
+    azimuthDeg: number;
+    distanceMi?: number;
+    band?: string;
   }[];
   linkedDrawings?: {
     drawingId: string;

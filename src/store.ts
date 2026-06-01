@@ -28,6 +28,8 @@ import type {
   RackAccessory,
   TowerDraftPage,
   TowerDraftPlacement,
+  DrawingPage,
+  DrawingViewportPreset,
   TitleBlock,
   TitleBlockLayout,
   TemplatePreset,
@@ -60,6 +62,15 @@ import { pairKey } from "./roomDistance";
 import type { Orientation } from "./printConfig";
 import { computeAlignment, resolveAlignmentOverlaps, type AlignOperation } from "./alignUtils";
 import { CURRENT_SCHEMA_VERSION, migrateSchematic } from "./migrations";
+import {
+  createDrawingPage,
+  ensureDrawingPageGraphs,
+  isDrawingCanvasActive,
+  LEGACY_SCHEMATIC_PAGE_ID,
+  persistActiveDrawingGraph,
+  resolveActiveDrawingPage,
+  stripEdgesForPersist,
+} from "./drawingPageUtils";
 import { reconcileWaypointNodes, syncEdgesFromWaypointNodes, spliceWaypointsForRemovedNodes } from "./waypointSync";
 import { routeAllEdges, orthogonalize, extractSegments, segmentsCross, type RoutedEdge, type CrossingPoint } from "./edgeRouter";
 import { simplifyWaypoints, waypointsToSvgPath, waypointsToSvgPathWithHops } from "./pathfinding";
@@ -95,6 +106,7 @@ import {
   parseCableNumberFromId,
   pickDefaultActiveBlock,
 } from "./trackitNumberingUtils";
+import { computeAutoFitRoomUpdates } from "./containerLayers";
 
 /** Fix UTF-8 → Windows-1252 double-encoding in string values (e.g. → becomes â†').
  *  Applied on import so old/corrupted saves display correctly. */
@@ -682,6 +694,27 @@ interface SchematicState {
   setTemplateHiddenSignals: (templateId: string, hidden: SignalType[]) => void;
   showAllSignalTypes: () => void;
 
+  /** Canvas layer panel — show room/rack container frames on drawing */
+  showContainers: boolean;
+  setShowContainers: (show: boolean) => void;
+  /** Solo one signal type on canvas (dims other edges) */
+  sigSolo: string;
+  setSigSolo: (signalType: string) => void;
+  /** Solo one room container (dims nodes outside) */
+  roomSolo: string;
+  setRoomSolo: (roomId: string) => void;
+  /** Comma-separated room node ids hidden via layers panel */
+  hiddenRoomIds: string;
+  toggleRoomLayerVisibility: (roomId: string) => void;
+  /** Display order for container layers in the left panel */
+  roomLayerOrder: string;
+  setRoomLayerOrder: (order: string[]) => void;
+  /** Per-room frame opacity (0–1) from layers panel */
+  roomLayerOpacity: Record<string, number>;
+  setRoomLayerOpacity: (roomId: string, opacity: number) => void;
+  /** Resize unlocked room frames to fit direct children */
+  autoFitUnlockedRooms: (options?: { skipUndo?: boolean }) => void;
+
   // Template presets
   templatePresets: Record<string, TemplatePreset>;
   setTemplatePreset: (templateId: string, preset: TemplatePreset | null) => void;
@@ -829,11 +862,18 @@ interface SchematicState {
   removePrintSheetPage: (pageId: string) => void;
   renamePrintSheetPage: (pageId: string, label: string) => void;
   duplicateRackPage: (pageId: string) => string;
+  addDrawingPage: (label: string) => string;
+  removeDrawingPage: (pageId: string) => void;
+  renameDrawingPage: (pageId: string, label: string) => void;
+  duplicateDrawingPage: (pageId: string) => string;
+  addDrawingViewport: (pageId: string, preset: Omit<DrawingViewportPreset, "id">) => string;
+  updateDrawingViewport: (pageId: string, viewportId: string, patch: Partial<DrawingViewportPreset>) => void;
+  removeDrawingViewport: (pageId: string, viewportId: string) => void;
   addTowerDraftPage: (label: string, opts?: Partial<Omit<TowerDraftPage, "id" | "label" | "type" | "placements" | "polylines">>) => string;
   removeTowerDraftPage: (pageId: string) => void;
   updateTowerDraftPage: (
     pageId: string,
-    patch: Partial<Pick<TowerDraftPage, "towerHeightFtAgl" | "towerType" | "guideBandsFt" | "labelLayers">>,
+    patch: Partial<Pick<TowerDraftPage, "label" | "towerHeightFtAgl" | "towerType" | "guideBandsFt" | "labelLayers">>,
   ) => void;
   addTowerDraftPlacement: (pageId: string, placement: Omit<TowerDraftPlacement, "id">) => string;
   updateTowerDraftPlacement: (pageId: string, placementId: string, patch: Partial<TowerDraftPlacement>) => void;
@@ -923,6 +963,8 @@ interface SchematicState {
   assignManualCableNumberToSelection: (cableNumber: number, opts?: { allowOutsideBlock?: boolean }) => number;
   assignSlotFromActiveBlockToSelection: (slot: number) => number;
   clearCableIdsOnSelection: () => number;
+  /** Assign next free slots to every unnumbered non–direct-attach edge (Push schedule). */
+  assignAllUnnumberedTrackItNumbers: () => number;
 }
 
 let nodeIdCounter = 0;
@@ -1046,6 +1088,16 @@ function nextPrintSheetId(): string {
   return `printsheet-${++printSheetIdCounter}`;
 }
 
+let drawingPageIdCounter = 0;
+function nextDrawingPageId(): string {
+  return `drawing-${++drawingPageIdCounter}`;
+}
+
+let drawingViewportIdCounter = 0;
+function nextDrawingViewportId(): string {
+  return `drawvp-${++drawingViewportIdCounter}`;
+}
+
 let viewportIdCounter = 0;
 function nextViewportId(): string {
   return `viewport-${++viewportIdCounter}`;
@@ -1064,6 +1116,20 @@ function mapTowerDraftPage(
   return pages.map((p) => (p.id === pageId && p.type === "tower-draft") ? fn(p) : p);
 }
 
+function mapDrawingPage(
+  pages: SchematicPage[],
+  pageId: string,
+  fn: (p: DrawingPage) => DrawingPage,
+): SchematicPage[] {
+  return pages.map((p) => (p.id === pageId && p.type === "drawing") ? fn(p) : p);
+}
+
+function fallbackDrawingActivePage(pages: SchematicPage[]): string {
+  const drawing = pages.find((p) => p.type === "drawing");
+  if (drawing) return drawing.id;
+  return LEGACY_SCHEMATIC_PAGE_ID;
+}
+
 /** Sync rack- and tower-draft-related counters from pages data. */
 function syncRackCounters(pages: SchematicPage[]) {
   for (const page of pages) {
@@ -1071,6 +1137,14 @@ function syncRackCounters(pages: SchematicPage[]) {
     if (pm) rackPageIdCounter = Math.max(rackPageIdCounter, Number(pm[1]));
     const tdm = page.id.match(/^towerdraft-(\d+)$/);
     if (tdm) towerDraftPageIdCounter = Math.max(towerDraftPageIdCounter, Number(tdm[1]));
+    const dm = page.id.match(/^drawing-(\d+)$/);
+    if (dm) drawingPageIdCounter = Math.max(drawingPageIdCounter, Number(dm[1]));
+    if (page.type === "drawing") {
+      for (const vp of page.viewports) {
+        const dvm = vp.id.match(/^drawvp-(\d+)$/);
+        if (dvm) drawingViewportIdCounter = Math.max(drawingViewportIdCounter, Number(dvm[1]));
+      }
+    }
     if (page.type === "print-sheet") {
       for (const vp of page.viewports) {
         const vm = vp.id.match(/^viewport-(\d+)$/);
@@ -1570,6 +1644,12 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   showInstallationInfo: true,
   showPortCounts: false,
   templateHiddenSignals: {},
+  showContainers: true,
+  sigSolo: "",
+  roomSolo: "",
+  hiddenRoomIds: "",
+  roomLayerOrder: "",
+  roomLayerOpacity: {},
   templatePresets: {},
   favoriteTemplates: [],
   scrollConfig: { ...DEFAULT_SCROLL_CONFIG },
@@ -3453,6 +3533,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     updated = sortNodesParentFirst(updated);
     set({ nodes: updated });
     get().saveToLocalStorage();
+    get().autoFitUnlockedRooms({ skipUndo: true });
   },
 
   onRoomResizeEnd: (_nodeId) => {
@@ -4098,7 +4179,55 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   },
 
   showAllSignalTypes: () => {
-    set({ hiddenSignalTypes: "", hiddenPinSignalTypes: "", hiddenRfPathRoles: "" });
+    set({ hiddenSignalTypes: "", hiddenPinSignalTypes: "", hiddenRfPathRoles: "", sigSolo: "" });
+    get().saveToLocalStorage();
+  },
+
+  setShowContainers: (show) => {
+    set({ showContainers: show });
+    get().saveToLocalStorage();
+  },
+
+  setSigSolo: (signalType) => {
+    set({ sigSolo: signalType });
+    get().saveToLocalStorage();
+  },
+
+  setRoomSolo: (roomId) => {
+    set({ roomSolo: roomId });
+    get().saveToLocalStorage();
+  },
+
+  toggleRoomLayerVisibility: (roomId) => {
+    const current = get().hiddenRoomIds;
+    const set_ = new Set(current ? current.split(",").filter(Boolean) : []);
+    if (set_.has(roomId)) set_.delete(roomId);
+    else set_.add(roomId);
+    const next = [...set_].sort().join(",");
+    set({ hiddenRoomIds: next });
+    get().saveToLocalStorage();
+  },
+
+  setRoomLayerOrder: (order) => {
+    set({ roomLayerOrder: order.join(",") });
+    get().saveToLocalStorage();
+  },
+
+  setRoomLayerOpacity: (roomId, opacity) => {
+    const next = { ...get().roomLayerOpacity, [roomId]: opacity };
+    if (opacity >= 0.999) delete next[roomId];
+    set({ roomLayerOpacity: next });
+    get().saveToLocalStorage();
+  },
+
+  autoFitUnlockedRooms: (options) => {
+    const state = get();
+    const updated = computeAutoFitRoomUpdates(state.nodes, GRID_SIZE);
+    if (updated === state.nodes) return;
+    if (!options?.skipUndo) {
+      pushUndo({ nodes: state.nodes, edges: state.edges });
+    }
+    set({ nodes: updated });
     get().saveToLocalStorage();
   },
 
@@ -4328,7 +4457,29 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   // ── Rack builder actions ──────────────────────────────────────────
 
   setActivePage: (pageId) => {
-    set({ activePage: pageId });
+    const state = get();
+    if (state.activePage === pageId) return;
+
+    let pages = state.pages;
+    let nodes = state.nodes;
+    let edges = state.edges;
+    let loadSeq = state.loadSeq;
+
+    if (isDrawingCanvasActive(state.activePage, pages)) {
+      pages = persistActiveDrawingGraph(pages, state.activePage, nodes, edges);
+    }
+
+    if (isDrawingCanvasActive(pageId, pages)) {
+      const target = resolveActiveDrawingPage(pageId, pages);
+      if (target) {
+        nodes = structuredClone(target.nodes ?? []);
+        edges = structuredClone(target.edges ?? []);
+        loadSeq += 1;
+      }
+    }
+
+    set({ pages, activePage: pageId, nodes, edges, loadSeq });
+    get().saveToLocalStorage();
   },
 
   addRackPage: (label) => {
@@ -4855,6 +5006,134 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     return newPageId;
   },
 
+  addDrawingPage: (label) => {
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    const pages = persistActiveDrawingGraph(state.pages, state.activePage, state.nodes, state.edges);
+    const id = nextDrawingPageId();
+    const page = createDrawingPage(label.trim() || "Drawing", id);
+    set({
+      pages: [...pages, page],
+      activePage: id,
+      nodes: [],
+      edges: [],
+      loadSeq: state.loadSeq + 1,
+      undoSize: undoStack.length,
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+    return id;
+  },
+
+  removeDrawingPage: (pageId) => {
+    const state = get();
+    const remaining = state.pages.filter((p) => p.id !== pageId);
+    const drawingCount = remaining.filter((p) => p.type === "drawing").length;
+    if (drawingCount === 0) return;
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    const activePage =
+      state.activePage === pageId ? fallbackDrawingActivePage(remaining) : state.activePage;
+    let nodes = state.nodes;
+    let edges = state.edges;
+    let loadSeq = state.loadSeq;
+    if (state.activePage === pageId) {
+      const next = remaining.find((p) => p.id === activePage && p.type === "drawing") as DrawingPage | undefined;
+      if (next) {
+        nodes = structuredClone(next.nodes);
+        edges = structuredClone(next.edges);
+        loadSeq += 1;
+      }
+    }
+    set({ pages: remaining, activePage, nodes, edges, loadSeq, undoSize: undoStack.length, redoSize: 0 });
+    get().saveToLocalStorage();
+  },
+
+  renameDrawingPage: (pageId, label) => {
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    set({
+      pages: mapDrawingPage(state.pages, pageId, (p) => ({ ...p, label: label.trim() || p.label })),
+      undoSize: undoStack.length,
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+  },
+
+  duplicateDrawingPage: (pageId) => {
+    const state = get();
+    const src = state.pages.find((p) => p.id === pageId && p.type === "drawing") as DrawingPage | undefined;
+    if (!src) return "";
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    const newPageId = nextDrawingPageId();
+    const newPage: DrawingPage = {
+      ...structuredClone(src),
+      id: newPageId,
+      label: `${src.label} (copy)`,
+      viewports: src.viewports.map((v) => ({ ...v, id: nextDrawingViewportId() })),
+      nodes: structuredClone(src.nodes ?? []),
+      edges: structuredClone(src.edges ?? []),
+    };
+    const idx = state.pages.findIndex((p) => p.id === pageId);
+    const pages = [...state.pages.slice(0, idx + 1), newPage, ...state.pages.slice(idx + 1)];
+    set({
+      pages,
+      activePage: newPageId,
+      nodes: structuredClone(newPage.nodes),
+      edges: structuredClone(newPage.edges),
+      loadSeq: state.loadSeq + 1,
+      undoSize: undoStack.length,
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+    return newPageId;
+  },
+
+  addDrawingViewport: (pageId, preset) => {
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    const id = nextDrawingViewportId();
+    const entry: DrawingViewportPreset = { ...preset, id };
+    set({
+      pages: mapDrawingPage(state.pages, pageId, (p) => ({
+        ...p,
+        viewports: [...p.viewports, entry],
+      })),
+      undoSize: undoStack.length,
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+    return id;
+  },
+
+  updateDrawingViewport: (pageId, viewportId, patch) => {
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    set({
+      pages: mapDrawingPage(state.pages, pageId, (p) => ({
+        ...p,
+        viewports: p.viewports.map((v) => (v.id === viewportId ? { ...v, ...patch } : v)),
+      })),
+      undoSize: undoStack.length,
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+  },
+
+  removeDrawingViewport: (pageId, viewportId) => {
+    if (viewportId === "overview") return;
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    set({
+      pages: mapDrawingPage(state.pages, pageId, (p) => ({
+        ...p,
+        viewports: p.viewports.filter((v) => v.id !== viewportId),
+      })),
+      undoSize: undoStack.length,
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+  },
+
   addTowerDraftPage: (label, opts) => {
     const state = get();
     pushUndo({ nodes: state.nodes, edges: state.edges });
@@ -4874,7 +5153,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const state = get();
     pushUndo({ nodes: state.nodes, edges: state.edges });
     const pages = state.pages.filter((p) => p.id !== pageId);
-    const activePage = state.activePage === pageId ? "schematic" : state.activePage;
+    const activePage =
+      state.activePage === pageId ? fallbackDrawingActivePage(pages) : state.activePage;
     set({ pages, activePage, undoSize: undoStack.length, redoSize: 0 });
     get().saveToLocalStorage();
   },
@@ -5404,11 +5684,13 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   saveToLocalStorage: () => {
     if (!hydrated) return;
     const state = get();
+    const pages = persistActiveDrawingGraph(state.pages, state.activePage, state.nodes, state.edges);
+    if (pages !== state.pages) set({ pages });
     const data: SchematicFile = {
       version: CURRENT_SCHEMA_VERSION,
       name: state.schematicName,
       nodes: state.nodes,
-      edges: state.edges.map(({ zIndex: _, selected: _s, ...rest }) => rest) as ConnectionEdge[],
+      edges: stripEdgesForPersist(state.edges),
       ownedGear: state.ownedGear.length > 0 ? state.ownedGear : undefined,
       signalColors: state.signalColors,
       signalLineStyles: state.signalLineStyles,
@@ -5424,6 +5706,12 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       hiddenSignalTypes: state.hiddenSignalTypes ? state.hiddenSignalTypes.split(",") as SignalType[] : undefined,
       hiddenPinSignalTypes: state.hiddenPinSignalTypes ? state.hiddenPinSignalTypes.split(",") as SignalType[] : undefined,
       hiddenRfPathRoles: state.hiddenRfPathRoles ? state.hiddenRfPathRoles.split(",") as RfPathRole[] : undefined,
+      showContainers: state.showContainers === false ? false : undefined,
+      sigSolo: state.sigSolo || undefined,
+      roomSolo: state.roomSolo || undefined,
+      hiddenRoomIds: state.hiddenRoomIds ? state.hiddenRoomIds.split(",").filter(Boolean) : undefined,
+      roomLayerOrder: state.roomLayerOrder ? state.roomLayerOrder.split(",").filter(Boolean) : undefined,
+      roomLayerOpacity: Object.keys(state.roomLayerOpacity).length > 0 ? state.roomLayerOpacity : undefined,
       hideUnconnectedPorts: state.hideUnconnectedPorts || undefined,
       showInstallationInfo: state.showInstallationInfo === false ? false : undefined,
       showPortCounts: state.showPortCounts || undefined,
@@ -5462,7 +5750,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       colorKeyColumns: state.colorKeyColumns !== 1 ? state.colorKeyColumns : undefined,
       colorKeyPage: state.colorKeyPage !== "all" ? state.colorKeyPage : undefined,
       colorKeyOverrides: state.colorKeyOverrides && Object.keys(state.colorKeyOverrides).length > 0 ? state.colorKeyOverrides : undefined,
-      pages: state.pages.length > 0 ? state.pages : undefined,
+      pages: pages.length > 0 ? pages : undefined,
       facePlateDefinitionLayouts:
         Object.keys(state.facePlateDefinitionLayouts).length > 0
           ? state.facePlateDefinitionLayouts
@@ -5549,6 +5837,12 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         hiddenSignalTypes: data.hiddenSignalTypes?.length ? [...data.hiddenSignalTypes].sort().join(",") : "",
         hiddenPinSignalTypes: data.hiddenPinSignalTypes?.length ? [...data.hiddenPinSignalTypes].sort().join(",") : "",
         hiddenRfPathRoles: data.hiddenRfPathRoles?.length ? [...data.hiddenRfPathRoles].sort().join(",") : "",
+        showContainers: data.showContainers !== false,
+        sigSolo: data.sigSolo ?? "",
+        roomSolo: data.roomSolo ?? "",
+        hiddenRoomIds: data.hiddenRoomIds?.length ? [...data.hiddenRoomIds].sort().join(",") : "",
+        roomLayerOrder: data.roomLayerOrder?.length ? data.roomLayerOrder.join(",") : "",
+        roomLayerOpacity: data.roomLayerOpacity ?? {},
         hideUnconnectedPorts: data.hideUnconnectedPorts ?? false,
         showPortCounts: data.showPortCounts ?? false,
         templateHiddenSignals: data.templateHiddenSignals ?? {},
@@ -5618,11 +5912,12 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
   exportToJSON: () => {
     const state = get();
+    const pages = persistActiveDrawingGraph(state.pages, state.activePage, state.nodes, state.edges);
     return {
       version: CURRENT_SCHEMA_VERSION,
       name: state.schematicName,
       nodes: state.nodes,
-      edges: state.edges.map(({ zIndex: _, selected: _s, ...rest }) => rest) as ConnectionEdge[],
+      edges: stripEdgesForPersist(state.edges),
       customTemplates: state.customTemplates.length > 0 ? state.customTemplates : undefined,
       ownedGear: state.ownedGear.length > 0 ? state.ownedGear : undefined,
       signalColors: state.signalColors,
@@ -5639,6 +5934,12 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       hiddenSignalTypes: state.hiddenSignalTypes ? state.hiddenSignalTypes.split(",") as SignalType[] : undefined,
       hiddenPinSignalTypes: state.hiddenPinSignalTypes ? state.hiddenPinSignalTypes.split(",") as SignalType[] : undefined,
       hiddenRfPathRoles: state.hiddenRfPathRoles ? state.hiddenRfPathRoles.split(",") as RfPathRole[] : undefined,
+      showContainers: state.showContainers === false ? false : undefined,
+      sigSolo: state.sigSolo || undefined,
+      roomSolo: state.roomSolo || undefined,
+      hiddenRoomIds: state.hiddenRoomIds ? state.hiddenRoomIds.split(",").filter(Boolean) : undefined,
+      roomLayerOrder: state.roomLayerOrder ? state.roomLayerOrder.split(",").filter(Boolean) : undefined,
+      roomLayerOpacity: Object.keys(state.roomLayerOpacity).length > 0 ? state.roomLayerOpacity : undefined,
       hideUnconnectedPorts: state.hideUnconnectedPorts || undefined,
       showInstallationInfo: state.showInstallationInfo === false ? false : undefined,
       showPortCounts: state.showPortCounts || undefined,
@@ -5677,7 +5978,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       colorKeyColumns: state.colorKeyColumns !== 1 ? state.colorKeyColumns : undefined,
       colorKeyPage: state.colorKeyPage !== "all" ? state.colorKeyPage : undefined,
       colorKeyOverrides: state.colorKeyOverrides && Object.keys(state.colorKeyOverrides).length > 0 ? state.colorKeyOverrides : undefined,
-      pages: state.pages.length > 0 ? state.pages : undefined,
+      pages: pages.length > 0 ? pages : undefined,
       facePlateDefinitionLayouts:
         Object.keys(state.facePlateDefinitionLayouts).length > 0
           ? state.facePlateDefinitionLayouts
@@ -5878,6 +6179,49 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     return withId.length;
   },
 
+  assignAllUnnumberedTrackItNumbers: () => {
+    const state = get();
+    const block = resolveActiveReservedBlock(state);
+    if (!block || block.status !== "reserved") {
+      get().addToast("No active trackIT reservation — reserve a block in trackIT Numbering", "info");
+      return 0;
+    }
+
+    const unnumbered = state.edges.filter(
+      (e) => !e.data?.directAttach && !e.data?.cableId && e.data?.signalType,
+    );
+    if (unnumbered.length === 0) {
+      get().addToast("All cable runs are already numbered", "info");
+      return 0;
+    }
+
+    const free = freeSlotsForBlock(block, state.edges);
+    if (free.length === 0) {
+      get().addToast("No free numbers left in the active reserved block", "info");
+      return 0;
+    }
+
+    const assignCount = Math.min(unnumbered.length, free.length);
+    state.pushSnapshot();
+    for (let i = 0; i < assignCount; i++) {
+      get().assignTrackItNumberToEdge(unnumbered[i].id, free[i]);
+    }
+
+    if (unnumbered.length > assignCount) {
+      get().addToast(
+        `Assigned ${assignCount} number(s); ${unnumbered.length - assignCount} run(s) still need a wider block`,
+        "info",
+        5000,
+      );
+    } else {
+      get().addToast(
+        `Assigned numbers to ${assignCount} cable run${assignCount !== 1 ? "s" : ""}`,
+        "success",
+      );
+    }
+    return assignCount;
+  },
+
   importFromJSON: (rawData) => {
     rawData = repairMojibake(rawData) as SchematicFile;
     const data = migrateSchematic(rawData) as SchematicFile;
@@ -5903,17 +6247,25 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     for (const n of nodes) {
       if (n.type === "device") importDeviceDataMap.set(n.id, n.data as DeviceData);
     }
-    const importPages = reconcileShelfPlacementsForPages(data.pages ?? [], importDeviceDataMap);
+    let importPages = reconcileShelfPlacementsForPages(data.pages ?? [], importDeviceDataMap);
+    if (!importPages.some((p) => p.type === "drawing")) {
+      importPages = [createDrawingPage("Drawing", "drawing-1", { nodes, edges }), ...importPages];
+    }
+    importPages = ensureDrawingPageGraphs(importPages, nodes, edges);
+    const defaultDrawingPage = importPages.find((p) => p.type === "drawing") as DrawingPage | undefined;
+    const activeDrawingId = defaultDrawingPage?.id ?? LEGACY_SCHEMATIC_PAGE_ID;
+    const runtimeNodes = defaultDrawingPage ? structuredClone(defaultDrawingPage.nodes) : nodes;
+    const runtimeEdges = defaultDrawingPage ? structuredClone(defaultDrawingPage.edges) : edges;
     // Sanitize note HTML to prevent XSS from malicious schematic files
-    for (const node of nodes) {
+    for (const node of runtimeNodes) {
       if (node.type === "note" && node.data && "html" in node.data) {
         (node.data as { html: string }).html = sanitizeNoteHtml((node.data as { html: string }).html);
       }
     }
-    snapNodesToGrid(nodes);
-    applyRoomLockState(nodes);
-    syncCounters(nodes, edges);
-    edges = removeOrphanedEdges(nodes, edges);
+    snapNodesToGrid(runtimeNodes);
+    applyRoomLockState(runtimeNodes);
+    syncCounters(runtimeNodes, runtimeEdges);
+    const cleanedEdges = removeOrphanedEdges(runtimeNodes, runtimeEdges);
     // Merge imported custom templates with existing ones (avoid duplicates by template key)
     if (data.customTemplates?.length) {
       const existing = get().customTemplates;
@@ -5930,8 +6282,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     applySignalColors(colors);
     saveSignalColors({ ...loadSignalColors(), ...colors });
     set({
-      nodes,
-      edges,
+      nodes: runtimeNodes,
+      edges: cleanedEdges,
       facePlateDefinitionLayouts,
       deviceDefinitionRackMetadata,
       schematicName: data.name ?? "Imported Schematic",
@@ -5951,6 +6303,12 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       hiddenSignalTypes: data.hiddenSignalTypes?.length ? [...data.hiddenSignalTypes].sort().join(",") : "",
       hiddenPinSignalTypes: data.hiddenPinSignalTypes?.length ? [...data.hiddenPinSignalTypes].sort().join(",") : "",
       hiddenRfPathRoles: data.hiddenRfPathRoles?.length ? [...data.hiddenRfPathRoles].sort().join(",") : "",
+      showContainers: data.showContainers !== false,
+      sigSolo: data.sigSolo ?? "",
+      roomSolo: data.roomSolo ?? "",
+      hiddenRoomIds: data.hiddenRoomIds?.length ? [...data.hiddenRoomIds].sort().join(",") : "",
+      roomLayerOrder: data.roomLayerOrder?.length ? data.roomLayerOrder.join(",") : "",
+      roomLayerOpacity: data.roomLayerOpacity ?? {},
       hideUnconnectedPorts: data.hideUnconnectedPorts ?? false,
       showInstallationInfo: data.showInstallationInfo ?? true,
       showPortCounts: data.showPortCounts ?? false,
@@ -5992,7 +6350,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       colorKeyPage: data.colorKeyPage ?? "all",
       colorKeyOverrides: data.colorKeyOverrides ?? undefined,
       pages: importPages,
-      activePage: "schematic",
+      activePage: activeDrawingId,
       cableCosts: data.cableCosts ?? undefined,
       roomDistances: data.roomDistances ?? undefined,
       distanceSettings: data.distanceSettings ?? undefined,
@@ -6046,6 +6404,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         redoSize: 0,
       });
     } else {
+      const initialDrawingId = nextDrawingPageId();
+      const initialDrawingPage = createDrawingPage("Drawing", initialDrawingId);
       set({
         nodes: [],
         edges: [],
@@ -6060,6 +6420,12 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         hiddenSignalTypes: "",
         hiddenPinSignalTypes: "",
         hiddenRfPathRoles: "",
+        showContainers: true,
+        sigSolo: "",
+        roomSolo: "",
+        hiddenRoomIds: "",
+        roomLayerOrder: "",
+        roomLayerOpacity: {},
         hideUnconnectedPorts: false,
         showPortCounts: false,
         templateHiddenSignals: {},
@@ -6089,8 +6455,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         libraryActiveTab: "devices" as "devices" | "owned",
         undoSize: 0,
         redoSize: 0,
-        pages: [],
-        activePage: "schematic",
+        pages: [initialDrawingPage],
+        activePage: initialDrawingId,
         loadSeq: get().loadSeq + 1,
       });
     }

@@ -1,6 +1,8 @@
 import { type DragEvent, type ChangeEvent, useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { TiIconButton, TiSeg, TiInput, TiButton } from "./ti/TiBase";
+import { KgoLayersPanel } from "./KgoLayersPanel";
 import { getBundledTemplates, fetchTemplates } from "../templateApi";
-import { SIGNAL_LABELS } from "../types";
+import { SIGNAL_LABELS, SIGNAL_COLORS, type SignalType } from "../types";
 import type { DeviceTemplate, CustomTemplateGroup, OwnedGearFile, OwnedGearItem, SchematicNode, DeviceData } from "../types";
 import { useSchematicStore, CATEGORY_ORDER_DEFAULT } from "../store";
 import { useSidebarStore } from "../sidebarStore";
@@ -53,6 +55,12 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
   );
 }
 
+function getPrimarySignalColor(template: DeviceTemplate): string {
+  const types = getUniqueSignalTypes(template);
+  const first = types[0] as SignalType | undefined;
+  return first ? (SIGNAL_COLORS[first] ?? "var(--ti-muted)") : "var(--ti-muted)";
+}
+
 function TemplateItem({
   template,
   query,
@@ -77,10 +85,17 @@ function TemplateItem({
   const signalText = getUniqueSignalTypes(template)
     .map((t) => SIGNAL_LABELS[t as keyof typeof SIGNAL_LABELS])
     .join(" / ");
+  const signalColor = getPrimarySignalColor(template);
+  const isLocalTemplate = onDelete != null;
 
   return (
     <div
-      className="flex items-center gap-1 px-2 py-1.5 rounded cursor-grab hover:bg-[var(--color-surface-hover)] transition-colors group"
+      className="ti-row-hover group"
+      style={{
+        display: "flex", alignItems: "center", gap: 9,
+        padding: "7px 8px", borderRadius: 8,
+        cursor: "grab", fontFamily: "var(--ti-font-sans)",
+      }}
       draggable
       onDragStart={(e) => onDragStart(e, template)}
       onContextMenu={(e) => {
@@ -96,7 +111,7 @@ function TemplateItem({
               className={`leading-none text-xs cursor-pointer transition-colors ${
                 isFavorite
                   ? "text-amber-400"
-                  : "text-[var(--color-text-muted)]/30 opacity-0 group-hover:opacity-100"
+                  : "text-[var(--ti-faint)] opacity-0 group-hover:opacity-100"
               }`}
               title={isFavorite ? "Remove from favorites" : "Add to favorites"}
             >
@@ -108,8 +123,8 @@ function TemplateItem({
               onClick={(e) => { e.stopPropagation(); onAddToOwned(); }}
               className={`min-w-[1.1rem] rounded px-1 py-0 leading-none text-[9px] font-medium transition-all cursor-pointer ${
                 (ownedQuantity ?? 0) > 0
-                  ? "bg-blue-100 text-blue-700 opacity-100"
-                  : "uppercase tracking-wide text-[var(--color-text-muted)]/40 opacity-0 group-hover:opacity-100 hover:text-blue-600"
+                  ? "bg-[var(--ti-accent-soft)] text-[var(--ti-accent-ink)] opacity-100"
+                  : "uppercase tracking-wide text-[var(--ti-faint)] opacity-0 group-hover:opacity-100"
               }`}
               title={(ownedQuantity ?? 0) > 0 ? `Owned: ${ownedQuantity}` : "Add to owned gear"}
             >
@@ -118,34 +133,37 @@ function TemplateItem({
           )}
         </div>
       )}
-      <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-        <span className="text-xs text-[var(--color-text-heading)] font-medium truncate flex items-center gap-1">
+      <span style={{ width: 8, height: 8, borderRadius: 999, background: signalColor, flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0, lineHeight: 1.2 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--ti-ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 4 }}>
           <HighlightedText text={template.label} query={query} />
           {hasPreset && (
-            <span className="text-[8px] text-blue-500 bg-blue-50 rounded px-1 py-px font-normal shrink-0">preset</span>
+            <span style={{ fontSize: 8, color: "var(--ti-accent-ink)", background: "var(--ti-accent-soft)", borderRadius: 4, padding: "1px 4px", fontWeight: 600, flexShrink: 0 }}>preset</span>
           )}
-        </span>
+        </div>
         {template.manufacturer && (
-          <span className="text-[9px] text-[var(--color-text-muted)] opacity-70 truncate">
+          <div style={{ fontSize: 10, color: "var(--ti-muted)", fontFamily: "var(--ti-font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             <HighlightedText text={template.manufacturer} query={query} />
-          </span>
+          </div>
         )}
-        <span className="text-[10px] text-[var(--color-text-muted)]">
-          <HighlightedText text={signalText} query={query} />
-        </span>
-        {template.slots && template.slots.length > 0 && (
-          <span className="text-[9px] text-[var(--color-text-muted)] opacity-60">
-            {template.slots.length} slot{template.slots.length !== 1 ? "s" : ""}
-          </span>
+        {signalText && (
+          <div style={{ fontSize: 10, color: "var(--ti-faint)", marginTop: 1 }}>
+            <HighlightedText text={signalText} query={query} />
+          </div>
         )}
       </div>
+      {isLocalTemplate ? (
+        <span title="Local template" style={{ fontSize: 8.5, fontWeight: 700, color: "var(--ti-info)", letterSpacing: "0.04em", flexShrink: 0 }}>LOCAL</span>
+      ) : (
+        <span title="TrackIt library" style={{ width: 6, height: 6, borderRadius: 999, background: "var(--ti-success)", flexShrink: 0 }} />
+      )}
       {onDelete && (
         <button
           onClick={(e) => {
             e.stopPropagation();
             onDelete();
           }}
-          className="opacity-0 group-hover:opacity-100 text-red-400/60 hover:text-red-500 text-sm cursor-pointer px-1 transition-opacity"
+          style={{ border: 0, background: "transparent", color: "var(--ti-danger)", opacity: 0.5, cursor: "pointer", padding: "0 2px", fontSize: 14 }}
           title="Delete template"
         >
           &times;
@@ -1093,8 +1111,9 @@ export default function DeviceLibrary() {
   const leftExpanded = useSidebarStore((s) => s.leftExpanded);
   const setLeftExpanded = useSidebarStore((s) => s.setLeftExpanded);
   const libraryBrowseMode = useSidebarStore((s) => s.libraryBrowseMode);
-  const setLibraryBrowseMode = useSidebarStore((s) => s.setLibraryBrowseMode);
   const collapsed = !leftExpanded;
+  const [leftTab, setLeftTab] = useState<"devices" | "layers">("devices");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "trackit" | "local">("all");
   const [templates, setTemplates] = useState(getBundledTemplates);
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
   const [selectedBrands, setSelectedBrands] = useState<Set<string>>(new Set());
@@ -1153,6 +1172,13 @@ export default function DeviceLibrary() {
     if (selectedSignalTypes.size === 0) return true;
     return (t.ports ?? []).some((p) => selectedSignalTypes.has(p.signalType));
   }, [selectedSignalTypes]);
+
+  const matchesSourceFilter = useCallback((t: DeviceTemplate) => {
+    const key = templateKey(t);
+    if (sourceFilter === "all") return true;
+    if (sourceFilter === "local") return customTemplateIds.has(key);
+    return !customTemplateIds.has(key);
+  }, [sourceFilter, customTemplateIds]);
 
   // Cross-filtered dropdown options
   const categoryOptions = useMemo(() => {
@@ -1220,9 +1246,10 @@ export default function DeviceLibrary() {
     if (selectedCategories.size > 0) result = result.filter((t) => t.category && selectedCategories.has(t.category));
     if (selectedBrands.size > 0) result = result.filter((t) => t.manufacturer && selectedBrands.has(t.manufacturer));
     if (selectedSignalTypes.size > 0) result = result.filter(matchesSignalFilter);
+    if (sourceFilter === "trackit") return [];
     if (query) result = result.filter((t) => scoreTemplate(t, query) > 0);
     return result;
-  }, [customTemplates, bundledKeys, query, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter]);
+  }, [customTemplates, bundledKeys, query, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter, sourceFilter]);
 
   // When searching, produce a flat ranked list; when browsing, keep categories
   const rankedResults = useMemo(() => {
@@ -1235,6 +1262,7 @@ export default function DeviceLibrary() {
     if (selectedCategories.size > 0) all = all.filter((t) => t.category && selectedCategories.has(t.category));
     if (selectedBrands.size > 0) all = all.filter((t) => t.manufacturer && selectedBrands.has(t.manufacturer));
     if (selectedSignalTypes.size > 0) all = all.filter(matchesSignalFilter);
+    all = all.filter(matchesSourceFilter);
     const scored = all
       .map((t) => {
         let score = scoreTemplate(t, query);
@@ -1245,7 +1273,7 @@ export default function DeviceLibrary() {
       .filter((r) => r.score > 0)
       .sort((a, b) => b.score - a.score || a.template.label.localeCompare(b.template.label));
     return scored.map((r) => r.template);
-  }, [templates, customTemplates, hiddenIds, query, favoriteSet, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter]);
+  }, [templates, customTemplates, hiddenIds, query, favoriteSet, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter, matchesSourceFilter]);
 
   // Favorites section: resolve template keys to actual template objects
   const favoritesList = useMemo(() => {
@@ -1260,8 +1288,9 @@ export default function DeviceLibrary() {
     if (selectedCategories.size > 0) favs = favs.filter((t) => t.category && selectedCategories.has(t.category));
     if (selectedBrands.size > 0) favs = favs.filter((t) => t.manufacturer && selectedBrands.has(t.manufacturer));
     if (selectedSignalTypes.size > 0) favs = favs.filter(matchesSignalFilter);
+    favs = favs.filter(matchesSourceFilter);
     return favs;
-  }, [templates, customTemplates, hiddenIds, favoriteTemplates, customTemplateIds, libraryBrowseMode, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter]);
+  }, [templates, customTemplates, hiddenIds, favoriteTemplates, customTemplateIds, libraryBrowseMode, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter, matchesSourceFilter]);
 
   const filteredCategories = useMemo(() => {
     const groups = new Map<string, DeviceTemplate[]>();
@@ -1272,6 +1301,7 @@ export default function DeviceLibrary() {
       if (selectedCategories.size > 0 && (!t.category || !selectedCategories.has(t.category))) continue;
       if (selectedBrands.size > 0 && (!t.manufacturer || !selectedBrands.has(t.manufacturer))) continue;
       if (selectedSignalTypes.size > 0 && !matchesSignalFilter(t)) continue;
+      if (!matchesSourceFilter(t)) continue;
       const cat = t.category ?? "Other";
       const arr = groups.get(cat);
       if (arr) arr.push(t);
@@ -1290,7 +1320,7 @@ export default function DeviceLibrary() {
         return a.localeCompare(b);
       })
       .map(([label, tmpls]) => ({ label, templates: tmpls }));
-  }, [templates, categoryOrder, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter]);
+  }, [templates, categoryOrder, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter, matchesSourceFilter]);
 
   const totalResults = rankedResults?.length ??
     (filteredCustom.length + filteredCategories.reduce((sum, c) => sum + c.templates.length, 0));
@@ -1301,19 +1331,15 @@ export default function DeviceLibrary() {
 
   if (collapsed) {
     return (
-      <div className="w-8 bg-[var(--color-surface)] border-r border-[var(--color-border)] flex flex-col items-center h-full">
-        <button
-          onClick={() => setLeftExpanded(true)}
-          className="py-3 cursor-pointer hover:bg-[var(--color-surface-hover)] w-full flex justify-center transition-colors"
-          title="Show device library"
-        >
-          <svg viewBox="0 0 16 16" className="w-4 h-4 text-[var(--color-text-muted)]" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d="M6 3l5 5-5 5" />
-          </svg>
-        </button>
-        <div className="writing-mode-vertical text-[10px] uppercase tracking-widest text-[var(--color-text-muted)] mt-2 select-none"
-          style={{ writingMode: "vertical-rl" }}
-        >
+      <div style={{
+        width: 44, flexShrink: 0,
+        borderRight: "1px solid var(--ti-border)",
+        background: "var(--ti-sunken)",
+        display: "flex", flexDirection: "column", alignItems: "center",
+        height: "100%", paddingTop: 10, gap: 8,
+      }}>
+        <TiIconButton icon="chevR" variant="ghost" size="sm" onClick={() => setLeftExpanded(true)} title="Expand library" />
+        <div style={{ writingMode: "vertical-rl", fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ti-muted)", marginTop: 8 }}>
           {showOwnedGearPane ? "Library" : "Devices"}
         </div>
       </div>
@@ -1321,53 +1347,56 @@ export default function DeviceLibrary() {
   }
 
   return (
-    <div className="w-56 bg-[var(--color-surface)] border-r border-[var(--color-border)] flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="px-3 py-2 border-b border-[var(--color-border)] flex items-center justify-between gap-1">
-        <h2 className="text-xs font-semibold text-[var(--color-text-heading)] uppercase tracking-wider truncate">
-          {showOwnedGearPane ? "Library" : "Devices"}
-        </h2>
-        <div className="flex items-center gap-0.5 shrink-0">
-          {libraryActiveTab === "devices" && (
-            <button
-              type="button"
-              onClick={() => openDeviceAdmin({ tab: "manage" })}
-              className="cursor-pointer hover:bg-[var(--color-surface-hover)] rounded p-0.5 transition-colors"
-              title="Device library admin"
-            >
-              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-[var(--color-text-muted)]" fill="none" stroke="currentColor" strokeWidth={1.5}>
-                <circle cx="8" cy="8" r="2.5" />
-                <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" strokeLinecap="round" />
-              </svg>
-            </button>
-          )}
-          <button
-            onClick={() => setLeftExpanded(false)}
-            className="cursor-pointer hover:bg-[var(--color-surface-hover)] rounded p-0.5 transition-colors"
-            title="Collapse device library"
-          >
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-[var(--color-text-muted)]" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path d="M10 3l-5 5 5 5" />
-            </svg>
-          </button>
+    <div
+      style={{
+        width: collapsed ? 44 : 264,
+        flexShrink: 0,
+        borderRight: "1px solid var(--ti-border)",
+        background: "var(--ti-sunken)",
+        display: "flex", flexDirection: "column",
+        height: "100%", overflow: "hidden",
+        transition: "width 150ms",
+      }}
+    >
+      {/* Header — Devices | Layers seg tab + collapse */}
+      {collapsed ? (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 10, gap: 8 }}>
+          <TiIconButton icon="chevR" variant="ghost" size="sm" onClick={() => setLeftExpanded(true)} title="Expand library" />
+          <div style={{ writingMode: "vertical-rl", fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ti-muted)", marginTop: 8 }}>Devices</div>
         </div>
-      </div>
-
-      {libraryActiveTab === "devices" && (
-        <div className="px-2 py-1 border-b border-[var(--color-border)]">
-          <label className="flex items-center gap-2 cursor-pointer px-1 py-0.5">
-            <input
-              type="checkbox"
-              checked={libraryBrowseMode === "userTemplatesOnly"}
-              onChange={(e) =>
-                setLibraryBrowseMode(e.target.checked ? "userTemplatesOnly" : "full")
-              }
-              className="w-3 h-3 accent-blue-500"
+      ) : (
+        <div style={{ height: 44, padding: "0 8px 0 10px", display: "flex", alignItems: "center", gap: 6, borderBottom: "1px solid var(--ti-divider)", flexShrink: 0 }}>
+          <TiSeg
+            size="sm"
+            value={leftTab}
+            onChange={(v) => setLeftTab(v as "devices" | "layers")}
+            options={[{ value: "devices", label: "Devices" }, { value: "layers", label: "Layers" }]}
+            style={{ flex: 1 }}
+          />
+          {leftTab === "devices" && libraryActiveTab === "devices" && (
+            <TiIconButton
+              icon="settings"
+              variant="ghost"
+              size="sm"
+              title="Device library admin"
+              onClick={() => openDeviceAdmin({ tab: "manage" })}
             />
-            <span className="text-[10px] text-[var(--color-text)]">User library only</span>
-          </label>
+          )}
+          <TiIconButton icon="chevL" variant="ghost" size="sm" onClick={() => setLeftExpanded(false)} title="Collapse library" />
         </div>
       )}
+
+      {/* Layers tab */}
+      {!collapsed && leftTab === "layers" && <KgoLayersPanel />}
+
+      {/* Device library content — hidden when Layers tab is active */}
+      <div style={{
+        display: (!collapsed && leftTab === "layers") ? "none" : "flex",
+        flexDirection: "column",
+        flex: 1,
+        minHeight: 0,
+        overflow: "hidden",
+      }}>
 
       {showOwnedGearPane && (
         <div className="px-2 py-1.5 border-b border-[var(--color-border)] flex gap-1">
@@ -1394,41 +1423,51 @@ export default function DeviceLibrary() {
         </div>
       )}
 
-      {/* Search */}
-      <div className="px-2 pt-2 pb-1.5">
-        <div className="relative">
-          <svg
-            className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-text-muted)]"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.3-4.3" strokeLinecap="round" />
-          </svg>
-          <input
-            type="text"
+      {/* Search + source filter */}
+      {libraryActiveTab === "devices" && (
+        <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8, borderBottom: "1px solid var(--ti-divider)", flexShrink: 0 }}>
+          <TiInput
+            icon="search"
+            placeholder="Search devices…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={libraryActiveTab === "owned" ? "Search owned gear..." : "Search devices..."}
-            className="w-full bg-white border border-[var(--color-border)] rounded pl-7 pr-2 py-1.5 text-xs text-[var(--color-text)] outline-none focus:border-blue-500 placeholder:text-[var(--color-text-muted)]"
+            style={{ height: 34, width: "100%" }}
           />
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] text-sm cursor-pointer"
-            >
-              &times;
-            </button>
+          <TiSeg
+            size="sm"
+            value={sourceFilter}
+            onChange={(v) => setSourceFilter(v as "all" | "trackit" | "local")}
+            options={[
+              { value: "all", label: "All" },
+              { value: "trackit", label: "TrackIt" },
+              { value: "local", label: "Local" },
+            ]}
+            style={{ width: "100%" }}
+          />
+          {query && (
+            <div style={{ fontSize: 10, color: "var(--ti-muted)", padding: "0 2px" }}>
+              {totalResults} result{totalResults !== 1 ? "s" : ""}
+            </div>
           )}
         </div>
-        {query && (
-          <div className="text-[10px] text-[var(--color-text-muted)] mt-1 px-0.5">
-            {(libraryActiveTab === "owned" ? ownedResults : totalResults)} result{(libraryActiveTab === "owned" ? ownedResults : totalResults) !== 1 ? "s" : ""}
-          </div>
-        )}
-      </div>
+      )}
+
+      {libraryActiveTab === "owned" && (
+        <div style={{ padding: 10, borderBottom: "1px solid var(--ti-divider)", flexShrink: 0 }}>
+          <TiInput
+            icon="search"
+            placeholder="Search owned gear…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ height: 34, width: "100%" }}
+          />
+          {query && (
+            <div style={{ fontSize: 10, color: "var(--ti-muted)", padding: "4px 2px 0" }}>
+              {ownedResults} result{ownedResults !== 1 ? "s" : ""}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filters */}
       {libraryActiveTab === "devices" && (
@@ -1566,7 +1605,7 @@ export default function DeviceLibrary() {
       {libraryActiveTab === "owned" ? (
         <OwnedGearTab query={query} />
       ) : (
-      <div className="flex-1 overflow-y-auto p-2 space-y-2">
+      <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
         {browseUserLibraryOnly && (
           <CustomTemplatesSection
             customTemplates={filteredCustom}
@@ -1619,17 +1658,17 @@ export default function DeviceLibrary() {
           </div>
         )}
 
-        {/* Create New Device */}
-        {!hasFilter && (!query || "create new device".includes(query.toLowerCase())) && (
+        {/* Create New Device — also in footer; keep quick access when searching */}
+        {!hasFilter && query && "create new device".includes(query.toLowerCase()) && (
           <button
             onClick={() => setShowDeviceCreator(true)}
-            className="w-full flex items-center gap-2 px-2 py-1.5 rounded border border-dashed border-blue-400/50 bg-blue-500/10 hover:bg-blue-500/15 text-xs text-blue-600 hover:text-blue-700 cursor-pointer transition-colors"
+            style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 8,
+              padding: "7px 8px", borderRadius: 8, border: "1px dashed var(--ti-border)",
+              background: "var(--ti-surface)", color: "var(--ti-accent-ink)",
+              fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "var(--ti-font-sans)",
+            }}
           >
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.5}>
-              <rect x="2" y="2" width="12" height="12" rx="2" />
-              <line x1="8" y1="5" x2="8" y2="11" />
-              <line x1="5" y1="8" x2="11" y2="8" />
-            </svg>
             Create New Device
           </button>
         )}
@@ -1713,6 +1752,22 @@ export default function DeviceLibrary() {
         )}
       </div>
       )}
+
+      {libraryActiveTab === "devices" && leftTab === "devices" && (
+        <div style={{ padding: 10, borderTop: "1px solid var(--ti-divider)", flexShrink: 0 }}>
+          <TiButton
+            size="sm"
+            variant="default"
+            icon="plus"
+            fullWidth
+            onClick={() => setShowDeviceCreator(true)}
+          >
+            Create device…
+          </TiButton>
+        </div>
+      )}
+
+      </div>{/* end device library content wrapper */}
 
       <DeviceLibraryTemplateContextMenu
         menu={templateMenu}

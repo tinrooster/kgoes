@@ -4,6 +4,7 @@ import { findAdaptersForSignalBridge, findAdaptersForConnectorBridge } from "../
 import { SIGNAL_LABELS, CONNECTOR_LABELS } from "../types";
 import type { DeviceTemplate } from "../types";
 import { DEVICE_TEMPLATES } from "../deviceLibraryRuntime";
+import { TiButton, TiIcon, TiIconButton } from "./ti/TiBase";
 
 export default function IncompatibleConnectionDialog() {
   const pending = useSchematicStore((s) => s.pendingIncompatibleConnection);
@@ -40,99 +41,251 @@ export default function IncompatibleConnectionDialog() {
   const srcConn = pending.sourcePort.connectorType ? CONNECTOR_LABELS[pending.sourcePort.connectorType] : "";
   const tgtConn = pending.targetPort.connectorType ? CONNECTOR_LABELS[pending.targetPort.connectorType] : "";
 
+  const highlighted = selectedIdx != null ? adapters[selectedIdx] : adapters[0] ?? null;
+
   const handleInsert = () => {
-    if (selectedIdx === null) return;
-    insertAdapter(adapters[selectedIdx]);
+    const idx = selectedIdx ?? (adapters.length === 1 ? 0 : null);
+    if (idx === null) return;
+    insertAdapter(adapters[idx]);
   };
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
       onClick={dismiss}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 50,
+        display: "grid",
+        placeItems: "center",
+        padding: 24,
+        background: "color-mix(in oklab, var(--ti-ink) 30%, transparent)",
+      }}
     >
       <div
-        className="bg-white border border-[var(--color-border)] rounded-lg shadow-2xl w-[440px] flex flex-col"
         onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 460,
+          maxWidth: "100%",
+          background: "var(--ti-surface)",
+          border: "1px solid var(--ti-border)",
+          borderRadius: 14,
+          boxShadow: "var(--ti-shadow-lg)",
+          overflow: "hidden",
+        }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--color-border)]">
-          <span className="text-sm font-semibold text-[var(--color-text-heading)]">
-            {isConnectorMismatch ? "Connector Mismatch" : "Incompatible Connection"}
-          </span>
-          <button
-            onClick={dismiss}
-            className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] text-lg leading-none cursor-pointer"
+        <div
+          style={{
+            padding: "16px 18px 14px",
+            borderBottom: "1px solid var(--ti-divider)",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 8,
+              background: "var(--ti-danger-soft)",
+              display: "grid",
+              placeItems: "center",
+              flexShrink: 0,
+            }}
           >
-            &times;
-          </button>
+            <TiIcon name="alert" size={17} color="var(--ti-danger)" />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 600, color: "var(--ti-ink)", fontFamily: "var(--ti-font-sans)" }}>
+              {isConnectorMismatch ? "Connector mismatch" : "Signal mismatch"}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginTop: 3,
+                fontSize: 12.5,
+                color: "var(--ti-ink-2)",
+                fontFamily: "var(--ti-font-sans)",
+                flexWrap: "wrap",
+              }}
+            >
+              <span style={{ fontWeight: 600 }}>{srcSignal}</span>
+              {srcConn ? <span style={{ color: "var(--ti-muted)" }}>({srcConn})</span> : null}
+              <TiIcon name="arrowR" size={13} color="var(--ti-muted)" />
+              <span style={{ fontWeight: 600 }}>{tgtSignal}</span>
+              {tgtConn ? <span style={{ color: "var(--ti-muted)" }}>({tgtConn})</span> : null}
+            </div>
+          </div>
+          <TiIconButton icon="x" variant="ghost" size="sm" onClick={dismiss} />
         </div>
 
-        {/* Body */}
-        <div className="px-5 py-4 flex flex-col gap-3">
-          <p className="text-xs text-[var(--color-text-muted)]">
+        <div style={{ padding: 18 }}>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 13.5,
+              color: "var(--ti-ink-2)",
+              lineHeight: 1.5,
+              fontFamily: "var(--ti-font-sans)",
+            }}
+          >
             {isConnectorMismatch
-              ? <>{srcConn} &rarr; {tgtConn} ({srcSignal})</>
-              : <>{srcSignal}{srcConn ? ` (${srcConn})` : ""} &rarr; {tgtSignal}{tgtConn ? ` (${tgtConn})` : ""}</>
-            }
-          </p>
-          <p className="text-xs text-[var(--color-text)]">
-            {isConnectorMismatch
-              ? "These ports use different connector types. Select an adapter to insert between them."
-              : "These ports use different signal types. You can insert an adapter/converter or force the connection."
-            }
+              ? "These ports use different connector types. Insert an adapter between them, or connect anyway and flag the mismatch."
+              : "These ports carry different signal types. Select a converter from the library, or connect anyway."}
           </p>
 
-          {/* Adapter list */}
-          {adapters.length > 0 ? (
-            <div className="border border-[var(--color-border)] rounded max-h-[200px] overflow-y-auto">
+          {highlighted ? (
+            <div
+              style={{
+                marginTop: 14,
+                borderRadius: 10,
+                border: "1px solid color-mix(in oklab, var(--ti-success) 35%, transparent)",
+                background: "var(--ti-success-soft)",
+                padding: 12,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 7,
+                    background: "var(--ti-surface)",
+                    border: "1px solid var(--ti-border)",
+                    display: "grid",
+                    placeItems: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <TiIcon name="arrowSwap" size={15} color="var(--ti-success)" />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                      color: "color-mix(in oklab, var(--ti-success) 70%, var(--ti-ink))",
+                      fontFamily: "var(--ti-font-sans)",
+                    }}
+                  >
+                    {adapters.length > 1 ? "Selected adapter" : "Adapter found in library"}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13.5,
+                      fontWeight: 600,
+                      marginTop: 1,
+                      color: "var(--ti-ink)",
+                      fontFamily: "var(--ti-font-sans)",
+                    }}
+                  >
+                    {highlighted.label}
+                  </div>
+                  {(highlighted.manufacturer || highlighted.modelNumber) && (
+                    <div
+                      data-mono
+                      style={{ fontSize: 11, color: "var(--ti-muted)", marginTop: 2, fontFamily: "var(--ti-font-mono)" }}
+                    >
+                      {[highlighted.manufacturer, highlighted.modelNumber].filter(Boolean).join(" — ")}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                marginTop: 14,
+                borderRadius: 10,
+                border: "1px solid var(--ti-border)",
+                background: "var(--ti-surface-2)",
+                padding: 12,
+                fontSize: 12.5,
+                color: "var(--ti-muted)",
+                fontStyle: "italic",
+                fontFamily: "var(--ti-font-sans)",
+              }}
+            >
+              No matching adapter found in the device library.
+            </div>
+          )}
+
+          {adapters.length > 1 ? (
+            <div
+              style={{
+                marginTop: 12,
+                border: "1px solid var(--ti-border)",
+                borderRadius: 10,
+                maxHeight: 160,
+                overflowY: "auto",
+              }}
+            >
               {adapters.map((t: DeviceTemplate, i: number) => (
                 <button
-                  key={t.id ?? t.label + i}
-                  className={`w-full text-left px-3 py-2 text-xs flex flex-col gap-0.5 cursor-pointer border-b last:border-b-0 border-[var(--color-border)] transition-colors ${
-                    selectedIdx === i
-                      ? "bg-blue-50 text-blue-900"
-                      : "hover:bg-[var(--color-surface-hover)]"
-                  }`}
+                  key={t.id ?? `${t.label}-${i}`}
+                  type="button"
                   onClick={() => setSelectedIdx(i)}
-                  onDoubleClick={() => { setSelectedIdx(i); insertAdapter(t); }}
+                  onDoubleClick={() => {
+                    setSelectedIdx(i);
+                    insertAdapter(t);
+                  }}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "9px 12px",
+                    cursor: "pointer",
+                    background: (selectedIdx ?? 0) === i ? "var(--ti-accent-soft)" : "transparent",
+                    border: "none",
+                    borderBottom: i < adapters.length - 1 ? "1px solid var(--ti-divider)" : "none",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 2,
+                  }}
                 >
-                  <span className="font-medium text-[var(--color-text-heading)]">{t.label}</span>
-                  {(t.manufacturer || t.modelNumber) && (
-                    <span className="text-[var(--color-text-muted)]">
-                      {[t.manufacturer, t.modelNumber].filter(Boolean).join(" — ")}
-                    </span>
-                  )}
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: (selectedIdx ?? 0) === i ? "var(--ti-accent-ink)" : "var(--ti-ink)",
+                      fontFamily: "var(--ti-font-sans)",
+                    }}
+                  >
+                    {t.label}
+                  </span>
                 </button>
               ))}
             </div>
-          ) : (
-            <div className="text-xs text-[var(--color-text-muted)] italic px-1 py-3">
-              No matching adapters found in the device library
-            </div>
-          )}
+          ) : null}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--color-border)]">
-          <button
-            onClick={dismiss}
-            className="px-3 py-1.5 text-xs rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer text-[var(--color-text)]"
-          >
+        <div
+          style={{
+            padding: "12px 18px",
+            borderTop: "1px solid var(--ti-divider)",
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 8,
+          }}
+        >
+          <TiButton variant="ghost" onClick={dismiss}>
             Cancel
-          </button>
-          <button
-            onClick={forceConnect}
-            className="px-3 py-1.5 text-xs rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer text-[var(--color-text)]"
-          >
-            Connect Anyway
-          </button>
-          <button
+          </TiButton>
+          <TiButton variant="outline" onClick={forceConnect}>
+            Connect anyway
+          </TiButton>
+          <TiButton
+            variant="accent"
+            icon="arrowSwap"
+            disabled={!highlighted}
             onClick={handleInsert}
-            disabled={selectedIdx === null}
-            className="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Insert Adapter
-          </button>
+            Insert adapter
+          </TiButton>
         </div>
       </div>
     </div>

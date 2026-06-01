@@ -1,8 +1,8 @@
 import type { TowerDraftLineStyle, TowerDraftPage } from "../types";
 import { TOWER_DRAFT_SNAP_LEVEL } from "../towerDraftUtils";
-import type { TowerElevationView } from "../towerDraftFaces";
-import { TOWER_FACE_LABELS } from "../towerDraftFaces";
+import type { TowerFaceFilter, TowerMainView } from "../towerDraftFaces";
 import { formatDistanceFromFt, type MeasurementSystem } from "../measurementUnits";
+import { TiDivider, TiIcon, TiSeg } from "./ti/TiBase";
 
 export interface TowerDraftDrawStyle {
   strokeWidth: number;
@@ -25,9 +25,52 @@ interface TowerDraftToolbarProps {
   onPrint?: () => void;
   labelLayers: NonNullable<TowerDraftPage["labelLayers"]>;
   onLabelLayersChange: (patch: Partial<NonNullable<TowerDraftPage["labelLayers"]>>) => void;
-  elevationView: TowerElevationView;
-  onElevationViewChange: (view: TowerElevationView) => void;
+  mainView: TowerMainView;
+  faceFilter: TowerFaceFilter;
+  onMainViewChange: (view: TowerMainView) => void;
+  onFaceFilterChange: (face: TowerFaceFilter) => void;
   measurementSystem: MeasurementSystem;
+}
+
+function TwToolBtn({
+  icon,
+  label,
+  active,
+  onClick,
+  onDoubleClick,
+}: {
+  icon: string;
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+  onDoubleClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        height: 28,
+        padding: "0 10px",
+        borderRadius: 7,
+        border: `1px solid ${active ? "var(--ti-accent)" : "var(--ti-border)"}`,
+        background: active ? "var(--ti-accent-soft)" : "var(--ti-surface)",
+        fontSize: 12,
+        fontWeight: 500,
+        color: active ? "var(--ti-accent-ink)" : "var(--ti-ink-2)",
+        whiteSpace: "nowrap",
+        cursor: "pointer",
+        fontFamily: "var(--ti-font-sans)",
+      }}
+    >
+      <TiIcon name={icon} size={13} color="var(--ti-muted)" />
+      {label}
+    </button>
+  );
 }
 
 export default function TowerDraftToolbar({
@@ -45,64 +88,108 @@ export default function TowerDraftToolbar({
   onPrint,
   labelLayers,
   onLabelLayersChange,
-  elevationView,
-  onElevationViewChange,
+  mainView,
+  faceFilter,
+  onMainViewChange,
+  onFaceFilterChange,
   measurementSystem,
 }: TowerDraftToolbarProps) {
-  const toggleOff =
-    "px-2.5 py-1 text-[11px] font-medium rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer whitespace-nowrap";
-  const toggleOn =
-    "px-2.5 py-1 text-[11px] font-medium rounded-md border border-blue-600 bg-blue-600 text-white shadow-sm cursor-pointer whitespace-nowrap";
-  const latchedOn =
-    "px-2.5 py-1 text-[11px] font-medium rounded-md border border-amber-500 bg-amber-500 text-white shadow-sm cursor-pointer whitespace-nowrap";
-  const drawBtnClass = drawMode ? (drawLatched ? latchedOn : toggleOn) : toggleOff;
+  const toggleDraw = () => {
+    if (drawMode) {
+      onDrawModeChange(false);
+      onDrawLatchedChange(false);
+    } else {
+      onDrawModeChange(true);
+      onDrawLatchedChange(false);
+    }
+  };
 
   return (
     <div
-      className="flex flex-wrap items-center gap-2 px-2 py-1.5 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0"
       data-print-hide
+      style={{
+        minHeight: 44,
+        flexShrink: 0,
+        display: "flex",
+        alignItems: "center",
+        gap: 9,
+        padding: "6px 16px",
+        borderBottom: "1px solid var(--ti-border)",
+        background: "var(--ti-surface-2)",
+        flexWrap: "wrap",
+        fontFamily: "var(--ti-font-sans)",
+      }}
     >
-      <span className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] shrink-0">
-        Tower draft
-      </span>
+      <TiSeg
+        size="sm"
+        value={mainView}
+        onChange={(v) => onMainViewChange(v as TowerMainView)}
+        options={[
+          { value: "profile", label: "Profile" },
+          { value: "faces", label: "All faces" },
+          { value: "site", label: "Site plan" },
+        ]}
+      />
 
-      <div className="flex items-center gap-0.5 rounded-md border border-[var(--color-border)] p-0.5">
-        {(["profile", "all-faces", "N", "S", "E", "W"] as TowerElevationView[]).map((view) => {
-          const active = elevationView === view;
-          const label =
-            view === "profile" ? "Profile" : view === "all-faces" ? "All" : view;
-          const title =
-            view === "profile"
-              ? "Centerline elevation"
-              : view === "all-faces"
-                ? "North, East, South, West faces side by side"
-                : `${TOWER_FACE_LABELS[view]} face equipment`;
-          return (
-            <button
-              key={view}
-              type="button"
-              title={title}
-              className={active ? toggleOn : toggleOff}
-              onClick={() => onElevationViewChange(view)}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
+      {mainView === "faces" && (
+        <div style={{ display: "flex", gap: 2 }}>
+          {(["All", "N", "S", "E", "W"] as TowerFaceFilter[]).map((f) => {
+            const active = faceFilter === f;
+            return (
+              <button
+                key={f}
+                type="button"
+                onClick={() => onFaceFilterChange(f)}
+                style={{
+                  width: 30,
+                  height: 28,
+                  borderRadius: 7,
+                  border: `1px solid ${active ? "var(--ti-accent)" : "var(--ti-border)"}`,
+                  background: active ? "var(--ti-accent-soft)" : "var(--ti-surface)",
+                  color: active ? "var(--ti-accent-ink)" : "var(--ti-ink-2)",
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontFamily: "var(--ti-font-sans)",
+                }}
+              >
+                {f}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-      <button type="button" className={drawBtnClass} aria-pressed={drawMode} onClick={() => {
-        if (drawMode) { onDrawModeChange(false); onDrawLatchedChange(false); }
-        else { onDrawModeChange(true); onDrawLatchedChange(false); }
-      }} onDoubleClick={(e) => { e.preventDefault(); onDrawModeChange(true); onDrawLatchedChange(true); }}>
-        Draw lines{drawLatched && drawMode ? " ⧉" : ""}
-      </button>
+      <TiDivider vertical />
+
+      <TwToolBtn
+        icon="edit"
+        label={drawLatched && drawMode ? "Draw lines ⧉" : "Draw lines"}
+        active={drawMode}
+        onClick={toggleDraw}
+        onDoubleClick={(e) => {
+          e.preventDefault();
+          onDrawModeChange(true);
+          onDrawLatchedChange(true);
+        }}
+      />
 
       {drawMode && (
         <>
-          <label className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)]">
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ti-muted)" }}>
             Weight
-            <select value={drawStyle.strokeWidth} onChange={(e) => onDrawStyleChange({ strokeWidth: Number(e.target.value) })} className="text-[11px] rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-1 py-0.5">
+            <select
+              value={drawStyle.strokeWidth}
+              onChange={(e) => onDrawStyleChange({ strokeWidth: Number(e.target.value) })}
+              style={{
+                height: 28,
+                fontSize: 12,
+                borderRadius: 7,
+                border: "1px solid var(--ti-border)",
+                background: "var(--ti-surface)",
+                padding: "0 6px",
+              }}
+            >
               <option value={0.75}>Hairline</option>
               <option value={1}>Thin</option>
               <option value={1.5}>Medium</option>
@@ -110,24 +197,51 @@ export default function TowerDraftToolbar({
               <option value={4}>Bold</option>
             </select>
           </label>
-          <label className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)]">
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ti-muted)" }}>
             Type
-            <select value={drawStyle.lineStyle} onChange={(e) => onDrawStyleChange({ lineStyle: e.target.value as TowerDraftLineStyle })} className="text-[11px] rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-1 py-0.5">
+            <select
+              value={drawStyle.lineStyle}
+              onChange={(e) =>
+                onDrawStyleChange({ lineStyle: e.target.value as TowerDraftLineStyle })
+              }
+              style={{
+                height: 28,
+                fontSize: 12,
+                borderRadius: 7,
+                border: "1px solid var(--ti-border)",
+                background: "var(--ti-surface)",
+                padding: "0 6px",
+              }}
+            >
               <option value="solid">Solid</option>
               <option value="dashed">Dashed</option>
               <option value="dotted">Dotted</option>
             </select>
           </label>
-          <label className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)]">
-            Color
-            <input type="color" value={drawStyle.strokeColor} onChange={(e) => onDrawStyleChange({ strokeColor: e.target.value })} className="w-7 h-6 rounded border border-[var(--color-border)] cursor-pointer p-0" />
-          </label>
+          <input
+            type="color"
+            value={drawStyle.strokeColor}
+            onChange={(e) => onDrawStyleChange({ strokeColor: e.target.value })}
+            title="Line color"
+            style={{ width: 28, height: 28, padding: 0, border: "1px solid var(--ti-border)", borderRadius: 7 }}
+          />
         </>
       )}
 
-      <label className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-muted)]">
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ti-muted)" }}>
         Snap
-        <select value={snapFt} onChange={(e) => onSnapFtChange(Number(e.target.value))} className="text-[11px] rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-1 py-0.5">
+        <select
+          value={snapFt}
+          onChange={(e) => onSnapFtChange(Number(e.target.value))}
+          style={{
+            height: 28,
+            fontSize: 12,
+            borderRadius: 7,
+            border: "1px solid var(--ti-border)",
+            background: "var(--ti-surface)",
+            padding: "0 6px",
+          }}
+        >
           <option value={0}>Off</option>
           <option value={TOWER_DRAFT_SNAP_LEVEL}>Level</option>
           <option value={1}>{formatDistanceFromFt(1, measurementSystem)}</option>
@@ -137,30 +251,42 @@ export default function TowerDraftToolbar({
       </label>
 
       {onSyncFromSchematic && (
-        <button type="button" className={toggleOff} onClick={onSyncFromSchematic}>Sync from schematic</button>
+        <TwToolBtn icon="refresh" label="Sync from schematic" onClick={onSyncFromSchematic} />
       )}
       {onSuggestFeedlines && (
-        <button type="button" className={toggleOff} onClick={onSuggestFeedlines}>Suggest feedlines</button>
+        <TwToolBtn icon="signal" label="Suggest feedlines" onClick={onSuggestFeedlines} />
       )}
-      {onExportCsv && (
-        <button type="button" className={toggleOff} onClick={onExportCsv}>Export CSV</button>
-      )}
-      {onPrint && (
-        <button type="button" className={toggleOff} onClick={onPrint}>Print tab</button>
-      )}
+      {onExportCsv && <TwToolBtn icon="download" label="Export CSV" onClick={onExportCsv} />}
+      {onPrint && <TwToolBtn icon="print" label="Print tab" onClick={onPrint} />}
 
-      <label className="flex items-center gap-1 text-[10px] text-[var(--color-text-muted)]">
-        <input type="checkbox" checked={!!labelLayers.designation} onChange={(e) => onLabelLayersChange({ designation: e.target.checked })} />
-        Designation
-      </label>
-      <label className="flex items-center gap-1 text-[10px] text-[var(--color-text-muted)]">
-        <input type="checkbox" checked={!!labelLayers.azimuth} onChange={(e) => onLabelLayersChange({ azimuth: e.target.checked })} />
-        Azimuth
-      </label>
-      <label className="flex items-center gap-1 text-[10px] text-[var(--color-text-muted)]">
-        <input type="checkbox" checked={!!labelLayers.band} onChange={(e) => onLabelLayersChange({ band: e.target.checked })} />
-        Band
-      </label>
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+        {(
+          [
+            ["designation", "Designation"],
+            ["azimuth", "Azimuth"],
+            ["band", "Band"],
+          ] as const
+        ).map(([k, l]) => (
+          <label
+            key={k}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              color: "var(--ti-ink-2)",
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={!!labelLayers[k]}
+              onChange={(e) => onLabelLayersChange({ [k]: e.target.checked })}
+            />
+            {l}
+          </label>
+        ))}
+      </div>
     </div>
   );
 }
