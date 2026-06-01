@@ -16,7 +16,7 @@ import { defaultStubPlacement } from "./stubPlacement";
 import { getPortAbsolutePositions } from "./snapUtils";
 import type { SchematicNode } from "./types";
 
-export const CURRENT_SCHEMA_VERSION = 42;
+export const CURRENT_SCHEMA_VERSION = 43;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Migration = (data: any) => any;
@@ -542,6 +542,22 @@ const migrations: Record<number, Migration> = {
     }
     data.pages = pages;
     data.version = 42;
+    return data;
+  },
+
+  42: (data) => {
+    // v42 → v43: backfill viewports[] on drawing pages that predate the field.
+    // Migration 40 added viewports only to newly-created pages; existing drawing
+    // pages saved before the field was introduced have viewports = undefined, which
+    // causes "Cannot read properties of undefined (reading 'length')" in PageTabs.
+    const pages = Array.isArray(data.pages) ? data.pages : [];
+    for (const p of pages) {
+      if (p?.type === "drawing" && !Array.isArray(p.viewports)) {
+        p.viewports = [{ id: "overview", label: "Overview", fit: "all" }];
+      }
+    }
+    data.pages = pages;
+    data.version = 43;
     return data;
   },
 

@@ -191,11 +191,11 @@ export default function PageTabs() {
   const pageTabTitle = (page: (typeof pages)[number]) => {
     if (page.type === "drawing") {
       const dp = page as DrawingPage;
-      const vpCount = dp.viewports.length;
+      const vpCount = (dp.viewports ?? []).length;
       return `${page.label}${vpCount ? ` · ${vpCount} viewport${vpCount === 1 ? "" : "s"}` : ""}`;
     }
     if (page.type === "print-sheet") {
-      const vpCount = page.viewports.length;
+      const vpCount = (page.viewports ?? []).length;
       return `${printPageTabLabel(page.label)}${vpCount ? ` · ${vpCount} view${vpCount === 1 ? "" : "s"}` : ""}`;
     }
     if (page.type === "tower-draft") {
