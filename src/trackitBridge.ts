@@ -6,14 +6,21 @@
 import {
   applyTrackItLink,
   beginBlankTrackItDrawing,
+  flushPendingTrackItFocusPage,
   loadTrackItDrawingAutosave,
   maybeAutoOpenCadToolsPanel,
   maybeAutoOpenTowerDraftTab,
+  queueTrackItFocusPage,
+  type TrackItFocusPagePayload,
 } from "./trackitIntegration";
 import { hasTrackItDrawingAutosave } from "./store";
 import { mergeNumberingSnapshot, upsertTrackItBlock } from "./trackitNumberingMerge";
 import { useSchematicStore } from "./store";
 import { mergeLocationSnapshot } from "./trackitLocationMerge";
+import {
+  APPEARANCE_SYNC_MESSAGE,
+  type AppearanceSyncPayload,
+} from "./sharedAppearanceBridge";
 import type {
   SchematicFile,
   TrackItLocationSnapshotEntry,
@@ -68,7 +75,9 @@ type TrackItInboundMessage =
   | { type: "TRACKIT_NUMBERING_SNAPSHOT"; payload: TrackItNumberingSnapshotPayload }
   | { type: "TRACKIT_TOWER_SITE_CONTEXT"; payload: TrackItTowerSiteContext }
   | { type: "TRACKIT_TOWER_FOCUS"; payload: TrackItTowerFocusPayload }
-  | { type: "TRACKIT_LOCATION_SNAPSHOT"; payload: TrackItLocationSnapshotPayload };
+  | { type: "TRACKIT_FOCUS_PAGE"; payload: TrackItFocusPagePayload }
+  | { type: "TRACKIT_LOCATION_SNAPSHOT"; payload: TrackItLocationSnapshotPayload }
+  | { type: typeof APPEARANCE_SYNC_MESSAGE; payload: AppearanceSyncPayload };
 
 function isTrackItInbound(data: unknown): data is TrackItInboundMessage {
   if (!data || typeof data !== "object") return false;
@@ -80,8 +89,24 @@ function isTrackItInbound(data: unknown): data is TrackItInboundMessage {
     t === "TRACKIT_NUMBERING_SNAPSHOT" ||
     t === "TRACKIT_TOWER_SITE_CONTEXT" ||
     t === "TRACKIT_TOWER_FOCUS" ||
-    t === "TRACKIT_LOCATION_SNAPSHOT"
+    t === "TRACKIT_FOCUS_PAGE" ||
+    t === "TRACKIT_LOCATION_SNAPSHOT" ||
+    t === APPEARANCE_SYNC_MESSAGE
   );
+}
+
+function applyAppearanceSync(payload: AppearanceSyncPayload): void {
+  const shell = payload.shell;
+  const isDark = shell === "dark";
+  document.documentElement.classList.toggle("dark", isDark);
+  document.documentElement.setAttribute("data-theme", shell);
+  try {
+    localStorage.setItem("trackit-shared-appearance", shell);
+    localStorage.setItem("easyschematic-theme", shell);
+  } catch {
+    // ignore
+  }
+  window.dispatchEvent(new CustomEvent("trackit-shared-appearance-change", { detail: payload }));
 }
 
 function applyTowerFocus(payload: TrackItTowerFocusPayload): void {
@@ -279,12 +304,18 @@ export function startTrackItBridge(): void {
       if (activeLinkName) {
         store.setSchematicName(activeLinkName);
       }
-      useSchematicStore.setState({ isDemo: false });
+      useSchematicStore.setState({
+        isDemo: false,
+        trackItUnsavedChanges: false,
+        trackItLastPushedAt: new Date().toISOString(),
+      });
       store.addToast("Schematic loaded from trackIT", "success");
       window.setTimeout(() => {
+        flushPendingTrackItFocusPage();
         maybeAutoOpenTowerDraftTab();
         maybeAutoOpenCadToolsPanel();
       }, 0);
+      window.setTimeout(() => flushPendingTrackItFocusPage(), 400);
       return;
     }
 
@@ -308,6 +339,13 @@ export function startTrackItBridge(): void {
       return;
     }
 
+    if (event.data.type === "TRACKIT_FOCUS_PAGE") {
+      queueTrackItFocusPage(event.data.payload ?? {});
+      window.setTimeout(() => flushPendingTrackItFocusPage(), 0);
+      window.setTimeout(() => flushPendingTrackItFocusPage(), 500);
+      return;
+    }
+
     if (event.data.type === "TRACKIT_LOCATION_SNAPSHOT") {
       const payload = event.data.payload;
       if (!payload?.locations?.length) return;
@@ -323,6 +361,11 @@ export function startTrackItBridge(): void {
         "info",
         3000,
       );
+      return;
+    }
+
+    if (event.data.type === APPEARANCE_SYNC_MESSAGE) {
+      applyAppearanceSync(event.data.payload);
     }
   };
 

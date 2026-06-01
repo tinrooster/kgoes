@@ -11,7 +11,67 @@ import {
   useSchematicStore,
 } from "./store";
 import { useSidebarStore } from "./sidebarStore";
+import { LEGACY_SCHEMATIC_PAGE_ID } from "./drawingPageUtils";
 import type { SchematicFile, TrackItLinkContext } from "./types";
+
+/** Mirrors trackIT `TrackItFocusPagePayload` (Pack tab sheet deep links). */
+export type TrackItFocusPagePayload = {
+  pageId?: string;
+  pageType?: string;
+};
+
+let pendingFocusPage: TrackItFocusPagePayload | null = null;
+
+/** Switch active page after schematic load (retries until pages exist). */
+export function focusTrackItSchematicPage(payload: TrackItFocusPagePayload): boolean {
+  const store = useSchematicStore.getState();
+  const { pages } = store;
+
+  if (payload.pageId && payload.pageId !== "__main__") {
+    const byId = pages.find((p) => p.id === payload.pageId);
+    if (byId) {
+      store.setActivePage(byId.id);
+      pendingFocusPage = null;
+      return true;
+    }
+  }
+
+  const type = payload.pageType?.trim();
+  if (!type || type === "signal-flow" || type === "__main__") {
+    store.setActivePage(LEGACY_SCHEMATIC_PAGE_ID);
+    pendingFocusPage = null;
+    return true;
+  }
+
+  const normalizedType =
+    type === "rack-draft" || type === "rack-elevation"
+      ? "rack-elevation"
+      : type === "tower-draft"
+        ? "tower-draft"
+        : type;
+
+  const byType = pages.find((p) => p.type === normalizedType);
+  if (byType) {
+    store.setActivePage(byType.id);
+    pendingFocusPage = null;
+    return true;
+  }
+
+  return false;
+}
+
+export function queueTrackItFocusPage(payload: TrackItFocusPagePayload): void {
+  pendingFocusPage = payload;
+  focusTrackItSchematicPage(payload);
+}
+
+export function flushPendingTrackItFocusPage(): void {
+  if (!pendingFocusPage) return;
+  if (focusTrackItSchematicPage(pendingFocusPage)) return;
+  window.setTimeout(() => {
+    if (pendingFocusPage) focusTrackItSchematicPage(pendingFocusPage);
+  }, 200);
+}
 
 /** Last linked plant_drawings row — survives popup reload when trackIT bootstrap is delayed. */
 export const TRACKIT_ACTIVE_LINK_KEY = "kgo-es-trackit-active-link";
@@ -20,7 +80,8 @@ export type { TrackItLinkContext };
 
 export type TrackItEditorMode = "standalone" | "popup-awaiting-link" | "linked";
 
-const TRACKIT_AUTOSAVE_MS = 60_000;
+/** Debounced push to trackIT after edits (manual Ctrl+S is immediate). */
+const TRACKIT_AUTOSAVE_MS = 25_000;
 
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
 let pagehideHookInstalled = false;
@@ -104,7 +165,17 @@ export function saveToTrackItParent(opts?: { silent?: boolean }): boolean {
   }
   const file = useSchematicStore.getState().exportToJSON();
   notifyTrackItParentSaved(file, { silent: opts?.silent });
-  useSchematicStore.setState({ trackItLastPushedAt: new Date().toISOString() });
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({ type: "KGO_ES_CLEAN" }, "*");
+    }
+  } catch {
+    // ignore
+  }
+  useSchematicStore.setState({
+    trackItLastPushedAt: new Date().toISOString(),
+    trackItUnsavedChanges: false,
+  });
 
   if (!opts?.silent) {
     const deviceCount = store.nodes.length;

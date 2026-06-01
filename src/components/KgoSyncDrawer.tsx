@@ -13,6 +13,7 @@ import {
 import { buildTrackItPlantDrawingUrl, openTrackItUrl } from "../trackitAppLinks";
 import { countUnnumberedEdges } from "../kgoCableState";
 import { openNumberingForEdge, openNumberingPanel } from "../kgoInspectorUtils";
+import { computeTrackItSyncStatus } from "../trackitSyncStatus";
 
 interface KgoSyncDrawerProps {
   open: boolean;
@@ -36,6 +37,7 @@ interface SyncFeedItem {
 function KgoSyncDrawer({ open, onClose }: KgoSyncDrawerProps) {
   const trackItLink = useSchematicStore((s) => s.trackItLink);
   const lastPushed = useSchematicStore((s) => s.trackItLastPushedAt);
+  const hasUnsavedChanges = useSchematicStore((s) => s.trackItUnsavedChanges);
   const nodes = useSchematicStore((s) => s.nodes);
   const edges = useSchematicStore((s) => s.edges);
   const assignAll = useSchematicStore((s) => s.assignAllUnnumberedTrackItNumbers);
@@ -47,6 +49,12 @@ function KgoSyncDrawer({ open, onClose }: KgoSyncDrawerProps) {
 
   const isLinked = isTrackItDrawingLinked() && !!trackItLink?.drawingId;
   const isPopupOpener = isTrackItPopupOpener();
+  const syncStatus = computeTrackItSyncStatus({
+    isLinked,
+    lastPushedAt: lastPushed,
+    hasUnsavedChanges,
+    unnumberedCount,
+  });
   const drawingLabel = trackItLink?.dwgNumber
     ? `DWG ${trackItLink.dwgNumber}${trackItLink.drawingName ? ` — ${trackItLink.drawingName}` : ""}`
     : "Linked drawing";
@@ -96,20 +104,22 @@ function KgoSyncDrawer({ open, onClose }: KgoSyncDrawerProps) {
       });
     }
 
-    if (isLinked && !lastPushed) {
+    if (isLinked && syncStatus.needsSchematicSave) {
       items.push({
         id: "unsaved",
         kind: "local",
         icon: "upload",
-        title: "Drawing not saved to TrackIt yet",
-        detail: "Save now to write schematic JSON and cable schedule to the plant drawing.",
+        title: lastPushed ? "Unsaved changes" : "Drawing not saved to TrackIt yet",
+        detail: lastPushed
+          ? "Your edits are only in KGO-ES until you save — trackIT will update the plant drawing register."
+          : "Save now to write schematic JSON and cable schedule to the plant drawing.",
         verb: "Save now",
         verbVariant: "accent",
       });
     }
 
     return items;
-  }, [edges, isLinked, isPopupOpener, lastPushed, unnumberedCount]);
+  }, [edges, isLinked, isPopupOpener, lastPushed, syncStatus.needsSchematicSave, unnumberedCount]);
 
   const kindMeta = (kind: SyncFeedKind) => {
     if (kind === "cables") return { tone: "accent" as const, icon: "hash" };
@@ -142,20 +152,33 @@ function KgoSyncDrawer({ open, onClose }: KgoSyncDrawerProps) {
     onClose();
   };
 
-  const pendingCount = feed.length;
+  const pendingCount = syncStatus.pendingCount;
+
+  const saveNow = () => {
+    saveToTrackItParent();
+    onClose();
+  };
 
   if (!open) return null;
 
   return (
     <div
+      data-print-hide
       onClick={onClose}
       style={{
-        position: "absolute", inset: 0, zIndex: 40,
+        position: "fixed",
+        inset: 0,
+        zIndex: 250,
         background: "color-mix(in oklab, var(--ti-ink) 22%, transparent)",
-        display: "flex", justifyContent: "flex-end",
+        display: "flex",
+        justifyContent: "flex-end",
       }}
     >
       <div
+        id="kgo-sync-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label="TrackIt sync"
         onClick={(e) => e.stopPropagation()}
         style={{
           width: 380, height: "100%",
@@ -180,6 +203,17 @@ function KgoSyncDrawer({ open, onClose }: KgoSyncDrawerProps) {
             </div>
             <TiIconButton icon="x" variant="ghost" size="sm" onClick={onClose} />
           </div>
+
+          {isLinked && syncStatus.needsSchematicSave ? (
+            <div style={{ marginTop: 10 }}>
+              <TiButton variant="accent" icon="upload" fullWidth onClick={saveNow}>
+                Save to TrackIt now
+              </TiButton>
+              <p style={{ margin: "6px 0 0", fontSize: 10.5, color: "var(--ti-muted)", fontFamily: "var(--ti-font-sans)" }}>
+                Ctrl+S · autosave every 25s after edits
+              </p>
+            </div>
+          ) : null}
 
           <div style={{ display: "flex", gap: 6, marginTop: 11 }}>
             {[
@@ -227,7 +261,7 @@ function KgoSyncDrawer({ open, onClose }: KgoSyncDrawerProps) {
                 </div>
                 <div style={{ fontSize: 11.5, color: "var(--ti-ink-2)", marginTop: 2, lineHeight: 1.4, fontFamily: "var(--ti-font-sans)" }}>
                   {isLinked
-                    ? (lastPushedLabel ?? "Autosave every 60s after edits · Ctrl+S to save now")
+                    ? (lastPushedLabel ?? "Autosave every 25s after edits · Ctrl+S to save now")
                     : isPopupOpener
                       ? "Go to TrackIt Plant → Drawings and open a drawing in KGO-ES."
                       : "Open from TrackIt Plant → Drawings to enable sync."}
@@ -309,19 +343,11 @@ function KgoSyncDrawer({ open, onClose }: KgoSyncDrawerProps) {
               Push cable schedule to TrackIt
             </TiButton>
           )}
-          {isLinked && (
-            <TiButton
-              variant="default"
-              icon="upload"
-              fullWidth
-              onClick={() => {
-                saveToTrackItParent();
-                onClose();
-              }}
-            >
+          {isLinked && !syncStatus.needsSchematicSave ? (
+            <TiButton variant="default" icon="upload" fullWidth onClick={saveNow}>
               Save to TrackIt now
             </TiButton>
-          )}
+          ) : null}
           <div style={{ fontSize: 10.5, color: "var(--ti-muted)", textAlign: "center", fontFamily: "var(--ti-font-sans)" }}>
             {isLinked
               ? `${nodeCount} device${nodeCount !== 1 ? "s" : ""} · ${edgeCount} run${edgeCount !== 1 ? "s" : ""} · ${roomCount} room${roomCount !== 1 ? "s" : ""}`

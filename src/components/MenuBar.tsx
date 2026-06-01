@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { useSyncDrawerStore } from "../sidebarStore";
 import { useReactFlow } from "@xyflow/react";
 import {
@@ -35,6 +35,7 @@ import SignalColorPanel from "./SignalColorPanel";
 import { useSidebarStore } from "../sidebarStore";
 import { useTheme } from "../hooks/useTheme";
 import { isTrackItDrawingLinked, saveToTrackItParent } from "../trackitIntegration";
+import { computeTrackItSyncStatus } from "../trackitSyncStatus";
 import { insertTowerElevation, insertTowerSitePlan } from "../towerSiteInsert";
 import {
   insertCadDiagonalLine,
@@ -186,10 +187,28 @@ export default function MenuBar() {
   const syncDrawerOpen = useSyncDrawerStore((s) => s.open);
   const edges = useSchematicStore((s) => s.edges);
   const trackItLastPushedAt = useSchematicStore((s) => s.trackItLastPushedAt);
+  const trackItUnsavedChanges = useSchematicStore((s) => s.trackItUnsavedChanges);
   const isDrawingLinked = isTrackItDrawingLinked();
   const unnumberedCount = edges.filter((e) => !e.data?.directAttach && !e.data?.cableId && e.data?.signalType).length;
-  const syncPendingCount = unnumberedCount + (isDrawingLinked && !trackItLastPushedAt ? 1 : 0);
-  const syncPillWarning = syncPendingCount > 0 || syncDrawerOpen;
+  const syncStatus = computeTrackItSyncStatus({
+    isLinked: isDrawingLinked,
+    lastPushedAt: trackItLastPushedAt,
+    hasUnsavedChanges: trackItUnsavedChanges,
+    unnumberedCount,
+  });
+  const syncPillWarning = syncStatus.pillWarning || syncDrawerOpen;
+
+  const handleSyncPillClick = (e: MouseEvent<HTMLButtonElement>) => {
+    if (e.altKey) {
+      toggleSyncDrawer();
+      return;
+    }
+    if (syncStatus.needsSchematicSave) {
+      saveToTrackItParent();
+      return;
+    }
+    toggleSyncDrawer();
+  };
   const undoSize = useSchematicStore((s) => s.undoSize);
   const redoSize = useSchematicStore((s) => s.redoSize);
 
@@ -1213,8 +1232,16 @@ export default function MenuBar() {
         <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
           <button
             type="button"
-            onClick={toggleSyncDrawer}
-            title="Open TrackIt sync drawer"
+            onClick={handleSyncPillClick}
+            aria-expanded={syncDrawerOpen}
+            aria-controls="kgo-sync-drawer"
+            title={
+              syncStatus.needsSchematicSave
+                ? "Save drawing to TrackIt now (Alt+click for sync panel)"
+                : syncDrawerOpen
+                  ? "Close TrackIt sync panel (Alt+click)"
+                  : "TrackIt sync panel (Alt+click) · save is automatic every 25s after edits"
+            }
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -1240,7 +1267,7 @@ export default function MenuBar() {
                 background: syncPillWarning ? "var(--ti-warning)" : "var(--ti-success)",
               }}
             />
-            {syncPendingCount > 0 ? `${syncPendingCount} change${syncPendingCount !== 1 ? "s" : ""}` : "In sync"}
+            {syncStatus.pillLabel}
             <TiIcon name="arrowSwap" size={12} color="currentColor" />
           </button>
           <div style={{ width: 1, height: 20, background: "var(--ti-divider)", margin: "0 4px" }} />

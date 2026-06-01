@@ -197,8 +197,8 @@ export default function TrackItModeBadge() {
     const dwg = link?.dwgNumber ? `DWG ${link.dwgNumber}` : "Drawing";
     const name = link?.drawingName?.trim();
     const autosaveNote = !hasDevices
-      ? "Add a device to enable autosave (every 60s)."
-      : "Autosave every 60s after edits.";
+      ? "Add a device to enable autosave (every 25s)."
+      : "Autosave every 25s after edits.";
 
     return {
       title: "Linked to trackIT",

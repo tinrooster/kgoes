@@ -971,6 +971,8 @@ interface SchematicState {
   siteNetwork: SiteNetworkMetadata | null;
   setSiteNetwork: (meta: SiteNetworkMetadata | null) => void;
   trackItLastPushedAt: string | null;
+  /** Schematic edited since last push to trackIT (linked drawings only). */
+  trackItUnsavedChanges: boolean;
   /** Active reservation for "assign next" (reservationId). */
   activeTrackItReservationId: string | null;
   setActiveTrackItReservationId: (id: string | null) => void;
@@ -1588,6 +1590,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   siteNetwork: null,
   towerDraftFocusRequest: null,
   trackItLastPushedAt: null,
+  trackItUnsavedChanges: false,
   loadSeq: 0,
   schematicCanvasReady: false,
   editingNodeId: null,
@@ -5779,6 +5782,9 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       localStorage.setItem(autosaveKey, JSON.stringify(blob));
     } catch {
       // Storage full or unavailable — silently fail
+    }
+    if (state.trackItLink?.drawingId) {
+      useSchematicStore.setState({ trackItUnsavedChanges: true });
     }
     scheduleTrackItAutosave();
   },

@@ -1,21 +1,58 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  broadcastAppearanceToTrackItOpener,
+  readSharedAppearanceShell,
+  subscribeSharedAppearance,
+  toggleSharedAppearanceShell,
+  writeSharedAppearanceShell,
+  type SharedAppearanceShell,
+} from "../sharedAppearanceBridge";
 
-const STORAGE_KEY = "easyschematic-theme";
+function systemPrefersDark(): boolean {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+function resolveInitialShell(): SharedAppearanceShell {
+  const shared = readSharedAppearanceShell();
+  if (shared) return shared;
+  return systemPrefersDark() ? "dark" : "light";
+}
+
+function applyShellToDocument(shell: SharedAppearanceShell): void {
+  const isDark = shell === "dark";
+  document.documentElement.classList.toggle("dark", isDark);
+  document.documentElement.setAttribute("data-theme", shell);
+}
 
 export function useTheme() {
-  const [isDark, setIsDark] = useState(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return stored === "dark";
-    return window.matchMedia("(prefers-color-scheme: dark)").matches;
-  });
+  const [shell, setShell] = useState<SharedAppearanceShell>(() => resolveInitialShell());
 
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", isDark);
-    document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
-    localStorage.setItem(STORAGE_KEY, isDark ? "dark" : "light");
-  }, [isDark]);
+    applyShellToDocument(shell);
+    writeSharedAppearanceShell(shell, { broadcast: false });
+  }, [shell]);
 
-  const toggle = () => setIsDark((d) => !d);
+  useEffect(() => {
+    return subscribeSharedAppearance((payload) => {
+      setShell(payload.shell);
+    });
+  }, []);
 
-  return { isDark, toggle };
+  const isDark = shell === "dark";
+
+  const toggle = useCallback(() => {
+    setShell((prev) => {
+      const next = toggleSharedAppearanceShell(prev === "dark");
+      broadcastAppearanceToTrackItOpener({ shell: next });
+      return next;
+    });
+  }, []);
+
+  const setAppearanceShell = useCallback((next: SharedAppearanceShell) => {
+    setShell(next);
+    writeSharedAppearanceShell(next);
+    broadcastAppearanceToTrackItOpener({ shell: next });
+  }, []);
+
+  return { isDark, shell, toggle, setAppearanceShell };
 }

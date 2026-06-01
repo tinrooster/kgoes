@@ -79,6 +79,7 @@ import { DEVICE_TEMPLATES } from "./deviceLibraryRuntime";
 import { loadSharedSchematic, checkSession } from "./templateApi";
 import { refreshCloudCache } from "./cloudSync";
 import { useTheme } from "./hooks/useTheme";
+import { useUnsavedCloseGuard } from "./hooks/useUnsavedCloseGuard";
 import { isTrackItPopupOpener, restoreTrackItPopupAutosaveOnMount } from "./trackitIntegration";
 import { schematicFlowRef } from "./schematicFlowRef";
 import { applyCanvasLayerPresentation } from "./canvasLayerPresentation";
@@ -1850,6 +1851,7 @@ function DemoBanner() {
 }
 
 export default function App() {
+  useUnsavedCloseGuard();
   const schematicName = useSchematicStore((s) => s.schematicName);
   const printView = useSchematicStore((s) => s.printView);
   const activePage = useSchematicStore((s) => s.activePage);
@@ -1960,7 +1962,6 @@ export default function App() {
                   open={viewportEditorOpen}
                   onClose={() => setViewportEditorOpen(false)}
                 />
-                <KgoSyncDrawer open={syncDrawerOpen} onClose={() => setSyncDrawerOpen(false)} />
               </div>
               <KgoCommandBar />
             </div>
@@ -1981,6 +1982,7 @@ export default function App() {
       ) : (
         <RackPage />
       )}
+      <KgoSyncDrawer open={syncDrawerOpen} onClose={() => setSyncDrawerOpen(false)} />
       <DeviceEditor />
       <RoomEditor />
       <AnnotationEditor />
