@@ -5,7 +5,7 @@
  * Bottom-left: Zoom cluster (−, %, +, fit)
  */
 
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import { useReactFlow, useViewport } from "@xyflow/react";
 import { useSchematicStore } from "../store";
 import { useSidebarStore } from "../sidebarStore";
@@ -16,12 +16,13 @@ import { dispatchOpenViewportEditor } from "../drawingViewportEvents";
 import { useDrawingViewportActions } from "../hooks/useDrawingViewportActions";
 
 function Chip({
-  label, icon, active, badge, onClick, title,
+  label, icon, active, badge, compact, onClick, title,
 }: {
   label: string;
   icon?: string;
   active?: boolean;
   badge?: number;
+  compact?: boolean;
   onClick?: () => void;
   title?: string;
 }) {
@@ -30,9 +31,13 @@ function Chip({
       type="button"
       title={title}
       onClick={onClick}
+      aria-label={label}
       style={{
-        display: "inline-flex", alignItems: "center", gap: 6,
-        height: 30, padding: "0 11px",
+        display: "inline-flex", alignItems: "center", gap: compact ? 0 : 6,
+        justifyContent: "center",
+        height: 30,
+        width: compact ? 30 : undefined,
+        padding: compact ? 0 : "0 11px",
         borderRadius: 9, whiteSpace: "nowrap",
         border: `1px solid ${active ? "var(--ti-accent)" : "var(--ti-border)"}`,
         background: active
@@ -49,7 +54,7 @@ function Chip({
       }}
     >
       {icon && <TiIcon name={icon} size={14} color={active ? "var(--ti-accent)" : "var(--ti-muted)"} />}
-      {label}
+      {!compact && label}
       {badge != null && badge > 0 && (
         <span style={{
           display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -98,6 +103,29 @@ function ZoomBtn({
 }
 
 function KgoCanvasToolbar() {
+  const [compactQuickActions, setCompactQuickActions] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("kgo-es-quick-toolbar-compact");
+      if (saved === "1") setCompactQuickActions(true);
+    } catch {
+      // localStorage is optional here; ignore read errors.
+    }
+  }, []);
+
+  const toggleCompactQuickActions = () => {
+    setCompactQuickActions((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem("kgo-es-quick-toolbar-compact", next ? "1" : "0");
+      } catch {
+        // localStorage is optional here; ignore write errors.
+      }
+      return next;
+    });
+  };
+
   const { zoomIn, zoomOut, fitView } = useReactFlow();
   const { zoom } = useViewport();
   const {
@@ -204,6 +232,7 @@ function KgoCanvasToolbar() {
         <Chip
           icon="signal"
           label="Auto-route"
+          compact={compactQuickActions}
           active={autoRoute}
           onClick={toggleAutoRoute}
           title={autoRoute ? "Auto-route on — click to disable" : "Auto-route off — click to enable"}
@@ -211,16 +240,48 @@ function KgoCanvasToolbar() {
         <Chip
           icon="eye"
           label="Hide unconnected"
+          compact={compactQuickActions}
           active={hideUnconnectedPorts}
           onClick={() => setHideUnconnectedPorts(!hideUnconnectedPorts)}
         />
         <Chip
           icon="lock"
           label="Lock canvas"
+          compact={compactQuickActions}
           active={!canvasInteractive}
           onClick={toggleCanvasInteractive}
           title={canvasInteractive ? "Canvas is interactive — click to unlock" : "Canvas is locked — click to unlock"}
         />
+        <button
+          type="button"
+          title={compactQuickActions ? "Show labeled quick actions" : "Show compact icon quick actions"}
+          aria-label={compactQuickActions ? "Disable compact quick actions" : "Enable compact quick actions"}
+          onClick={toggleCompactQuickActions}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: 30,
+            minWidth: 30,
+            padding: compactQuickActions ? "0 9px" : "0 10px",
+            borderRadius: 9,
+            border: `1px solid ${compactQuickActions ? "var(--ti-accent)" : "var(--ti-border)"}`,
+            background: compactQuickActions
+              ? "var(--ti-accent-soft)"
+              : "color-mix(in oklab, var(--ti-surface) 92%, transparent)",
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+            boxShadow: "var(--ti-shadow-sm)",
+            fontSize: 11,
+            fontWeight: 600,
+            color: compactQuickActions ? "var(--ti-accent-ink)" : "var(--ti-ink-2)",
+            fontFamily: "var(--ti-font-sans)",
+            cursor: "pointer",
+            transition: "background 100ms, border-color 100ms, color 100ms",
+          }}
+        >
+          {compactQuickActions ? "I" : "Icons"}
+        </button>
 
         <select
           value={viewportId}

@@ -28,7 +28,6 @@ import TrackItNumberingPanel from "./components/TrackItNumberingPanel";
 import ShowInfoPanel from "./components/ShowInfoPanel";
 import ViewOptionsPanel from "./components/ViewOptionsPanel";
 import CadToolsPanel from "./components/CadToolsPanel";
-import QuickSettingsToolbar from "./components/QuickSettingsToolbar";
 import KgoCanvasToolbar from "./components/KgoCanvasToolbar";
 import ViewportEditorDialog from "./components/ViewportEditorDialog";
 import { DRAWING_VIEWPORT_EDITOR_EVENT } from "./drawingViewportEvents";
@@ -1864,7 +1863,6 @@ export default function App() {
   const undo = useSchematicStore((s) => s.undo);
   const redo = useSchematicStore((s) => s.redo);
   const panelsVisible = useSidebarStore((s) => s.panelsVisible);
-  const quickToolbarVisible = useSidebarStore((s) => s.quickToolbarVisible);
   const syncDrawerOpen = useSyncDrawerStore((s) => s.open);
   const setSyncDrawerOpen = useSyncDrawerStore((s) => s.setOpen);
   const [viewportEditorOpen, setViewportEditorOpen] = useState(false);
@@ -1947,7 +1945,6 @@ export default function App() {
       <PageTabs />
       {isSchematicActive ? (
         <div className="flex flex-1 flex-col overflow-hidden min-h-0">
-          {quickToolbarVisible && <QuickSettingsToolbar />}
           <div className="flex flex-1 overflow-hidden min-h-0">
             {panelsVisible.devices && (
               <div data-print-hide data-mobile-hide>
