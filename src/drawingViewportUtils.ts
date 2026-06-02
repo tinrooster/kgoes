@@ -9,13 +9,23 @@ export function isDrawingViewport(vp: PrintViewport): boolean {
 }
 
 export function isRackViewport(vp: PrintViewport): boolean {
-  return vp.kind !== "drawing";
+  return vp.kind === "rack-front" || vp.kind === "rack-rear" || vp.kind === "rack-side";
+}
+
+export function isTowerDraftViewport(vp: PrintViewport): boolean {
+  return vp.kind === "tower-draft";
 }
 
 export function printViewportKindLabel(vp: PrintViewport): string {
   if (vp.kind === "drawing") return "Drawing";
   if (vp.kind === "rack-front") return "Front";
   if (vp.kind === "rack-rear") return "Rear";
+  if (vp.kind === "rack-side") return "Side";
+  if (vp.kind === "tower-draft") {
+    if (vp.towerView === "all-faces") return "All faces";
+    if (vp.towerView === "site") return "Site plan";
+    return "Profile";
+  }
   return "Side";
 }
 

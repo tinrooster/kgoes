@@ -1,6 +1,6 @@
 import { useSchematicStore } from "../store";
 import { KGO_ES_DRAWING_TAB_LABEL } from "../branding";
-import type { RackElevationPage } from "../types";
+import type { RackElevationPage, TowerDraftPage } from "../types";
 import { newDrawingViewportForSheet } from "../drawingViewportUtils";
 import type { PrintSheetPage } from "../types";
 
@@ -11,7 +11,20 @@ export default function PrintSheetSidebar() {
   const addViewport = useSchematicStore((s) => s.addViewport);
 
   const elevationPages = pages.filter((p): p is RackElevationPage => p.type === "rack-elevation");
+  const towerPages = pages.filter((p): p is TowerDraftPage => p.type === "tower-draft");
   const hasDrawing = nodes.length > 0;
+
+  const handleTowerDragStart = (
+    e: React.DragEvent,
+    pageId: string,
+    towerView: "profile" | "all-faces" | "site",
+  ) => {
+    e.dataTransfer.setData(
+      "application/x-print-viewport",
+      JSON.stringify({ kind: "tower-draft", towerDraftPageId: pageId, towerView }),
+    );
+    e.dataTransfer.effectAllowed = "copy";
+  };
 
   const handleRackDragStart = (
     e: React.DragEvent,
@@ -97,6 +110,40 @@ export default function PrintSheetSidebar() {
                   {kind === "rack-front" ? "Front" : kind === "rack-rear" ? "Rear" : "Side"}
                 </div>
               ))}
+            </div>
+          ))}
+        </div>
+      ))}
+      {towerPages.map((tp) => (
+        <div key={tp.id} className="mb-2">
+          <div className="px-2 py-0.5 text-neutral-600 font-medium truncate" title={tp.label}>
+            {tp.label}
+          </div>
+          {(
+            [
+              { view: "profile" as const, label: "Profile" },
+              { view: "all-faces" as const, label: "All faces" },
+              { view: "site" as const, label: "Site plan" },
+            ] as const
+          ).map(({ view, label }) => (
+            <div
+              key={view}
+              className="ml-2 px-2 py-0.5 rounded cursor-grab text-neutral-600 hover:bg-blue-50 hover:text-blue-700 border border-transparent hover:border-blue-200 transition-colors"
+              draggable
+              onDragStart={(e) => handleTowerDragStart(e, tp.id, view)}
+              onClick={() => {
+                if (!activePage) return;
+                addViewport(activePage, {
+                  kind: "tower-draft",
+                  towerDraftPageId: tp.id,
+                  towerView: view,
+                  positionMm: { x: 20, y: 20 },
+                  sizeMm: { w: 80, h: 100 },
+                  showLabel: true,
+                });
+              }}
+            >
+              {label}
             </div>
           ))}
         </div>

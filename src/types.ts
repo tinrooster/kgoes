@@ -660,7 +660,7 @@ export interface DeviceTemplate {
   rackMetadataSource?: import("./rackMount").RackMetadataSource;
   rackForm?: "full" | "half" | "shelf-only"; // Optional override for the size-based rack-form heuristic
   /** Preset for patch/VJF face-plate layout generation. */
-  panelLayoutPreset?: "vjf-2x32" | "patch-1u-24";
+  panelLayoutPreset?: "vjf-2x32" | "vjf-3x32" | "patch-1u-24";
   auxiliaryData?: AuxRow[];      // Aux rows shown on the node (each row carries its own header/footer slot)
   facePlateLayout?: FacePlateLayout; // Custom face-plate connector positions
   rfInstallation?: RfInstallationMetadata;
@@ -941,6 +941,8 @@ export interface PrintViewport {
   rackRefId?: string;
   /** Tower draft page id (tower-draft viewports only). */
   towerDraftPageId?: string;
+  /** Which tower sub-view to show (tower-draft viewports only). */
+  towerView?: "profile" | "all-faces" | "site";
   positionMm: { x: number; y: number };
   sizeMm: { w: number; h: number };
   scale?: number;

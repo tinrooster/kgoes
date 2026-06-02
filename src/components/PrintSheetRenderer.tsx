@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSchematicStore } from "../store";
-import type { PrintSheetPage, PrintViewport, RackElevationPage, DeviceData, RackData, TitleBlock, TitleBlockLayout } from "../types";
+import type { PrintSheetPage, PrintViewport, RackElevationPage, TowerDraftPage, DeviceData, RackData, TitleBlock, TitleBlockLayout } from "../types";
 import { getPaperSize, PAGE_MARGIN_IN, TITLE_BLOCK_HEIGHT_IN } from "../printConfig";
 import { PX_PER_MM } from "../rackUtils";
 import { computeRackStats, formatStatsLine } from "../rackStats";
@@ -8,6 +8,8 @@ import { computeCellRects, normalizeSizes, getFieldValue } from "../titleBlockLa
 import { computeDragSnap, computeResizeSnap, type SheetGuide, type Rect } from "../printSheetSnap";
 import RackFaceSVG from "./RackFaceSVG";
 import DrawingViewportPreview from "./DrawingViewportPreview";
+import TowerDraftRenderer from "./TowerDraftRenderer";
+import TowerDraftSitePlan from "./TowerDraftSitePlan";
 import ViewNavBar from "./ViewNavBar";
 import { stepViewZoom } from "../viewZoomUtils";
 import {
@@ -17,6 +19,7 @@ import {
 import {
   drawingRegionForViewport,
   isDrawingViewport,
+  isTowerDraftViewport,
   naturalAspectForViewport,
   printViewportKindLabel,
   layoutDrawingViewportOnSheet,
@@ -196,6 +199,7 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
   }, [nodes]);
 
   const elevationPages = allPages.filter((p): p is RackElevationPage => p.type === "rack-elevation");
+  const towerPages = allPages.filter((p): p is TowerDraftPage => p.type === "tower-draft");
 
   const paper = getPaperSize(page.paperId, page.customWidthIn, page.customHeightIn);
   const pageWIn = page.orientation === "landscape" ? paper.heightIn : paper.widthIn;
@@ -725,6 +729,8 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
       kind: PrintViewport["kind"];
       pageId?: string;
       rackId?: string;
+      towerDraftPageId?: string;
+      towerView?: "profile" | "all-faces" | "site";
     };
     const rect = containerRef.current!.getBoundingClientRect();
     const { zoom: z, pan: p } = vpRef.current;
@@ -739,6 +745,15 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
     if (payload.kind === "drawing") {
       const vp = newDrawingViewportForSheet(page, nodes);
       if (vp) addViewport(page.id, vp);
+    } else if (payload.kind === "tower-draft" && payload.towerDraftPageId) {
+      addViewport(page.id, {
+        kind: "tower-draft",
+        towerDraftPageId: payload.towerDraftPageId,
+        towerView: payload.towerView ?? "profile",
+        positionMm,
+        sizeMm,
+        showLabel: true,
+      });
     } else if (payload.pageId && payload.rackId) {
       addViewport(page.id, {
         kind: payload.kind,
@@ -852,7 +867,9 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
             const wPx = mmToPagePx(vp.sizeMm.w);
             const hPx = mmToPagePx(vp.sizeMm.h);
             const isDrawing = isDrawingViewport(vp);
-            const elevPage = !isDrawing ? elevationPages.find((p) => p.id === vp.rackRefPageId) : undefined;
+            const isTowerDraft = isTowerDraftViewport(vp);
+            const towerPage = isTowerDraft ? towerPages.find((p) => p.id === vp.towerDraftPageId) : undefined;
+            const elevPage = !isDrawing && !isTowerDraft ? elevationPages.find((p) => p.id === vp.rackRefPageId) : undefined;
             const rack = elevPage?.racks.find((r) => r.id === vp.rackRefId);
             const isSelected = selectedVpIds.includes(vp.id);
             const isOnlySelected = isSelected && selectedVpIds.length === 1;
@@ -888,6 +905,36 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
                         heightPx={hPx}
                         region={drawingRegion}
                       />
+                    </div>
+                  ) : isTowerDraft && towerPage ? (
+                    <div className="w-full h-full overflow-hidden border border-neutral-200 bg-white">
+                      {vp.towerView === "site" ? (
+                        <TowerDraftSitePlan
+                          embedded
+                          page={towerPage}
+                          selectedPlacementId={null}
+                          onSelectPlacement={() => {}}
+                        />
+                      ) : (
+                        <TowerDraftRenderer
+                          page={towerPage}
+                          drawMode={false}
+                          snapFt={0}
+                          drawStyle={{ strokeWidth: 1.5, lineStyle: "solid", strokeColor: "#64748b" }}
+                          elevationView={vp.towerView === "all-faces" ? "all-faces" : "profile"}
+                          selectedPlacementId={null}
+                          selectedPolylineId={null}
+                          onSelectPlacement={() => {}}
+                          onSelectPolyline={() => {}}
+                          onClearSelection={() => {}}
+                          onOpenContextMenu={() => {}}
+                          embeddedInChrome
+                        />
+                      )}
+                    </div>
+                  ) : isTowerDraft ? (
+                    <div className="w-full h-full flex items-center justify-center bg-neutral-100 border border-neutral-300 text-neutral-400 text-xs">
+                      Tower page not found
                     </div>
                   ) : rack ? (
                     <RackFaceSVG
