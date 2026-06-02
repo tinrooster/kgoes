@@ -5719,9 +5719,19 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     }
 
     if (presetId === RACK_FILL_ORDER_PRESET_ID) {
+      const deviceHeightsByNodeId: Record<string, number> = {};
+      for (const n of state.nodes) {
+        if (n.type !== "device") continue;
+        const data = n.data as DeviceData;
+        deviceHeightsByNodeId[n.id] = inferRackHeightU(data);
+      }
+      const fillOptions: RackFillOrderApplyOptions = {
+        ...(options as RackFillOrderApplyOptions),
+        deviceHeightsByNodeId,
+      };
       const { page: next, result } = applyRackFillOrderPreset(
         page,
-        options as RackFillOrderApplyOptions,
+        fillOptions,
         {
           accessory: nextAccessoryId,
           crossLink: () => crypto.randomUUID(),

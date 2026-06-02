@@ -1364,6 +1364,8 @@ export default function FacePlateEditor({ nodeId, deviceData, onSave, onClose }:
                     scale={PX_PER_MM}
                     color={sigColor}
                     detail={2}
+                    outlineColor="rgba(15,23,42,0.95)"
+                    outlineStrokeMm={0.8}
                   />
                   {/* Port label — same as rack view */}
                   {showPortLabels && (

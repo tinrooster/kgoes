@@ -6,6 +6,7 @@
 import { getTemplateById } from "./templateApi";
 import { DEVICE_TEMPLATES } from "./deviceLibraryRuntime";
 import { resolveRackDesignation } from "./rackDesignation";
+import { autoLayoutAllFacePlateItems } from "./facePlateUtils";
 import type { JackFieldPorts } from "./rackDistributionPresets";
 import type { DeviceData, DeviceTemplate, Port, RackData } from "./types";
 
@@ -90,6 +91,13 @@ export function buildJackFieldDeviceData(
     widthMm: template.widthMm ?? 482.6,
     depthMm: template.depthMm ?? 120,
     designation: opts.designation,
+    // Jack fields are essentially patch panels; ensure the face-plate editor has a
+    // fully defined layout object (positions keyed by port+panel) rather than
+    // relying on per-session auto-layout defaults.
+    facePlateLayout: {
+      positions: autoLayoutAllFacePlateItems(ports, template.deviceType),
+      deviceLabel: { x: 50, y: 12 },
+    },
     auxiliaryData: opts.isMaster
       ? [
           { text: `Source: ${source}`, position: "header" },

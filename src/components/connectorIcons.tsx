@@ -895,7 +895,7 @@ export function getConnectorSpec(connectorType?: ConnectorType): ConnectorSpec {
 const DEFAULT_STROKE_MM = 0.6;
 
 /** Render a connector icon SVG element at a given position */
-export function ConnectorIcon({ x, y, connectorType, scale, color, detail }: {
+export function ConnectorIcon({ x, y, connectorType, scale, color, detail, outlineColor, outlineStrokeMm }: {
   x: number;
   y: number;
   connectorType?: ConnectorType;
@@ -903,11 +903,21 @@ export function ConnectorIcon({ x, y, connectorType, scale, color, detail }: {
   scale: number;
   color: string;
   detail?: number;
+  outlineColor?: string;
+  outlineStrokeMm?: number;
 }) {
   const spec = getConnectorSpec(connectorType);
   const strokeWidth = DEFAULT_STROKE_MM;
+  const outlineStrokeWidth = outlineStrokeMm ?? 0;
   return (
     <g transform={`translate(${x}, ${y}) scale(${scale})`}>
+      {outlineColor && outlineStrokeWidth > 0
+        ? spec.render({
+            color: outlineColor,
+            detail: detail ?? 1,
+            strokeWidth: strokeWidth + outlineStrokeWidth,
+          })
+        : null}
       {spec.render({ color, detail: detail ?? 1, strokeWidth })}
     </g>
   );

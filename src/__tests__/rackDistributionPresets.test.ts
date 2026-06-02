@@ -144,4 +144,51 @@ describe("applyRackFillOrderPreset", () => {
     );
     expect(large.result.orderSummary!.totalU).toBe(small.result.orderSummary!.totalU);
   });
+
+  it("fills only selected racks when rackIds is provided", () => {
+    const page = mockPage(2);
+    const out = applyRackFillOrderPreset(
+      page,
+      {
+        skipFillFromU: 20,
+        skipBottomU: 1,
+        ventEveryNU: 0,
+        preferLargeBlanks: false,
+        rackIds: [page.racks[0]!.id],
+      },
+      { accessory: () => `f-${Math.random()}`, crossLink: () => "x", deviceNode: () => "n", placement: () => "p" },
+    );
+    const rack0 = page.racks[0]!.id;
+    const rack1 = page.racks[1]!.id;
+    expect(out.page.accessories.some((a) => a.rackId === rack0)).toBe(true);
+    expect(out.page.accessories.some((a) => a.rackId === rack1)).toBe(false);
+  });
+
+  it("treats multi-U devices as occupied across full height", () => {
+    const page = mockPage(1);
+    page.placements.push({
+      id: "p-1",
+      rackId: page.racks[0]!.id,
+      deviceNodeId: "dev-1",
+      uPosition: 10,
+      face: "front",
+    });
+    const out = applyRackFillOrderPreset(
+      page,
+      {
+        skipFillFromU: 20,
+        skipBottomU: 1,
+        ventEveryNU: 0,
+        preferLargeBlanks: false,
+        deviceHeightsByNodeId: { "dev-1": 4 },
+      },
+      { accessory: () => `f-${Math.random()}`, crossLink: () => "x", deviceNode: () => "n", placement: () => "p" },
+    );
+    const fills = out.page.accessories.filter((a) => a.rackId === page.racks[0]!.id);
+    const touchesBlockedBand = fills.some((a) => {
+      const top = a.uPosition + a.heightU - 1;
+      return a.uPosition <= 13 && top >= 10;
+    });
+    expect(touchesBlockedBand).toBe(false);
+  });
 });

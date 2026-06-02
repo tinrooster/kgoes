@@ -260,7 +260,8 @@ export default function RackSidebar({ page }: RackSidebarProps) {
         <div className="px-2 pt-2 pb-0">
           <button
             type="button"
-            className="w-full px-2 py-1.5 text-[11px] rounded border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100 hover:border-blue-300 font-medium"
+            className="w-full px-2 py-1.5 text-[11px] rounded font-medium border border-[var(--ti-accent)] bg-[var(--ti-accent-soft)] text-[var(--ti-accent-ink)] hover:brightness-110 transition-[filter] duration-100"
+            style={{ fontFamily: "var(--ti-font-sans)", cursor: "pointer" }}
             onClick={() => setShowDistributionPreset(true)}
             title="Apply MDF/datacom hub jack fields and trunk callouts"
           >

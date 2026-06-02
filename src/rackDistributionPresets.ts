@@ -99,6 +99,8 @@ export type TowerDatacomHubPresetOutput = {
 
 export interface RackFillOrderApplyOptions {
   face?: "front" | "rear";
+  /** Limit fill to these rack ids. Omit/empty = all racks on page. */
+  rackIds?: string[];
   /** Use vent-panel every N U within filled range; 0 = all blank. */
   ventEveryNU?: number;
   /** Vent panel height when a vent U is hit (2U only if next U is free). */
@@ -111,6 +113,8 @@ export interface RackFillOrderApplyOptions {
   skipFillFromU?: number;
   skipBottomU?: number;
   replaceExisting?: boolean;
+  /** Optional rack-device heights keyed by deviceNodeId for accurate occupied-U blocking. */
+  deviceHeightsByNodeId?: Record<string, number>;
 }
 
 export interface ApplyPresetResult {
@@ -228,6 +232,7 @@ function occupiedUSet(
   page: RackElevationPage,
   rackId: string,
   face: "front" | "rear",
+  deviceHeightsByNodeId?: Record<string, number>,
 ): Set<number> {
   const occupied = new Set<number>();
   const rack = page.racks.find((r) => r.id === rackId);
@@ -239,7 +244,11 @@ function occupiedUSet(
   }
   for (const p of page.placements) {
     if (p.rackId !== rackId || p.face !== face || p.mountedOnShelfId) continue;
-    occupied.add(p.uPosition);
+    const h = Math.max(
+      1,
+      Math.round(deviceHeightsByNodeId?.[p.deviceNodeId] ?? 1),
+    );
+    for (let u = p.uPosition; u <= p.uPosition + h - 1; u++) occupied.add(u);
   }
   return occupied;
 }
@@ -429,6 +438,10 @@ export function applyRackFillOrderPreset(
   const ventPanelHeightU = options.ventPanelHeightU ?? 1;
   const skipFromU = options.skipFillFromU ?? 41;
   const skipBottom = options.skipBottomU ?? 1;
+  const selectedRackIds =
+    options.rackIds && options.rackIds.length > 0
+      ? new Set(options.rackIds)
+      : null;
   const preferLarge = options.preferLargeBlanks !== false;
   const blankSizesU = preferLarge
     ? (options.blankSizesU?.length ? options.blankSizesU : [...DEFAULT_BLANK_SIZES_U])
@@ -436,7 +449,12 @@ export function applyRackFillOrderPreset(
 
   let accessories = [...page.accessories];
   if (options.replaceExisting) {
-    accessories = accessories.filter((a) => a.distributionPresetId !== presetId);
+    accessories = accessories.filter((a) => {
+      if (a.distributionPresetId !== presetId) return true;
+      if (a.face !== face) return true;
+      if (!selectedRackIds) return false;
+      return !selectedRackIds.has(a.rackId);
+    });
   }
 
   const result: ApplyPresetResult = {
@@ -454,7 +472,13 @@ export function applyRackFillOrderPreset(
   let workingPage: RackElevationPage = { ...page, accessories };
 
   for (const rack of page.racks) {
-    const occupied = occupiedUSet(workingPage, rack.id, face);
+    if (selectedRackIds && !selectedRackIds.has(rack.id)) continue;
+    const occupied = occupiedUSet(
+      workingPage,
+      rack.id,
+      face,
+      options.deviceHeightsByNodeId,
+    );
     const freeU: number[] = [];
     for (let u = skipBottom; u < skipFromU && u <= rack.heightU; u++) {
       if (!occupied.has(u)) freeU.push(u);

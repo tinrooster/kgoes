@@ -84,12 +84,12 @@ function PrintViewBar() {
   }
 
   return (
-    <div className="h-10 bg-blue-50 border-b border-blue-200 flex items-center px-3 gap-3 shrink-0" data-print-hide>
+    <div className="h-10 bg-blue-50 dark:bg-[var(--color-surface)] border-b border-blue-200 dark:border-[var(--color-border)] flex items-center px-3 gap-3 shrink-0" data-print-hide>
       {/* Paper size */}
-      <label className="flex items-center gap-1.5 text-xs text-gray-600">
+      <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-[var(--color-text)]">
         Paper
         <select
-          className="text-xs bg-white border border-gray-300 rounded px-1.5 py-0.5 text-gray-800"
+          className="text-xs bg-white dark:bg-[var(--color-surface-2)] border border-gray-300 dark:border-[var(--color-border)] rounded px-1.5 py-0.5 text-gray-800 dark:text-[var(--color-text)]"
           value={printPaperId}
           onChange={(e) => setPrintPaperId(e.target.value)}
         >
@@ -110,7 +110,7 @@ function PrintViewBar() {
 
       {/* Custom dimensions */}
       {printPaperId === "custom" && (
-        <div className="flex items-center gap-1 text-xs text-gray-600">
+        <div className="flex items-center gap-1 text-xs text-gray-600 dark:text-[var(--color-text)]">
           <input
             type="number"
             min={1}
@@ -118,7 +118,7 @@ function PrintViewBar() {
             step={0.01}
             value={printCustomWidthIn}
             onChange={(e) => setPrintCustomWidthIn(Number(e.target.value))}
-            className="w-14 text-xs bg-white border border-gray-300 rounded px-1 py-0.5 text-gray-800 text-center"
+            className="w-14 text-xs bg-white dark:bg-[var(--color-surface-2)] border border-gray-300 dark:border-[var(--color-border)] rounded px-1 py-0.5 text-gray-800 dark:text-[var(--color-text)] text-center"
           />
           <span>&times;</span>
           <input
@@ -128,7 +128,7 @@ function PrintViewBar() {
             step={0.01}
             value={printCustomHeightIn}
             onChange={(e) => setPrintCustomHeightIn(Number(e.target.value))}
-            className="w-14 text-xs bg-white border border-gray-300 rounded px-1 py-0.5 text-gray-800 text-center"
+            className="w-14 text-xs bg-white dark:bg-[var(--color-surface-2)] border border-gray-300 dark:border-[var(--color-border)] rounded px-1 py-0.5 text-gray-800 dark:text-[var(--color-text)] text-center"
           />
           <span>&quot;</span>
         </div>
@@ -140,7 +140,7 @@ function PrintViewBar() {
           className={`px-2 py-0.5 rounded border text-xs cursor-pointer ${
             printOrientation === "landscape"
               ? "bg-blue-600 text-white border-blue-600"
-              : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+              : "bg-white dark:bg-[var(--color-surface-2)] text-gray-600 dark:text-[var(--color-text)] border-gray-300 dark:border-[var(--color-border)] hover:bg-gray-50 dark:hover:bg-[var(--color-surface-hover)]"
           }`}
           onClick={() => setPrintOrientation("landscape")}
         >
@@ -150,7 +150,7 @@ function PrintViewBar() {
           className={`px-2 py-0.5 rounded border text-xs cursor-pointer ${
             printOrientation === "portrait"
               ? "bg-blue-600 text-white border-blue-600"
-              : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+              : "bg-white dark:bg-[var(--color-surface-2)] text-gray-600 dark:text-[var(--color-text)] border-gray-300 dark:border-[var(--color-border)] hover:bg-gray-50 dark:hover:bg-[var(--color-surface-hover)]"
           }`}
           onClick={() => setPrintOrientation("portrait")}
         >
@@ -159,7 +159,7 @@ function PrintViewBar() {
       </div>
 
       {/* Scale */}
-      <label className="flex items-center gap-1.5 text-xs text-gray-600">
+      <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-[var(--color-text)]">
         Scale
         <input
           type="range"
@@ -170,31 +170,31 @@ function PrintViewBar() {
           onChange={(e) => setPrintScale(Number(e.target.value))}
           className="w-20 h-1 accent-blue-600"
         />
-        <span className="text-xs text-gray-800 w-8 text-right font-mono">
+        <span className="text-xs text-gray-800 dark:text-[var(--color-text)] w-8 text-right font-mono">
           {Math.round(printScale * 100)}%
         </span>
       </label>
 
       {/* Page offset */}
-      <label className="flex items-center gap-1 text-xs text-gray-600">
+      <label className="flex items-center gap-1 text-xs text-gray-600 dark:text-[var(--color-text)]">
         Offset
         <input
           type="number"
           step={20}
           value={printOriginOffsetX}
           onChange={(e) => setPrintOriginOffset(Number(e.target.value), printOriginOffsetY)}
-          className="w-14 text-xs bg-white border border-gray-300 rounded px-1 py-0.5 text-gray-800 text-center"
+          className="w-14 text-xs bg-white dark:bg-[var(--color-surface-2)] border border-gray-300 dark:border-[var(--color-border)] rounded px-1 py-0.5 text-gray-800 dark:text-[var(--color-text)] text-center"
         />
         <input
           type="number"
           step={20}
           value={printOriginOffsetY}
           onChange={(e) => setPrintOriginOffset(printOriginOffsetX, Number(e.target.value))}
-          className="w-14 text-xs bg-white border border-gray-300 rounded px-1 py-0.5 text-gray-800 text-center"
+          className="w-14 text-xs bg-white dark:bg-[var(--color-surface-2)] border border-gray-300 dark:border-[var(--color-border)] rounded px-1 py-0.5 text-gray-800 dark:text-[var(--color-text)] text-center"
         />
         {(printOriginOffsetX !== 0 || printOriginOffsetY !== 0) && (
           <button
-            className="text-xs text-blue-600 hover:underline cursor-pointer"
+            className="text-xs text-blue-600 dark:text-blue-300 hover:underline cursor-pointer"
             onClick={() => setPrintOriginOffset(0, 0)}
           >
             Reset
@@ -203,7 +203,7 @@ function PrintViewBar() {
       </label>
 
       {/* Page count */}
-      <span className="text-xs text-gray-500">
+      <span className="text-xs text-gray-500 dark:text-[var(--color-text-muted)]">
         {pages.length} page{pages.length !== 1 ? "s" : ""}
       </span>
 
@@ -214,7 +214,7 @@ function PrintViewBar() {
             className={`px-2 py-0.5 rounded-l border text-xs cursor-pointer ${
               colorKeyEnabled
                 ? "bg-blue-600 text-white border-blue-600"
-                : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                : "bg-white dark:bg-[var(--color-surface-2)] text-gray-600 dark:text-[var(--color-text)] border-gray-300 dark:border-[var(--color-border)] hover:bg-gray-50 dark:hover:bg-[var(--color-surface-hover)]"
             }`}
             onClick={() => setColorKeyEnabled(!colorKeyEnabled)}
             title="Toggle signal color key"
@@ -225,7 +225,7 @@ function PrintViewBar() {
             className={`px-1 py-0.5 rounded-r border-t border-b border-r text-xs cursor-pointer ${
               colorKeyEnabled
                 ? "bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
-                : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                : "bg-white dark:bg-[var(--color-surface-2)] text-gray-600 dark:text-[var(--color-text)] border-gray-300 dark:border-[var(--color-border)] hover:bg-gray-50 dark:hover:bg-[var(--color-surface-hover)]"
             }`}
             onClick={() => setCkPopoverOpen(!ckPopoverOpen)}
             title="Color key settings"
@@ -237,10 +237,10 @@ function PrintViewBar() {
         {ckPopoverOpen && (
           <div
             ref={ckPopoverRef}
-            className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-50 w-56"
+            className="absolute top-full left-0 mt-1 bg-white dark:bg-[var(--color-surface)] border border-gray-200 dark:border-[var(--color-border)] rounded-lg shadow-lg p-3 z-50 w-56"
           >
             {/* Corner picker */}
-            <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Corner</div>
+            <div className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-[var(--color-text-muted)] mb-1">Corner</div>
             <div className="grid grid-cols-2 gap-1 mb-2">
               {(["top-left", "top-right", "bottom-left", "bottom-right"] as const).map((c) => (
                 <button
@@ -248,7 +248,7 @@ function PrintViewBar() {
                   className={`px-2 py-0.5 text-[10px] rounded border cursor-pointer ${
                     colorKeyCorner === c
                       ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                      : "bg-white dark:bg-[var(--color-surface-2)] text-gray-600 dark:text-[var(--color-text)] border-gray-300 dark:border-[var(--color-border)] hover:bg-gray-50 dark:hover:bg-[var(--color-surface-hover)]"
                   }`}
                   onClick={() => setColorKeyCorner(c)}
                 >
@@ -258,7 +258,7 @@ function PrintViewBar() {
             </div>
 
             {/* Columns */}
-            <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Columns</div>
+            <div className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-[var(--color-text-muted)] mb-1">Columns</div>
             <div className="flex gap-1 mb-2">
               {[1, 2, 3, 4].map((n) => (
                 <button
@@ -266,7 +266,7 @@ function PrintViewBar() {
                   className={`w-7 py-0.5 text-[10px] rounded border cursor-pointer ${
                     colorKeyColumns === n
                       ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                      : "bg-white dark:bg-[var(--color-surface-2)] text-gray-600 dark:text-[var(--color-text)] border-gray-300 dark:border-[var(--color-border)] hover:bg-gray-50 dark:hover:bg-[var(--color-surface-hover)]"
                   }`}
                   onClick={() => setColorKeyColumns(n)}
                 >
@@ -276,9 +276,9 @@ function PrintViewBar() {
             </div>
 
             {/* Show on page */}
-            <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Show On</div>
+            <div className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-[var(--color-text-muted)] mb-1">Show On</div>
             <select
-              className="text-xs bg-white border border-gray-300 rounded px-1.5 py-0.5 text-gray-800 w-full mb-2"
+              className="text-xs bg-white dark:bg-[var(--color-surface-2)] border border-gray-300 dark:border-[var(--color-border)] rounded px-1.5 py-0.5 text-gray-800 dark:text-[var(--color-text)] w-full mb-2"
               value={colorKeyPage}
               onChange={(e) => setColorKeyPage(e.target.value as "first" | "last" | "all")}
             >
@@ -288,12 +288,12 @@ function PrintViewBar() {
             </select>
 
             {/* Signal type overrides */}
-            <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Signal Types</div>
+            <div className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-[var(--color-text-muted)] mb-1">Signal Types</div>
             <div className="max-h-40 overflow-y-auto space-y-0.5">
               {autoEntries.map(({ signalType, label, color }) => {
                 const isHidden = colorKeyOverrides?.[signalType] === false;
                 return (
-                  <label key={signalType} className="flex items-center gap-1.5 px-1 py-0.5 rounded hover:bg-gray-50 cursor-pointer">
+                  <label key={signalType} className="flex items-center gap-1.5 px-1 py-0.5 rounded hover:bg-gray-50 dark:hover:bg-[var(--color-surface-hover)] cursor-pointer">
                     <input
                       type="checkbox"
                       checked={!isHidden}
@@ -312,12 +312,12 @@ function PrintViewBar() {
                       className="w-2.5 h-2.5 rounded-full shrink-0"
                       style={{ background: color }}
                     />
-                    <span className="text-xs text-gray-700 truncate">{label}</span>
+                    <span className="text-xs text-gray-700 dark:text-[var(--color-text)] truncate">{label}</span>
                   </label>
                 );
               })}
               {autoEntries.length === 0 && (
-                <div className="text-xs text-gray-400 italic px-1">No connected signals</div>
+                <div className="text-xs text-gray-400 dark:text-[var(--color-text-muted)] italic px-1">No connected signals</div>
               )}
             </div>
           </div>

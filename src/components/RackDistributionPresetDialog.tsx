@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { useSchematicStore } from "../store";
 import type { JackFieldPorts } from "../rackDistributionPresets";
 import type { RackElevationPage } from "../types";
@@ -18,6 +18,48 @@ interface RackDistributionPresetDialogProps {
   page: RackElevationPage;
   onClose: () => void;
 }
+
+const formPanelStyle: CSSProperties = {
+  background: "var(--ti-surface)",
+  color: "var(--ti-ink)",
+  border: "1px solid var(--ti-border)",
+  borderRadius: 12,
+  boxShadow: "var(--ti-shadow-lg)",
+  fontFamily: "var(--ti-font-sans)",
+};
+
+const labelTextStyle: CSSProperties = {
+  color: "var(--ti-ink-2)",
+  fontWeight: 500,
+};
+
+const hintStyle: CSSProperties = {
+  fontSize: 10,
+  color: "var(--ti-muted)",
+};
+
+const fieldStyle: CSSProperties = {
+  marginTop: 4,
+  width: "100%",
+  border: "1px solid var(--ti-border)",
+  borderRadius: 6,
+  padding: "6px 8px",
+  background: "var(--ti-surface-2)",
+  color: "var(--ti-ink)",
+  outline: "none",
+  fontFamily: "var(--ti-font-sans)",
+  fontSize: 12,
+};
+
+const linkBtnStyle: CSSProperties = {
+  color: "var(--ti-accent-ink)",
+  background: "none",
+  border: 0,
+  padding: 0,
+  cursor: "pointer",
+  fontSize: 10,
+  textDecoration: "underline",
+};
 
 export default function RackDistributionPresetDialog({ page, onClose }: RackDistributionPresetDialogProps) {
   const applyRackDistributionPreset = useSchematicStore((s) => s.applyRackDistributionPreset);
@@ -43,6 +85,9 @@ export default function RackDistributionPresetDialog({ page, onClose }: RackDist
   const [use4U, setUse4U] = useState(true);
   const [use2U, setUse2U] = useState(true);
   const [skipFillFromU, setSkipFillFromU] = useState(41);
+  const [fillRackIds, setFillRackIds] = useState<Set<string>>(
+    () => new Set(page.racks.map((r) => r.id)),
+  );
   const [submitting, setSubmitting] = useState(false);
 
   const preset = RACK_DISTRIBUTION_PRESETS.find((p) => p.id === presetId) ?? RACK_DISTRIBUTION_PRESETS[0];
@@ -68,6 +113,19 @@ export default function RackDistributionPresetDialog({ page, onClose }: RackDist
   const handleMasterChange = (id: string) => {
     setMasterRackId(id);
     setEthTrunkRackIds(new Set(defaultEthTrunkRackIds(page.racks, id)));
+  };
+
+  const toggleFillRack = (rackId: string) => {
+    setFillRackIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(rackId)) next.delete(rackId);
+      else next.add(rackId);
+      return next;
+    });
+  };
+
+  const selectAllFillRacks = (on: boolean) => {
+    setFillRackIds(on ? new Set(sortedRacks.map((r) => r.id)) : new Set());
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -108,6 +166,7 @@ export default function RackDistributionPresetDialog({ page, onClose }: RackDist
           skipFillFromU,
           skipBottomU: 1,
           face: "front",
+          rackIds: [...fillRackIds],
         };
         applyRackDistributionPreset(page.id, presetId, options);
       }
@@ -118,23 +177,30 @@ export default function RackDistributionPresetDialog({ page, onClose }: RackDist
   };
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
+    <div
+      className="fixed inset-0 flex items-center justify-center z-50"
+      style={{ background: "color-mix(in oklab, var(--ti-ink) 45%, transparent)" }}
+      onClick={onClose}
+    >
       <form
-        className="bg-white rounded-lg shadow-xl p-4 w-[420px] max-h-[90vh] overflow-y-auto text-xs"
+        className="p-4 w-[420px] max-h-[90vh] overflow-y-auto text-xs"
+        style={formPanelStyle}
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
       >
-        <h3 className="font-semibold text-sm mb-1">Distribution preset</h3>
-        <p className="text-neutral-500 text-[11px] mb-3 leading-relaxed">
+        <h3 className="font-semibold text-sm mb-1" style={{ color: "var(--ti-ink)" }}>
+          Distribution preset
+        </h3>
+        <p className="text-[11px] mb-3 leading-relaxed" style={hintStyle}>
           {isDatacom
             ? "Jack fields and Ethernet trunk callouts on this elevation. Cable records are proposed in trackIT Plant after apply."
             : "Fill empty U slots for procurement totals. Jack-field / device U are left open."}
         </p>
 
         <label className="block mb-3">
-          <span className="text-neutral-600 font-medium">Preset</span>
+          <span style={labelTextStyle}>Preset</span>
           <select
-            className="mt-1 w-full border border-neutral-300 rounded px-2 py-1.5 outline-none focus:border-blue-400"
+            style={fieldStyle}
             value={presetId}
             onChange={(e) => setPresetId(e.target.value)}
           >
@@ -142,15 +208,15 @@ export default function RackDistributionPresetDialog({ page, onClose }: RackDist
               <option key={p.id} value={p.id}>{p.title}</option>
             ))}
           </select>
-          <span className="block mt-1 text-[10px] text-neutral-400">{preset.description}</span>
+          <span className="block mt-1" style={hintStyle}>{preset.description}</span>
         </label>
 
         {isDatacom && (
           <>
             <label className="block mb-3">
-              <span className="text-neutral-600 font-medium">Master / MDF rack</span>
+              <span style={labelTextStyle}>Master / MDF rack</span>
               <select
-                className="mt-1 w-full border border-neutral-300 rounded px-2 py-1.5 outline-none focus:border-blue-400"
+                style={fieldStyle}
                 value={masterRackId}
                 onChange={(e) => handleMasterChange(e.target.value)}
               >
@@ -161,58 +227,71 @@ export default function RackDistributionPresetDialog({ page, onClose }: RackDist
             </label>
 
             <label className="block mb-2">
-              <span className="text-neutral-600 font-medium">Designation prefix</span>
+              <span style={labelTextStyle}>Designation prefix</span>
               <input
-                className="mt-1 w-full border border-neutral-300 rounded px-2 py-1 outline-none focus:border-blue-400 uppercase"
+                style={{ ...fieldStyle, textTransform: "uppercase" }}
                 value={designationPrefix}
                 onChange={(e) => setDesignationPrefix(e.target.value.toUpperCase())}
                 placeholder="RACK"
               />
-              <span className="text-[10px] text-neutral-400">Trunk labels use RACK01→RACK07 style codes.</span>
+              <span className="block mt-0.5" style={hintStyle}>Trunk labels use RACK01→RACK07 style codes.</span>
             </label>
 
             <label className="block mb-2">
-              <span className="text-neutral-600 font-medium">Jack field source (MDF)</span>
+              <span style={labelTextStyle}>Jack field source (MDF)</span>
               <input
-                className="mt-1 w-full border border-neutral-300 rounded px-2 py-1 outline-none focus:border-blue-400"
+                style={fieldStyle}
                 value={jackSourceLabel}
                 onChange={(e) => setJackSourceLabel(e.target.value)}
                 placeholder="Sutro MDF / Datacom"
               />
-              <span className="text-[10px] text-neutral-400">Master rack EJF device name and “from” side for satellites.</span>
+              <span className="block mt-0.5" style={hintStyle}>Master rack EJF device name and “from” side for satellites.</span>
             </label>
 
             <label className="block mb-2">
-              <span className="text-neutral-600 font-medium">Satellite jack field label</span>
+              <span style={labelTextStyle}>Satellite jack field label</span>
               <input
-                className="mt-1 w-full border border-neutral-300 rounded px-2 py-1 outline-none focus:border-blue-400"
+                style={fieldStyle}
                 value={jackDestLabelTemplate}
                 onChange={(e) => setJackDestLabelTemplate(e.target.value)}
                 placeholder="{dest} JKF"
               />
-              <span className="text-[10px] text-neutral-400">
-                Template: <code className="text-[9px]">{"{dest}"}</code>, <code className="text-[9px]">{"{source}"}</code>, <code className="text-[9px]">{"{ports}"}</code>
+              <span className="block mt-0.5" style={hintStyle}>
+                Template: <code style={{ fontSize: 9 }}>{"{dest}"}</code>, <code style={{ fontSize: 9 }}>{"{source}"}</code>, <code style={{ fontSize: 9 }}>{"{ports}"}</code>
               </span>
             </label>
 
             <div className="mb-3">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-neutral-600 font-medium">Ethernet trunk to rack</span>
-                <span className="flex gap-2 text-[10px]">
-                  <button type="button" className="text-blue-600 hover:underline" onClick={() => selectAllEth(true)}>
+                <span style={labelTextStyle}>Ethernet trunk to rack</span>
+                <span className="flex gap-2">
+                  <button type="button" style={linkBtnStyle} onClick={() => selectAllEth(true)}>
                     All
                   </button>
-                  <button type="button" className="text-blue-600 hover:underline" onClick={() => selectAllEth(false)}>
+                  <button type="button" style={linkBtnStyle} onClick={() => selectAllEth(false)}>
                     None
                   </button>
                 </span>
               </div>
-              <div className="max-h-32 overflow-y-auto border border-neutral-200 rounded p-1.5 flex flex-col gap-0.5">
+              <div
+                className="max-h-32 overflow-y-auto rounded p-1.5 flex flex-col gap-0.5"
+                style={{ border: "1px solid var(--ti-border)", background: "var(--ti-surface-2)" }}
+              >
                 {satellites.length === 0 ? (
-                  <span className="text-neutral-400 px-1">Add another rack besides the master.</span>
+                  <span className="px-1" style={hintStyle}>Add another rack besides the master.</span>
                 ) : (
                   satellites.map((r) => (
-                    <label key={r.id} className="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-neutral-50 cursor-pointer">
+                    <label
+                      key={r.id}
+                      className="flex items-center gap-2 px-1 py-0.5 rounded cursor-pointer"
+                      style={{ color: "var(--ti-ink)" }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "var(--ti-accent-soft)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "transparent";
+                      }}
+                    >
                       <input
                         type="checkbox"
                         checked={ethTrunkRackIds.has(r.id)}
@@ -226,9 +305,9 @@ export default function RackDistributionPresetDialog({ page, onClose }: RackDist
             </div>
 
             <label className="block mb-2">
-              <span className="text-neutral-600 font-medium">Jack field (EJF)</span>
+              <span style={labelTextStyle}>Jack field (EJF)</span>
               <select
-                className="mt-1 w-full border border-neutral-300 rounded px-2 py-1.5 outline-none focus:border-blue-400"
+                style={fieldStyle}
                 value={jackFieldPorts}
                 onChange={(e) => setJackFieldPorts(Number(e.target.value) as JackFieldPorts)}
               >
@@ -239,21 +318,21 @@ export default function RackDistributionPresetDialog({ page, onClose }: RackDist
             </label>
 
             <label className="block mb-2">
-              <span className="text-neutral-600 font-medium">Jack field bottom U</span>
+              <span style={labelTextStyle}>Jack field bottom U</span>
               <input
                 type="number"
-                className="mt-1 w-full border border-neutral-300 rounded px-2 py-1 outline-none focus:border-blue-400"
+                style={fieldStyle}
                 min={1}
                 max={60}
                 value={jackBottomU}
                 onChange={(e) => setJackBottomU(Number(e.target.value))}
               />
-              <span className="text-[10px] text-neutral-400">
+              <span className="block mt-0.5" style={hintStyle}>
                 {jackSpec.portsLabel} panel · {jackSpec.heightU}U (e.g. 42U rack → U{jackBottomU}–{jackBottomU + jackSpec.heightU - 1}).
               </span>
             </label>
 
-            <label className="flex items-center gap-2 cursor-pointer mb-2">
+            <label className="flex items-center gap-2 cursor-pointer mb-2" style={{ color: "var(--ti-ink)" }}>
               <input
                 type="checkbox"
                 checked={showTrunkCallouts}
@@ -266,7 +345,38 @@ export default function RackDistributionPresetDialog({ page, onClose }: RackDist
 
         {isFill && (
           <>
-            <label className="flex items-center gap-2 cursor-pointer mb-2">
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-1">
+                <span style={labelTextStyle}>Racks to fill</span>
+                <span className="flex gap-2">
+                  <button type="button" style={linkBtnStyle} onClick={() => selectAllFillRacks(true)}>
+                    All
+                  </button>
+                  <button type="button" style={linkBtnStyle} onClick={() => selectAllFillRacks(false)}>
+                    None
+                  </button>
+                </span>
+              </div>
+              <div
+                className="max-h-28 overflow-y-auto rounded p-1.5 flex flex-col gap-0.5"
+                style={{ border: "1px solid var(--ti-border)", background: "var(--ti-surface-2)" }}
+              >
+                {sortedRacks.map((r) => (
+                  <label key={r.id} className="flex items-center gap-2 px-1 py-0.5 rounded cursor-pointer" style={{ color: "var(--ti-ink)" }}>
+                    <input
+                      type="checkbox"
+                      checked={fillRackIds.has(r.id)}
+                      onChange={() => toggleFillRack(r.id)}
+                    />
+                    <span>{r.label}</span>
+                  </label>
+                ))}
+              </div>
+              <span className="block mt-0.5" style={hintStyle}>
+                Fill runs all open U gaps between devices on selected racks.
+              </span>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer mb-2" style={{ color: "var(--ti-ink)" }}>
               <input
                 type="checkbox"
                 checked={preferLargeBlanks}
@@ -275,7 +385,7 @@ export default function RackDistributionPresetDialog({ page, onClose }: RackDist
               <span>Prefer 4U / 6U blanks for large open runs</span>
             </label>
             {preferLargeBlanks && (
-              <div className="mb-2 flex flex-wrap gap-3 pl-5 text-[11px]">
+              <div className="mb-2 flex flex-wrap gap-3 pl-5 text-[11px]" style={{ color: "var(--ti-ink)" }}>
                 <label className="flex items-center gap-1.5 cursor-pointer">
                   <input type="checkbox" checked={use6U} onChange={(e) => setUse6U(e.target.checked)} />
                   6U
@@ -288,25 +398,25 @@ export default function RackDistributionPresetDialog({ page, onClose }: RackDist
                   <input type="checkbox" checked={use2U} onChange={(e) => setUse2U(e.target.checked)} />
                   2U
                 </label>
-                <span className="text-neutral-400">+ 1U remainder</span>
+                <span style={hintStyle}>+ 1U remainder</span>
               </div>
             )}
             <label className="block mb-2">
-              <span className="text-neutral-600 font-medium">Vent panel every N U</span>
+              <span style={labelTextStyle}>Vent panel every N U</span>
               <input
                 type="number"
-                className="mt-1 w-full border border-neutral-300 rounded px-2 py-1 outline-none focus:border-blue-400"
+                style={fieldStyle}
                 min={0}
                 max={20}
                 value={ventEveryNU}
                 onChange={(e) => setVentEveryNU(Number(e.target.value))}
               />
-              <span className="text-[10px] text-neutral-400">0 = no vents. Default 6 = vent at U6, 12, 18…</span>
+              <span className="block mt-0.5" style={hintStyle}>0 = no vents. Default 6 = vent at U6, 12, 18…</span>
             </label>
             <label className="block mb-2">
-              <span className="text-neutral-600 font-medium">Vent panel size</span>
+              <span style={labelTextStyle}>Vent panel size</span>
               <select
-                className="mt-1 w-full border border-neutral-300 rounded px-2 py-1.5 outline-none focus:border-blue-400"
+                style={fieldStyle}
                 value={ventPanelHeightU}
                 onChange={(e) => setVentPanelHeightU(Number(e.target.value) as 1 | 2)}
               >
@@ -315,21 +425,21 @@ export default function RackDistributionPresetDialog({ page, onClose }: RackDist
               </select>
             </label>
             <label className="block mb-2">
-              <span className="text-neutral-600 font-medium">Skip fill from U (and above)</span>
+              <span style={labelTextStyle}>Skip fill from U (and above)</span>
               <input
                 type="number"
-                className="mt-1 w-full border border-neutral-300 rounded px-2 py-1 outline-none focus:border-blue-400"
+                style={fieldStyle}
                 min={2}
                 max={60}
                 value={skipFillFromU}
                 onChange={(e) => setSkipFillFromU(Number(e.target.value))}
               />
-              <span className="text-[10px] text-neutral-400">Reserve top U for jack fields (default 41).</span>
+              <span className="block mt-0.5" style={hintStyle}>Reserve top U for jack fields (default 41).</span>
             </label>
           </>
         )}
 
-        <div className="flex flex-col gap-1.5 mb-4 mt-2">
+        <div className="flex flex-col gap-1.5 mb-4 mt-2" style={{ color: "var(--ti-ink)" }}>
           {isDatacom && (
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -354,15 +464,35 @@ export default function RackDistributionPresetDialog({ page, onClose }: RackDist
         <div className="flex justify-end gap-2">
           <button
             type="button"
-            className="px-3 py-1.5 rounded border border-neutral-300 hover:bg-neutral-50"
+            className="px-3 py-1.5 rounded"
+            style={{
+              border: "1px solid var(--ti-border)",
+              background: "var(--ti-surface-2)",
+              color: "var(--ti-ink-2)",
+              cursor: "pointer",
+              fontFamily: "var(--ti-font-sans)",
+            }}
             onClick={onClose}
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-            disabled={submitting || page.racks.length < preset.minRacks || (isDatacom && !masterRackId)}
+            className="px-3 py-1.5 rounded disabled:opacity-50"
+            style={{
+              background: "var(--ti-accent)",
+              color: "var(--ti-on-accent)",
+              border: 0,
+              cursor: "pointer",
+              fontFamily: "var(--ti-font-sans)",
+              fontWeight: 600,
+            }}
+            disabled={
+              submitting
+              || page.racks.length < preset.minRacks
+              || (isDatacom && !masterRackId)
+              || (isFill && fillRackIds.size === 0)
+            }
           >
             Apply preset
           </button>
