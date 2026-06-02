@@ -32,7 +32,6 @@ export interface SidebarPrefs {
   rightShowInfoExpanded: boolean;
   rightColorsExpanded: boolean;
   rightCadToolsExpanded: boolean;
-  quickToolbarVisible: boolean;
   /** Compact icon buttons for tool-palette sidebars (CAD tools, etc.) */
   toolPaletteIconOnly: boolean;
   libraryBrowseMode: LibraryBrowseMode;
@@ -89,7 +88,6 @@ function loadSidebarPrefs(): SidebarPrefs {
     rightShowInfoExpanded: false,
     rightColorsExpanded: false,
     rightCadToolsExpanded: false,
-    quickToolbarVisible: true,
     toolPaletteIconOnly: false,
     libraryBrowseMode: loadLibraryBrowseMode(),
     panelsVisible: { ...DEFAULT_PANELS_VISIBLE },
@@ -131,8 +129,6 @@ interface SidebarState extends SidebarPrefs {
   setRightShowInfoExpanded: (v: boolean) => void;
   setRightColorsExpanded: (v: boolean) => void;
   setRightCadToolsExpanded: (v: boolean) => void;
-  setQuickToolbarVisible: (v: boolean) => void;
-  toggleQuickToolbarVisible: () => void;
   setToolPaletteIconOnly: (v: boolean) => void;
   toggleToolPaletteIconOnly: () => void;
   setLibraryBrowseMode: (mode: LibraryBrowseMode) => void;
@@ -174,17 +170,6 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
   setRightCadToolsExpanded: (rightCadToolsExpanded) => {
     set({ rightCadToolsExpanded });
     persistSidebar({ ...get(), rightCadToolsExpanded });
-  },
-
-  setQuickToolbarVisible: (quickToolbarVisible) => {
-    set({ quickToolbarVisible });
-    persistSidebar({ ...get(), quickToolbarVisible });
-  },
-
-  toggleQuickToolbarVisible: () => {
-    const quickToolbarVisible = !get().quickToolbarVisible;
-    set({ quickToolbarVisible });
-    persistSidebar({ ...get(), quickToolbarVisible });
   },
 
   setToolPaletteIconOnly: (toolPaletteIconOnly) => {

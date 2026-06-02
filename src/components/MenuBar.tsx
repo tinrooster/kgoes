@@ -249,8 +249,6 @@ export default function MenuBar() {
   const helpMenuActive = openMenu === "Help" || showAboutDialog;
   const { version: appVersion, commit: appCommit } = useAppBuildInfo(helpMenuActive);
 
-  const quickToolbarVisible = useSidebarStore((s) => s.quickToolbarVisible);
-  const setQuickToolbarVisible = useSidebarStore((s) => s.setQuickToolbarVisible);
   const panelsVisible = useSidebarStore((s) => s.panelsVisible);
   const setPanelVisible = useSidebarStore((s) => s.setPanelVisible);
   const expandRightPanel = useSidebarStore((s) => s.expandRightPanel);
@@ -925,13 +923,6 @@ export default function MenuBar() {
       },
     ],
     Toolbar: [
-      {
-        type: "item",
-        label: "Show toolbar",
-        checked: quickToolbarVisible,
-        onClick: () => setQuickToolbarVisible(!quickToolbarVisible),
-      },
-      { type: "separator" },
       { type: "caption", label: "Sidebar" },
       {
         type: "item",
