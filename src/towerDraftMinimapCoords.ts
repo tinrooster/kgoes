@@ -1,8 +1,9 @@
 import { ftAglToY, towerDraftGroundY } from "./towerDraftUtils";
 
-/** Profile + minimap — fill layout band, base anchored, crop excess padding. */
-export const TOWER_REFERENCE_MAIN_PRESERVE_ASPECT = "xMidYMax slice";
-export const TOWER_REFERENCE_MINIMAP_PRESERVE_ASPECT = "xMidYMax slice";
+/** Profile main view — layout sets explicit width/height; `none` when aspect is known. */
+export const TOWER_REFERENCE_MAIN_PRESERVE_ASPECT = "xMidYMid meet";
+/** Minimap thumbnail — fit full tower in band. */
+export const TOWER_REFERENCE_MINIMAP_PRESERVE_ASPECT = "xMidYMid meet";
 
 export type TowerBandInSvg = {
   towerTop: number;

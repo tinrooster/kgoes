@@ -10,9 +10,15 @@ export const VIEW_ZOOM_MIN = VIEW_ZOOM_PRESETS[0];
 export const VIEW_ZOOM_MAX = VIEW_ZOOM_PRESETS[VIEW_ZOOM_PRESETS.length - 1];
 export const VIEW_ZOOM_DEFAULT = 1;
 
+/** Min/max only — for scroll-wheel zoom (no 25% preset snapping). */
+export function clampViewZoomContinuous(scale: number): number {
+  if (!Number.isFinite(scale)) return VIEW_ZOOM_DEFAULT;
+  return Math.min(VIEW_ZOOM_MAX, Math.max(VIEW_ZOOM_MIN, scale));
+}
+
 export function clampViewZoom(scale: number): number {
   if (!Number.isFinite(scale)) return VIEW_ZOOM_DEFAULT;
-  const bounded = Math.min(VIEW_ZOOM_MAX, Math.max(VIEW_ZOOM_MIN, scale));
+  const bounded = clampViewZoomContinuous(scale);
   let nearest: number = VIEW_ZOOM_PRESETS[0];
   let bestDelta = Math.abs(bounded - nearest);
   for (const preset of VIEW_ZOOM_PRESETS) {
@@ -40,7 +46,7 @@ export function stepViewZoom(current: number, direction: "in" | "out"): number {
   return VIEW_ZOOM_PRESETS[nextIdx];
 }
 
-/** Whole-number percent label (25, 50, 75, 100, 125, …). */
+/** Whole-number percent label — shows actual zoom (wheel may land between 25% presets). */
 export function viewZoomPercent(scale: number): number {
-  return Math.round(clampViewZoom(scale) * 100);
+  return Math.round(clampViewZoomContinuous(scale) * 100);
 }

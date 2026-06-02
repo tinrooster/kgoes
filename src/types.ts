@@ -163,6 +163,9 @@ export type RfModulation =
 
 export type OduMountType = "direct_hub" | "pole_mount";
 
+/** Tower / antenna feedline category (coax, waveguide, network, PoE). */
+export type TowerDeviceFeedType = "coax" | "waveguide" | "network" | "network_poe";
+
 export type RfPathMedium = "coax_lmr400" | "coax_rigid" | "waveguide" | "jumper";
 
 /** FCC / ITU station identifier and emission summary. */
@@ -199,7 +202,7 @@ export interface RfInstallationMetadata {
   tiltDeg?: number;
   beamwidthDeg?: number;
   oduMount?: OduMountType;
-  feedType?: "waveguide" | "coax";
+  feedType?: TowerDeviceFeedType;
 }
 
 export interface DbPinAssignment {
@@ -876,6 +879,8 @@ export interface TowerElevationReferenceImage {
   fullBleed?: boolean;
   blendMode?: "normal" | "lighten" | "screen" | "multiply";
   contentScale?: number;
+  /** Natural width ÷ height of reference art (e.g. Sutro PNG 260÷1080). */
+  imageAspectRatio?: number;
 }
 
 /** User-drawn polyline segment (tower leg, guy wire, callout line). */

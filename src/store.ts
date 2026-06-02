@@ -106,6 +106,7 @@ import {
   towerDraftGroundY,
   towerDraftTowerCenterX,
 } from "./towerDraftUtils";
+import { resolveCatalogTowerHeightFtAgl } from "./towerDraftDisplayHeight";
 import {
   blockSlotNumbers,
   formatCableNumber,
@@ -1689,7 +1690,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   stubLabelShowRoom: DEFAULT_STUB_LABEL_SHOW_ROOM,
   stubLabelPageMode: DEFAULT_STUB_LABEL_PAGE_MODE,
   useShortNames: false,
-  measurementSystem: "metric" as MeasurementSystem,
+  measurementSystem: "imperial" as MeasurementSystem,
   wrapDeviceLabels: false,
   cableIdMap: {},
   cloudSchematicId: null,
@@ -6031,8 +6032,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   },
 
   setTrackItTowerContext: (trackItTowerContext) => {
-    if (trackItTowerContext?.measurementSystem) {
-      get().setMeasurementSystem(trackItTowerContext.measurementSystem);
+    if (trackItTowerContext) {
+      get().setMeasurementSystem("imperial");
     }
     const patch: {
       trackItTowerContext: typeof trackItTowerContext;
@@ -6053,26 +6054,41 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       }
     }
     if (trackItTowerContext) {
-      const ctxH = trackItTowerContext.towerHeightFt;
       const ctxRef = trackItTowerContext.elevationReferenceImage;
-      if (ctxH || ctxRef?.url) {
+      if (trackItTowerContext.towerHeightFt || ctxRef?.url) {
         const pages = get().pages;
         let pagesChanged = false;
         const nextPages = pages.map((p) => {
           if (p.type !== "tower-draft") return p;
           const td = p as TowerDraftPage;
           let next = td;
-          if (ctxH && td.towerHeightFtAgl < ctxH - 1) {
-            next = { ...next, towerHeightFtAgl: ctxH };
+          const catalogH = resolveCatalogTowerHeightFtAgl(td, trackItTowerContext);
+          if (catalogH > 0 && Math.abs(td.towerHeightFtAgl - catalogH) > 1) {
+            next = { ...next, towerHeightFtAgl: catalogH };
             pagesChanged = true;
           }
-          if (ctxRef?.url && !td.elevationReferenceImage?.url) {
-            next = {
-              ...next,
-              elevationReferenceImage: ctxRef,
-              polylines: [],
+          if (ctxRef?.url) {
+            const mergedRef = {
+              ...ctxRef,
+              ...td.elevationReferenceImage,
+              url: td.elevationReferenceImage?.url?.trim() || ctxRef.url,
+              imageAspectRatio:
+                td.elevationReferenceImage?.imageAspectRatio ?? ctxRef.imageAspectRatio,
+              fullBleed: td.elevationReferenceImage?.fullBleed ?? ctxRef.fullBleed,
+              contentScale: td.elevationReferenceImage?.contentScale ?? ctxRef.contentScale,
+              opacity: td.elevationReferenceImage?.opacity ?? ctxRef.opacity,
+              blendMode: td.elevationReferenceImage?.blendMode ?? ctxRef.blendMode,
             };
-            pagesChanged = true;
+            const prevJson = JSON.stringify(td.elevationReferenceImage ?? null);
+            const nextJson = JSON.stringify(mergedRef);
+            if (prevJson !== nextJson) {
+              next = {
+                ...next,
+                elevationReferenceImage: mergedRef,
+                polylines: td.elevationReferenceImage?.url ? td.polylines : [],
+              };
+              pagesChanged = true;
+            }
           }
           return next;
         });

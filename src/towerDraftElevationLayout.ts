@@ -1,8 +1,12 @@
 /** Layout helpers for tower elevation SVG (design handoff: tower.jsx). */
 
 export const TOWER_DRAFT_TITLE_H = 40;
-/** Headroom for face column header chips above tower top (design HEAD=26 + chip offset). */
-export const TOWER_DRAFT_FACES_HEADER_H = 34;
+/** Headroom for face column compass chips above tower top (all face views). */
+export const TOWER_DRAFT_FACES_HEADER_H = 56;
+/** Gap between compass label chip and top of face column box. */
+export const TOWER_DRAFT_FACE_COMPASS_GAP_PX = 22;
+/** Height of N/E/S/W compass chip above columns. */
+export const TOWER_DRAFT_FACE_COMPASS_CHIP_H = 26;
 
 export function stackLabelY(
   items: { id: string; y: number }[],

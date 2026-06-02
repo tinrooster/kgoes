@@ -24,6 +24,12 @@ import {
   type TowerFace,
 } from "../towerDraftFaces";
 import { isTowerDraftEligibleDeviceType } from "../towerDraftUtils";
+import { resolveCatalogTowerHeightFtAgl } from "../towerDraftDisplayHeight";
+import {
+  TOWER_FEED_TYPE_OPTIONS,
+  towerFeedTypeShortLabel,
+} from "../towerDraftFeedType";
+import type { TowerDeviceFeedType } from "../types";
 import { deviceSiteTone } from "../towerDraftSitePlanData";
 import { TiButton, TiIcon } from "./ti/TiBase";
 
@@ -120,14 +126,7 @@ export default function TowerDeviceMountEditor({
   const bandLabel = data?.ports?.find((p) => p.rf?.band)?.rf?.band ?? "";
 
   const feedEstFt = Math.round(placement.mountHeightFtAgl * 1.1 + 15);
-  const feedMedium =
-    rf.feedType === "waveguide"
-      ? "WG"
-      : data?.deviceType === "outdoor-ptz-camera" ||
-          data?.deviceType === "camera" ||
-          data?.deviceType === "ptz-camera"
-        ? "FIBER"
-        : "COAX";
+  const feedMedium = towerFeedTypeShortLabel(rf.feedType, data?.deviceType);
 
   // rfLink card: match azimuth from context catalog where possible (within ±12°)
   const rfLinkCard = useMemo(() => {
@@ -170,9 +169,11 @@ export default function TowerDeviceMountEditor({
     return out;
   }, [edges, nodes, placement.deviceNodeId, useShortNames]);
 
+  const towerTopFtAgl = resolveCatalogTowerHeightFtAgl(page, trackItTowerContext);
+
   const applyHeightFt = (ft: number) => {
     updateTowerDraftPlacement(page.id, placement.id, {
-      mountHeightFtAgl: Math.max(0, Math.min(page.towerHeightFtAgl, Math.round(ft))),
+      mountHeightFtAgl: Math.max(0, Math.min(towerTopFtAgl, Math.round(ft))),
     });
   };
 
@@ -482,14 +483,17 @@ export default function TowerDeviceMountEditor({
                 value={rf.feedType ?? ""}
                 onChange={(e) =>
                   patchRf({
-                    feedType: (e.target.value || undefined) as "waveguide" | "coax" | undefined,
+                    feedType: (e.target.value || undefined) as TowerDeviceFeedType | undefined,
                   })
                 }
                 style={fieldInput}
               >
                 <option value="">—</option>
-                <option value="coax">Coax</option>
-                <option value="waveguide">Waveguide</option>
+                {TOWER_FEED_TYPE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </label>
           </div>
@@ -571,7 +575,7 @@ export default function TowerDeviceMountEditor({
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 9, fontSize: 12 }}>
             <TiIcon name="pin" size={13} color="var(--ti-accent)" />
             <span style={{ fontWeight: 600, fontFamily: "var(--ti-font-mono)" }}>
-              {Math.round(placement.mountHeightFtAgl)} ft
+              {formatHeightFtAgl(placement.mountHeightFtAgl, measurementSystem, { suffix: false })}
             </span>
             <span style={{ flex: 1, height: 1, borderTop: "1.5px dotted var(--ti-faint)" }} />
             <TiIcon name="rack" size={13} color="var(--ti-muted)" />

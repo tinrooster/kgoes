@@ -17,6 +17,7 @@ import {
   type TowerFaceFilter,
   type TowerMainView,
 } from "../towerDraftFaces";
+import { TOWER_ELEVATION_DISPLAY_SYSTEM } from "../towerElevationDisplay";
 
 export default function TowerDraftPageView() {
   const activePage = useSchematicStore((s) => s.activePage);
@@ -24,7 +25,8 @@ export default function TowerDraftPageView() {
   const nodes = useSchematicStore((s) => s.nodes);
   const useShortNames = useSchematicStore((s) => s.useShortNames);
   const trackItTowerContext = useSchematicStore((s) => s.trackItTowerContext);
-  const measurementSystem = useSchematicStore((s) => s.measurementSystem);
+  const setMeasurementSystem = useSchematicStore((s) => s.setMeasurementSystem);
+  const measurementSystem = TOWER_ELEVATION_DISPLAY_SYSTEM;
   const removeTowerDraftPlacement = useSchematicStore((s) => s.removeTowerDraftPlacement);
   const removeTowerDraftPolyline = useSchematicStore((s) => s.removeTowerDraftPolyline);
   const updateTowerDraftPage = useSchematicStore((s) => s.updateTowerDraftPage);
@@ -111,6 +113,18 @@ export default function TowerDraftPageView() {
         }
       }
     : undefined;
+
+  useEffect(() => {
+    setMeasurementSystem(TOWER_ELEVATION_DISPLAY_SYSTEM);
+    const prevOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+    };
+  }, [pageId, setMeasurementSystem]);
 
   useEffect(() => {
     if (!pageId) return;

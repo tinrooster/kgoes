@@ -107,7 +107,7 @@ function TowerDraftSummary({
                   flexShrink: 0,
                 }}
               >
-                {Math.round(pl.mountHeightFtAgl)} ft
+                {formatHeightFtAgl(pl.mountHeightFtAgl, measurementSystem, { suffix: false })}
               </span>
               <span
                 style={{

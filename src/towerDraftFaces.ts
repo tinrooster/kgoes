@@ -1,5 +1,6 @@
-import type { DeviceData, TowerDraftPlacement } from "./types";
+import type { DeviceData, TowerDraftPlacement, TowerElevationReferenceImage } from "./types";
 import type { TrackItTowerSiteContext } from "./types";
+import { profileContentWidthForReference } from "./towerElevationReference";
 import {
   TOWER_DRAFT_ALL_FACES_COL_GAP,
   TOWER_DRAFT_ALL_FACES_COL_START,
@@ -19,6 +20,27 @@ export type TowerMainView = "profile" | "faces" | "site";
 export type TowerFaceFilter = "All" | TowerFace;
 
 export const TOWER_FACE_ORDER: TowerFace[] = ["N", "E", "S", "W"];
+
+/** Profile, all-faces, or single-face — not site plan. */
+export function isTowerSectionElevationView(view: TowerElevationView): boolean {
+  return view !== "site";
+}
+
+/** Horizontal center for tall-tower pan/zoom (per view layout). */
+export function towerSectionPanCenterX(
+  view: TowerElevationView,
+  profileCenterX: number,
+): number {
+  if (view === "all-faces") {
+    const pitch = TOWER_DRAFT_ALL_FACES_COL_W + TOWER_DRAFT_ALL_FACES_COL_GAP;
+    const start = TOWER_DRAFT_ALL_FACES_COL_START + TOWER_DRAFT_ALL_FACES_COL_W / 2;
+    const end = start + (TOWER_FACE_ORDER.length - 1) * pitch;
+    return (start + end) / 2;
+  }
+  const face = activeViewFace(view);
+  if (face) return towerFaceColumnCenterX(face);
+  return profileCenterX;
+}
 
 export function towerElevationViewFrom(
   main: TowerMainView,
@@ -100,7 +122,20 @@ export function towerFaceColumnCenterX(face: TowerFace): number {
   return TOWER_DRAFT_ALL_FACES_COL_START + idx * pitch + TOWER_DRAFT_ALL_FACES_COL_W / 2;
 }
 
-export function towerDraftContentWidthForView(view: TowerElevationView): number {
+export type TowerContentWidthOpts = {
+  elevationRef?: TowerElevationReferenceImage | null;
+  towerHeightFt?: number;
+  pxPerFt?: number;
+};
+
+function defaultProfileContentWidth(): number {
+  return TOWER_DRAFT_RULER_W + TOWER_DRAFT_PAD_X + 80 + 420;
+}
+
+export function towerDraftContentWidthForView(
+  view: TowerElevationView,
+  opts?: TowerContentWidthOpts,
+): number {
   if (view === "site") return 720;
   if (view === "all-faces") {
     return (
@@ -110,7 +145,16 @@ export function towerDraftContentWidthForView(view: TowerElevationView): number 
       46
     );
   }
-  return TOWER_DRAFT_RULER_W + TOWER_DRAFT_PAD_X + 80 + 420;
+  const base = defaultProfileContentWidth();
+  if (!opts?.elevationRef || opts.towerHeightFt == null || opts.pxPerFt == null) {
+    return base;
+  }
+  return profileContentWidthForReference({
+    ref: opts.elevationRef,
+    towerHeightFt: opts.towerHeightFt,
+    pxPerFt: opts.pxPerFt,
+    baseContentWidth: base,
+  });
 }
 
 /** Resolve column center for a placement in the current view. */
@@ -119,13 +163,14 @@ export function placementCenterX(
   data: DeviceData | undefined,
   view: TowerElevationView,
   context?: TrackItTowerSiteContext | null,
+  profileCenterX?: number,
 ): number {
   if (view === "all-faces") {
     const face = resolvePlacementTowerFace(placement, data, context);
-    if (!face) return towerDraftTowerCenterX();
+    if (!face) return profileCenterX ?? towerDraftTowerCenterX();
     return towerFaceColumnCenterX(face);
   }
-  return towerDraftTowerCenterX();
+  return profileCenterX ?? towerDraftTowerCenterX();
 }
 
 /** Pick tower face from canvas X in all-faces view. */

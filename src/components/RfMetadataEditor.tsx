@@ -1,7 +1,9 @@
+import { TOWER_FEED_TYPE_OPTIONS } from "../towerDraftFeedType";
 import type {
   DbPinAssignment,
   OduMountType,
   RfInstallationMetadata,
+  TowerDeviceFeedType,
   RfLicensedMetadata,
   RfLinkMetadata,
   RfModulation,
@@ -419,13 +421,16 @@ export function RfInstallationEditor({
             value={value.feedType ?? ""}
             onChange={(e) =>
               patch({
-                feedType: (e.target.value || undefined) as "waveguide" | "coax" | undefined,
+                feedType: (e.target.value || undefined) as TowerDeviceFeedType | undefined,
               })
             }
           >
             <option value="">—</option>
-            <option value="coax">Coax</option>
-            <option value="waveguide">Waveguide</option>
+            {TOWER_FEED_TYPE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
           </select>
         </label>
         {onDishDiameterChange && (

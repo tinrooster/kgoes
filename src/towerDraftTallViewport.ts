@@ -85,6 +85,12 @@ export function computeTallTowerInitialViewport(opts: {
   return { zoom, pan };
 }
 
+/** Counter-scale glyphs when zoomed out on tall towers (content-space boost). */
+export function computeGlyphViewportBoost(tallTowerMode: boolean, zoom: number): number {
+  if (!tallTowerMode || zoom >= 1.15) return 1;
+  return Math.min(2.75, Math.max(1, 1.2 / Math.max(0.2, zoom)));
+}
+
 /** Visible content Y range from current pan/zoom. */
 export function visibleContentYRange(opts: {
   containerHeight: number;

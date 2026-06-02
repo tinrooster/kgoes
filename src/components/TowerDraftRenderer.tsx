@@ -11,6 +11,7 @@ import {
   TOWER_DRAFT_ALL_FACES_COL_GAP,
   TOWER_DRAFT_ALL_FACES_COL_START,
   TOWER_DRAFT_RULER_W,
+  TOWER_DRAFT_PAD_X,
   towerDraftContentHeight,
   towerDraftGroundY,
   towerDraftPolylineDash,
@@ -24,13 +25,22 @@ import ViewNavBar from "./ViewNavBar";
 import type { ContentBounds } from "../viewNavUtils";
 import {
   stackLabelY,
+  TOWER_DRAFT_FACE_COMPASS_CHIP_H,
+  TOWER_DRAFT_FACE_COMPASS_GAP_PX,
   TOWER_DRAFT_FACES_HEADER_H,
   towerHalfWidthAtY,
   TOWER_FACE_TONE,
 } from "../towerDraftElevationLayout";
+import { majorElevationTicksFtAgl } from "../towerDraftElevationTicks";
+import {
+  loadTowerDraftViewportForView,
+  saveTowerDraftViewport,
+  towerDraftViewportStorageKey,
+} from "../towerDraftViewportStorage";
 import type { TowerElevationView, TowerFace } from "../towerDraftFaces";
 import {
   activeViewFace,
+  isTowerSectionElevationView,
   placementCenterX,
   placementVisibleInView,
   resolvePlacementAzimuthDeg,
@@ -40,27 +50,44 @@ import {
   towerDraftContentWidthForView,
   towerFaceAtContentX,
   towerFaceColumnCenterX,
+  towerSectionPanCenterX,
 } from "../towerDraftFaces";
-import { formatDistanceFromFt, formatHeightFtAgl, type MeasurementSystem } from "../measurementUnits";
+import { formatDistanceFromFt, formatHeightFtAgl } from "../measurementUnits";
+import {
+  formatGuideBandElevationLabel,
+  TOWER_ELEVATION_DISPLAY_SYSTEM,
+} from "../towerElevationDisplay";
 import { resolveDeviceLabel } from "../displayName";
 import { draggedTowerDeviceNodeId, draggedTowerTemplateId } from "./TowerDraftSidebar";
 import type { TowerDraftDrawStyle } from "./TowerDraftToolbar";
 import type { TowerDraftContextMenuState } from "./TowerDraftContextMenu";
 import { snapOffsetXToMountLateral } from "../towerDraftMountLateral";
 import {
+  profileCenterXForReference,
   resolveProfilePxPerFt,
   resolveTowerElevationReference,
   towerElevationReferenceLayout,
 } from "../towerElevationReference";
 import {
+  computeGlyphViewportBoost,
   computeTallTowerInitialViewport,
   panZoomCenteredOnFtAgl,
   resolveInitialFocusFtAgl,
   resolveTallTowerProfileMode,
   resolveWorkingZoomRatio,
 } from "../towerDraftTallViewport";
+import {
+  resolveCatalogTowerHeightFtAgl,
+  resolveTowerDraftLayoutHeightFt,
+} from "../towerDraftDisplayHeight";
+import {
+  elevationTickLabelStyle,
+  guideBandLineStyle,
+  guideBandsForDisplay,
+  isStructuralGuideBand,
+  resolveTowerDraftGuideBands,
+} from "../towerDraftGuideBands";
 import TowerDraftMinimap from "./TowerDraftMinimap";
-import { TOWER_REFERENCE_MAIN_PRESERVE_ASPECT } from "../towerDraftMinimapCoords";
 
 interface TowerDraftRendererProps {
   page: TowerDraftPage;
@@ -68,7 +95,7 @@ interface TowerDraftRendererProps {
   snapFt: number;
   drawStyle: TowerDraftDrawStyle;
   elevationView: TowerElevationView;
-  measurementSystem: MeasurementSystem;
+  measurementSystem?: import("../measurementUnits").MeasurementSystem;
   selectedPlacementId: string | null;
   selectedPolylineId: string | null;
   onSelectPlacement: (id: string | null) => void;
@@ -87,7 +114,7 @@ export default function TowerDraftRenderer({
   snapFt,
   drawStyle,
   elevationView,
-  measurementSystem,
+  measurementSystem: _measurementSystemProp,
   selectedPlacementId,
   selectedPolylineId,
   onSelectPlacement,
@@ -109,6 +136,7 @@ export default function TowerDraftRenderer({
   const towerDraftFocusRequest = useSchematicStore((s) => s.towerDraftFocusRequest);
   const requestTowerDraftFocus = useSchematicStore((s) => s.requestTowerDraftFocus);
   const trackItTowerContext = useSchematicStore((s) => s.trackItTowerContext);
+  const measurementSystem = TOWER_ELEVATION_DISPLAY_SYSTEM;
 
   const labelLayers = page.labelLayers ?? {};
 
@@ -127,29 +155,71 @@ export default function TowerDraftRenderer({
 
   const PLACEMENT_DRAG_THRESHOLD_PX = 5;
 
-  const contentW = towerDraftContentWidthForView(elevationView);
-  const centerX = towerDraftTowerCenterX();
   const viewFace = activeViewFace(elevationView);
   const towerType = page.towerType ?? "self_support";
   const isProfile = elevationView === "profile";
   const isAllFaces = elevationView === "all-faces";
+  const isSectionElevation = isTowerSectionElevationView(elevationView);
   const elevationRef = useMemo(
     () => resolveTowerElevationReference(page, trackItTowerContext),
     [page, trackItTowerContext],
   );
   const profileReferenceUnderlay = isProfile && !!elevationRef;
-  const tallTowerProfile =
-    isProfile && resolveTallTowerProfileMode(page.towerHeightFtAgl, trackItTowerContext);
+  const catalogHeightFt = useMemo(
+    () => resolveCatalogTowerHeightFtAgl(page, trackItTowerContext),
+    [page, trackItTowerContext],
+  );
+  const tallTowerMode =
+    isSectionElevation &&
+    resolveTallTowerProfileMode(catalogHeightFt, trackItTowerContext);
   const pxPerFt = useMemo(() => {
     if (!isProfile) return TOWER_DRAFT_PX_PER_FT;
-    return resolveProfilePxPerFt(elevationRef, tallTowerProfile);
-  }, [isProfile, elevationRef, tallTowerProfile]);
-  const referenceContentScale = pxPerFt / TOWER_DRAFT_PX_PER_FT;
-  const groundY = towerDraftGroundY(page.towerHeightFtAgl, pxPerFt);
+    return resolveProfilePxPerFt(elevationRef, tallTowerMode);
+  }, [isProfile, elevationRef, tallTowerMode]);
+  const layoutHeightFt = useMemo(
+    () => resolveTowerDraftLayoutHeightFt(page, trackItTowerContext, elevationView),
+    [page, trackItTowerContext, elevationView],
+  );
+  const guideBandHeightFt = isProfile ? catalogHeightFt : layoutHeightFt;
+  const resolvedGuideBands = useMemo(
+    () => resolveTowerDraftGuideBands(page, trackItTowerContext),
+    [page, trackItTowerContext],
+  );
+  const visibleGuideBands = useMemo(
+    () => guideBandsForDisplay(resolvedGuideBands, guideBandHeightFt),
+    [resolvedGuideBands, guideBandHeightFt],
+  );
+  const contentW = useMemo(
+    () =>
+      towerDraftContentWidthForView(elevationView, {
+        elevationRef: isProfile ? elevationRef : null,
+        towerHeightFt: layoutHeightFt,
+        pxPerFt,
+      }),
+    [elevationView, isProfile, elevationRef, layoutHeightFt, pxPerFt],
+  );
+  const centerX = useMemo(() => {
+    if (profileReferenceUnderlay && elevationRef) {
+      return profileCenterXForReference({
+        ref: elevationRef,
+        towerHeightFt: layoutHeightFt,
+        pxPerFt,
+        rulerX: TOWER_DRAFT_RULER_W,
+        baseContentWidth:
+          TOWER_DRAFT_RULER_W + TOWER_DRAFT_PAD_X + 80 + 420,
+      });
+    }
+    return towerDraftTowerCenterX();
+  }, [profileReferenceUnderlay, elevationRef, layoutHeightFt, pxPerFt]);
+  const panCenterX = useMemo(
+    () => towerSectionPanCenterX(elevationView, centerX),
+    [elevationView, centerX],
+  );
+  const groundY = towerDraftGroundY(layoutHeightFt, pxPerFt);
   const contentOffsetY =
     TOWER_DRAFT_CONTENT_OFFSET_Y + (isAllFaces ? TOWER_DRAFT_FACES_BAND_OFFSET_Y : 0);
   const svgH =
-    towerDraftContentHeight(page.towerHeightFtAgl, pxPerFt) +
+    towerDraftContentHeight(layoutHeightFt, pxPerFt) +
     contentOffsetY +
     (isAllFaces ? TOWER_DRAFT_FACES_HEADER_H : 0);
   const gridRulerX = isAllFaces ? 70 : TOWER_DRAFT_RULER_W;
@@ -159,12 +229,38 @@ export default function TowerDraftRenderer({
     return { minX: 0, minY: 0, maxX: contentW, maxY: svgH };
   }, [contentW, svgH]);
 
+  const viewportStorageKey = useMemo(
+    () => towerDraftViewportStorageKey(page.id, elevationView),
+    [page.id, elevationView],
+  );
+  const storedViewport = useMemo(
+    () => loadTowerDraftViewportForView(page.id, elevationView),
+    [page.id, elevationView],
+  );
+  const persistViewportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onViewportPersist = useCallback(
+    (zoom: number, pan: { x: number; y: number }) => {
+      if (persistViewportTimerRef.current) clearTimeout(persistViewportTimerRef.current);
+      persistViewportTimerRef.current = window.setTimeout(() => {
+        saveTowerDraftViewport(viewportStorageKey, { zoom, pan });
+      }, 100);
+    },
+    [viewportStorageKey],
+  );
+
   const panZoom = useCanvasPanZoom({
-    fitBounds: tallTowerProfile ? null : viewBounds,
-    fitDeps: [page.id, elevationView, contentW, svgH, tallTowerProfile],
-    autoFit: !tallTowerProfile,
+    initialZoom: storedViewport?.zoom,
+    initialOffset: storedViewport?.pan,
+    fitBounds: tallTowerMode ? null : viewBounds,
+    fitDeps: storedViewport ? [] : [page.id, elevationView, contentW, svgH, tallTowerMode],
+    autoFit: !tallTowerMode && !storedViewport,
+    profileMapNav: isSectionElevation,
+    mapNavDisabled: drawMode,
+    wheelZoomMode: "fine",
+    onViewportChange: onViewportPersist,
   });
-  const { applyViewport, containerRef: panContainerRef } = panZoom;
+  const { applyViewport, containerRef: panContainerRef, fitAllView } = panZoom;
+  const glyphViewportBoost = computeGlyphViewportBoost(tallTowerMode, panZoom.zoom);
 
   const [viewportSize, setViewportSize] = useState({ w: 800, h: 600 });
   useEffect(() => {
@@ -175,21 +271,21 @@ export default function TowerDraftRenderer({
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [panContainerRef, tallTowerProfile]);
+  }, [panContainerRef, tallTowerMode]);
 
   const applyTallTowerViewport = useCallback(() => {
     const el = panContainerRef.current;
-    if (!el || !tallTowerProfile) return;
-    const focusFt = resolveInitialFocusFtAgl(page.towerHeightFtAgl, trackItTowerContext);
+    if (!el || !tallTowerMode) return;
+    const focusFt = resolveInitialFocusFtAgl(catalogHeightFt, trackItTowerContext);
     const { zoom, pan } = computeTallTowerInitialViewport({
       containerWidth: el.clientWidth,
       containerHeight: el.clientHeight,
       fullBounds: viewBounds,
-      towerHeightFt: page.towerHeightFtAgl,
+      towerHeightFt: layoutHeightFt,
       focusFtAgl: focusFt,
       contentOffsetY,
-      centerXContent: centerX,
-      workingZoomRatio: resolveWorkingZoomRatio(trackItTowerContext, referenceContentScale),
+      centerXContent: panCenterX,
+      workingZoomRatio: resolveWorkingZoomRatio(trackItTowerContext, 1),
       pxPerFt,
       maxZoom: 6,
     });
@@ -197,25 +293,29 @@ export default function TowerDraftRenderer({
   }, [
     applyViewport,
     panContainerRef,
-    tallTowerProfile,
-    page.towerHeightFtAgl,
+    tallTowerMode,
+    catalogHeightFt,
+    layoutHeightFt,
     trackItTowerContext,
     viewBounds,
     contentOffsetY,
-    centerX,
-    referenceContentScale,
+    panCenterX,
     pxPerFt,
   ]);
 
   useEffect(() => {
-    if (!tallTowerProfile) return;
-    const timer = window.setTimeout(applyTallTowerViewport, 0);
-    const timer2 = window.setTimeout(applyTallTowerViewport, 120);
-    return () => {
-      clearTimeout(timer);
-      clearTimeout(timer2);
-    };
-  }, [tallTowerProfile, applyTallTowerViewport, page.id]);
+    const saved = loadTowerDraftViewportForView(page.id, elevationView);
+    if (saved) {
+      applyViewport(saved.zoom, saved.pan);
+      return;
+    }
+    if (tallTowerMode) {
+      const timer = window.setTimeout(applyTallTowerViewport, 0);
+      return () => clearTimeout(timer);
+    }
+    const timer = window.setTimeout(() => fitAllView(viewBounds), 0);
+    return () => clearTimeout(timer);
+  }, [viewportStorageKey, tallTowerMode, applyTallTowerViewport, applyViewport, viewBounds, fitAllView]);
 
   const panToContentY = useCallback(
     (contentY: number) => {
@@ -224,8 +324,8 @@ export default function TowerDraftRenderer({
       const ft = Math.max(
         0,
         Math.min(
-          page.towerHeightFtAgl,
-          (towerDraftGroundY(page.towerHeightFtAgl, pxPerFt) - (contentY - contentOffsetY)) / pxPerFt,
+          layoutHeightFt,
+          (towerDraftGroundY(layoutHeightFt, pxPerFt) - (contentY - contentOffsetY)) / pxPerFt,
         ),
       );
       const pan = panZoomCenteredOnFtAgl({
@@ -233,14 +333,14 @@ export default function TowerDraftRenderer({
         containerHeight: el.clientHeight,
         zoom: panZoom.zoom,
         focusFtAgl: ft,
-        towerHeightFt: page.towerHeightFtAgl,
+        towerHeightFt: catalogHeightFt,
         contentOffsetY,
-        centerXContent: centerX,
+        centerXContent: panCenterX,
         pxPerFt,
       });
       panZoom.applyViewport(panZoom.zoom, pan);
     },
-    [panZoom, page.towerHeightFtAgl, contentOffsetY, centerX, pxPerFt],
+    [panZoom, layoutHeightFt, contentOffsetY, panCenterX, pxPerFt],
   );
 
   /** Map screen coords into the panned/zoomed content group (fixes click offset). */
@@ -258,11 +358,11 @@ export default function TowerDraftRenderer({
 
   const snapPoint = useCallback(
     (x: number, y: number) => {
-      const ft = yToFtAglWithSnap(y, page.towerHeightFtAgl, snapFt, page.guideBandsFt, pxPerFt);
-      const snappedY = ftAglToY(ft, page.towerHeightFtAgl, pxPerFt);
+      const ft = yToFtAglWithSnap(y, layoutHeightFt, snapFt, visibleGuideBands, pxPerFt);
+      const snappedY = ftAglToY(ft, layoutHeightFt, pxPerFt);
       return { x, y: snappedY };
     },
-    [page.guideBandsFt, page.towerHeightFtAgl, snapFt, pxPerFt],
+    [visibleGuideBands, layoutHeightFt, snapFt, pxPerFt],
   );
 
   useEffect(() => {
@@ -301,7 +401,7 @@ export default function TowerDraftRenderer({
   const placeDeviceAt = useCallback(
     (deviceNodeId: string, clientX: number, clientY: number) => {
       const { x, y } = clientToContent(clientX, clientY);
-      const ft = yToFtAglWithSnap(y, page.towerHeightFtAgl, snapFt, page.guideBandsFt, pxPerFt);
+      const ft = yToFtAglWithSnap(y, layoutHeightFt, snapFt, visibleGuideBands, pxPerFt);
       const dropFace =
         elevationView === "all-faces"
           ? towerFaceAtContentX(x)
@@ -329,9 +429,10 @@ export default function TowerDraftRenderer({
       page.id,
       page.placements,
       page.guideBandsFt,
-      page.towerHeightFtAgl,
+      layoutHeightFt,
       snapFt,
       pxPerFt,
+      visibleGuideBands,
     ],
   );
 
@@ -395,7 +496,7 @@ export default function TowerDraftRenderer({
   const referenceImageLayer = useMemo(() => {
     if (!profileReferenceUnderlay || !elevationRef) return null;
     const layout = towerElevationReferenceLayout({
-      towerHeightFt: page.towerHeightFtAgl,
+      towerHeightFt: layoutHeightFt,
       centerX,
       rulerX: gridRulerX,
       contentWidth: contentW,
@@ -414,7 +515,7 @@ export default function TowerDraftRenderer({
           y={layout.y}
           width={layout.width}
           height={layout.height}
-          preserveAspectRatio={TOWER_REFERENCE_MAIN_PRESERVE_ASPECT}
+          preserveAspectRatio={layout.preserveAspectRatio}
           opacity={layout.opacity}
         />
         {elevationRef.label ? (
@@ -430,12 +531,12 @@ export default function TowerDraftRenderer({
         ) : null}
       </g>
     );
-  }, [profileReferenceUnderlay, elevationRef, page.towerHeightFtAgl, centerX, gridRulerX, contentW, pxPerFt]);
+  }, [profileReferenceUnderlay, elevationRef, layoutHeightFt, centerX, gridRulerX, contentW, pxPerFt]);
 
   const towerBody = useMemo(() => {
     if (profileReferenceUnderlay) return null;
 
-    const topY = ftAglToY(page.towerHeightFtAgl, page.towerHeightFtAgl, pxPerFt);
+    const topY = ftAglToY(layoutHeightFt, layoutHeightFt, pxPerFt);
     const baseHalfW = 18;
     const topHalfW = 12;
     const lTop = centerX - topHalfW;
@@ -447,12 +548,13 @@ export default function TowerDraftRenderer({
       const colW = TOWER_DRAFT_ALL_FACES_COL_W - 12;
       const fx = colCx - colW / 2;
       const tone = TOWER_FACE_TONE[face] ?? "neutral";
-      const chipY = topY - 30 + 4;
+      const chipY =
+        topY - TOWER_DRAFT_FACE_COMPASS_GAP_PX - TOWER_DRAFT_FACE_COMPASS_CHIP_H;
       return (
         <g key={face}>
           <rect
             x={fx}
-            y={topY - 4}
+            y={topY}
             width={colW}
             height={groundY - topY + 8}
             rx={12}
@@ -460,6 +562,21 @@ export default function TowerDraftRenderer({
             stroke="color-mix(in oklab, var(--ti-ink) 22%, transparent)"
             strokeWidth={1.2}
           />
+          {visibleGuideBands.filter(isStructuralGuideBand).map((band) => {
+            const bandY = ftAglToY(band.ftAgl, guideBandHeightFt, pxPerFt);
+            const ls = guideBandLineStyle(true);
+            return (
+              <line
+                key={`${face}-${band.ftAgl}`}
+                x1={fx + 4}
+                y1={bandY}
+                x2={fx + colW - 4}
+                y2={bandY}
+                stroke={ls.stroke}
+                strokeWidth={ls.strokeWidth}
+              />
+            );
+          })}
           <rect
             x={fx + 10}
             y={chipY}
@@ -546,7 +663,17 @@ export default function TowerDraftRenderer({
         <path d={braces.join(" ")} stroke="color-mix(in oklab, var(--ti-ink) 32%, transparent)" strokeWidth={1} fill="none" />
       </g>
     );
-  }, [centerX, groundY, page.towerHeightFtAgl, towerType, elevationView, isAllFaces, profileReferenceUnderlay]);
+  }, [
+    centerX,
+    groundY,
+    layoutHeightFt,
+    visibleGuideBands,
+    towerType,
+    elevationView,
+    isAllFaces,
+    profileReferenceUnderlay,
+    pxPerFt,
+  ]);
 
   const profileLabelY = useMemo(() => {
     if (!isProfile) return {} as Record<string, number>;
@@ -555,10 +682,14 @@ export default function TowerDraftRenderer({
       const node = nodes.find((n) => n.id === pl.deviceNodeId);
       const data = node?.data as DeviceData | undefined;
       if (!placementVisibleInView(pl, data, elevationView, trackItTowerContext)) continue;
-      items.push({ id: pl.id, y: ftAglToY(pl.mountHeightFtAgl, page.towerHeightFtAgl, pxPerFt) });
+      const topY = ftAglToY(layoutHeightFt, layoutHeightFt, pxPerFt);
+      items.push({
+        id: pl.id,
+        y: Math.max(topY, ftAglToY(pl.mountHeightFtAgl, layoutHeightFt, pxPerFt)),
+      });
     }
     return stackLabelY(items, 30);
-  }, [isProfile, page.placements, page.towerHeightFtAgl, pxPerFt, nodes, elevationView, trackItTowerContext]);
+  }, [isProfile, page.placements, layoutHeightFt, pxPerFt, nodes, elevationView, trackItTowerContext]);
 
   const facesLabelY = useMemo(() => {
     if (!isAllFaces) return {} as Record<string, number>;
@@ -570,20 +701,37 @@ export default function TowerDraftRenderer({
         const data = node?.data as DeviceData | undefined;
         if (!placementVisibleInView(pl, data, elevationView, trackItTowerContext)) continue;
         if (resolvePlacementTowerFace(pl, data, trackItTowerContext) !== face) continue;
-        items.push({ id: pl.id, y: ftAglToY(pl.mountHeightFtAgl, page.towerHeightFtAgl, pxPerFt) });
+        const topY = ftAglToY(layoutHeightFt, layoutHeightFt, pxPerFt);
+        items.push({
+          id: pl.id,
+          y: Math.max(topY, ftAglToY(pl.mountHeightFtAgl, layoutHeightFt, pxPerFt)),
+        });
       }
       Object.assign(out, stackLabelY(items, 28));
     }
     return out;
-  }, [isAllFaces, page.placements, page.towerHeightFtAgl, pxPerFt, nodes, elevationView, trackItTowerContext]);
+  }, [isAllFaces, page.placements, layoutHeightFt, pxPerFt, nodes, elevationView, trackItTowerContext]);
 
   const previewCursor = cursorContent ? snapPoint(cursorContent.x, cursorContent.y) : null;
   const lastDraft = draftPoints[draftPoints.length - 1];
-  const rulerTopY = ftAglToY(page.towerHeightFtAgl, page.towerHeightFtAgl, pxPerFt);
+  const rulerTopY = ftAglToY(layoutHeightFt, layoutHeightFt, pxPerFt);
+
+  const majorElevationTicks = useMemo(() => {
+    const bandFt = new Set(visibleGuideBands.map((b) => b.ftAgl));
+    return majorElevationTicksFtAgl(guideBandHeightFt).filter((ft) => !bandFt.has(ft));
+  }, [visibleGuideBands, guideBandHeightFt]);
+
+  const tickLabelStyle = elevationTickLabelStyle();
 
   const titleX = isProfile ? centerX : isAllFaces ? 70 : TOWER_DRAFT_RULER_W + 24;
 
-  const cursorStyle = drawMode ? "crosshair" : panZoom.isPanning ? "grabbing" : "default";
+  const cursorStyle = drawMode
+    ? "crosshair"
+    : panZoom.isPanning
+      ? "grabbing"
+      : isSectionElevation
+        ? "grab"
+        : "default";
 
   return (
     <div
@@ -593,11 +741,21 @@ export default function TowerDraftRenderer({
         fontFamily: "var(--ti-font-sans)",
         overflow: "hidden",
         cursor: cursorStyle,
+        touchAction: "none",
+        overscrollBehavior: "contain",
       }}
+      tabIndex={isSectionElevation && !drawMode ? 0 : undefined}
       onMouseDown={panZoom.onMouseDown}
       onMouseMove={panZoom.onMouseMove}
       onMouseUp={panZoom.onMouseUp}
-      onMouseLeave={panZoom.onMouseUp}
+      onMouseLeave={(e) => {
+        panZoom.onPointerOutside();
+        panZoom.onMouseUp(e);
+      }}
+      onMouseEnter={panZoom.onPointerInside}
+      onWheel={panZoom.onWheel}
+      onWheelCapture={panZoom.onWheel}
+      onDoubleClick={drawMode ? undefined : panZoom.onDoubleClick}
     >
       <div
         style={{
@@ -617,7 +775,7 @@ export default function TowerDraftRenderer({
             cursor: cursorStyle,
           }}
           onClick={onCanvasClick}
-          onDoubleClick={onCanvasDoubleClick}
+          onDoubleClick={drawMode ? onCanvasDoubleClick : undefined}
           onMouseMove={onMouseMove}
           onMouseLeave={() => setCursorContent(null)}
           onDrop={onDrop}
@@ -634,12 +792,22 @@ export default function TowerDraftRenderer({
                 : "Tower elevation"}
         </text>
         <text x={titleX} y={38} fontSize={10.5} fill="var(--ti-muted)">
-          {formatHeightFtAgl(page.towerHeightFtAgl, measurementSystem, { suffix: false })}{" "}
-          {profileReferenceUnderlay
-            ? tallTowerProfile
-              ? `reference elevation · ${referenceContentScale.toFixed(1)}× doc scale · pan (Alt+drag) · minimap`
-              : "reference elevation · align guide bands and placements"
-            : `${towerType.replace("_", " ")} · click to select · drag to move · double-click device to edit`}
+          {!isProfile && catalogHeightFt !== layoutHeightFt
+            ? `${formatHeightFtAgl(layoutHeightFt, measurementSystem, { suffix: false })} face columns · ${formatHeightFtAgl(catalogHeightFt, measurementSystem, { suffix: false })} structure `
+            : `${formatHeightFtAgl(catalogHeightFt, measurementSystem, { suffix: false })} `}
+          {(() => {
+            const nav = "scroll · drag · double-click zoom";
+            const mini = tallTowerMode ? " · minimap" : "";
+            if (profileReferenceUnderlay) {
+              return tallTowerMode
+                ? `reference elevation · ${nav}${mini}`
+                : `reference elevation · ${nav} · align guide bands`;
+            }
+            if (isSectionElevation) {
+              return `${towerType.replace("_", " ")} · ${nav}${mini} · click device to edit`;
+            }
+            return `${towerType.replace("_", " ")} · click to select · drag to move · double-click device to edit`;
+          })()}
         </text>
 
         <g ref={contentGroupRef} transform={`translate(0, ${contentOffsetY})`}>
@@ -684,30 +852,60 @@ export default function TowerDraftRenderer({
             stroke="color-mix(in oklab, var(--ti-ink) 35%, transparent)"
             strokeWidth={1.2}
           />
-          {page.guideBandsFt.map((band) => {
-            const y = ftAglToY(band.ftAgl, page.towerHeightFtAgl, pxPerFt);
-            const bandLabel =
-              band.ftAgl === 0
-                ? "Base"
-                : band.label ?? `${formatDistanceFromFt(band.ftAgl, measurementSystem)}`;
+          {referenceImageLayer}
+          {towerBody}
+
+          {majorElevationTicks.map((ft) => {
+            const y = ftAglToY(ft, guideBandHeightFt, pxPerFt);
             return (
-              <g key={`${band.ftAgl}-${band.label ?? ""}`}>
+              <g key={`tick-${ft}`} pointerEvents="none">
+                <line
+                  x1={gridRulerX - 10}
+                  y1={y}
+                  x2={gridRulerX - 2}
+                  y2={y}
+                  stroke="color-mix(in oklab, var(--ti-ink) 28%, transparent)"
+                  strokeWidth={1}
+                />
+                <text
+                  x={gridRulerX - 12}
+                  y={y + 4}
+                  textAnchor="end"
+                  fontSize={tickLabelStyle.fontSize}
+                  fontWeight={tickLabelStyle.fontWeight}
+                  fill={tickLabelStyle.fill}
+                  fontFamily="var(--ti-font-mono)"
+                >
+                  {formatDistanceFromFt(ft, measurementSystem)}
+                </text>
+              </g>
+            );
+          })}
+          {visibleGuideBands.map((band) => {
+            const y = ftAglToY(band.ftAgl, guideBandHeightFt, pxPerFt);
+            const structural = isStructuralGuideBand(band);
+            const ls = guideBandLineStyle(structural);
+            const bandLabel = formatGuideBandElevationLabel(band, measurementSystem);
+            return (
+              <g key={`${band.ftAgl}-${band.label ?? ""}`} pointerEvents="none">
                 <line
                   x1={gridRulerX}
                   y1={y}
                   x2={contentW - 24}
                   y2={y}
-                  stroke="color-mix(in oklab, var(--ti-ink) 24%, transparent)"
-                  strokeWidth={1}
-                  strokeDasharray="4 5"
+                  stroke={ls.stroke}
+                  strokeWidth={ls.strokeWidth}
+                  strokeDasharray={ls.strokeDasharray}
                 />
                 <text
-                  x={gridRulerX - 6}
-                  y={y + 3}
+                  x={gridRulerX - 12}
+                  y={y + 4}
                   textAnchor="end"
-                  fontSize={9.5}
-                  fill="var(--ti-muted)"
+                  fontSize={ls.labelFontSize}
+                  fontWeight={ls.labelFontWeight}
+                  fill={ls.labelFill}
                   fontFamily="var(--ti-font-mono)"
+                  pointerEvents="all"
                   style={{ cursor: drawMode ? "default" : "pointer" }}
                   onClick={(ev) => {
                     if (drawMode) return;
@@ -724,9 +922,18 @@ export default function TowerDraftRenderer({
               </g>
             );
           })}
-
-          {referenceImageLayer}
-          {towerBody}
+          {!isProfile && catalogHeightFt > layoutHeightFt && (
+            <line
+              x1={gridRulerX}
+              y1={rulerTopY}
+              x2={contentW - 24}
+              y2={rulerTopY}
+              stroke="color-mix(in oklab, var(--ti-accent) 45%, transparent)"
+              strokeWidth={2}
+              strokeDasharray="6 4"
+              pointerEvents="none"
+            />
+          )}
 
           {page.polylines.map((pl) => {
             const selected = pl.id === selectedPolylineId;
@@ -805,14 +1012,21 @@ export default function TowerDraftRenderer({
             const data = node?.data as DeviceData | undefined;
             if (!placementVisibleInView(pl, data, elevationView, trackItTowerContext)) return null;
             const label = data ? resolveDeviceLabel(data, { useShortNames }).text : pl.deviceNodeId;
-            const y = ftAglToY(pl.mountHeightFtAgl, page.towerHeightFtAgl, pxPerFt);
+            const topY = ftAglToY(layoutHeightFt, layoutHeightFt, pxPerFt);
+            const y = Math.max(topY, ftAglToY(pl.mountHeightFtAgl, layoutHeightFt, pxPerFt));
             const ly = isProfile
               ? (profileLabelY[pl.id] ?? y)
               : isAllFaces
                 ? (facesLabelY[pl.id] ?? y)
                 : y;
             const plFace = resolvePlacementTowerFace(pl, data, trackItTowerContext);
-            const colCenter = placementCenterX(pl, data, elevationView, trackItTowerContext);
+            const colCenter = placementCenterX(
+              pl,
+              data,
+              elevationView,
+              trackItTowerContext,
+              isProfile ? centerX : undefined,
+            );
             const x = colCenter + (pl.offsetX ?? 0);
             const glyphFace =
               elevationView === "all-faces" ? plFace : viewFace;
@@ -834,7 +1048,11 @@ export default function TowerDraftRenderer({
             return (
               <g
                 key={pl.id}
-                transform={`translate(${x}, ${y})`}
+                transform={
+                  glyphViewportBoost > 1
+                    ? `translate(${x}, ${y}) scale(${glyphViewportBoost})`
+                    : `translate(${x}, ${y})`
+                }
                 style={{ cursor: drawMode ? "crosshair" : draggingPlacementId === pl.id ? "grabbing" : "pointer" }}
                 onClick={(ev) => {
                   if (drawMode) return;
@@ -892,7 +1110,13 @@ export default function TowerDraftRenderer({
                   setHoverTip(null);
                   const startClient = { x: ev.clientX, y: ev.clientY };
                   const startSvg = clientToContent(ev.clientX, ev.clientY);
-                  const startColCenter = placementCenterX(pl, data, elevationView, trackItTowerContext);
+                  const startColCenter = placementCenterX(
+                    pl,
+                    data,
+                    elevationView,
+                    trackItTowerContext,
+                    isProfile ? centerX : undefined,
+                  );
                   const startFt = pl.mountHeightFtAgl;
                   let dragging = false;
                   let lastOffsetX = pl.offsetX ?? 0;
@@ -916,10 +1140,10 @@ export default function TowerDraftRenderer({
                     lastOffsetX = cur.x - dragColCenter;
                     updateTowerDraftPlacement(page.id, pl.id, {
                       mountHeightFtAgl: yToFtAglWithSnap(
-                        ftAglToY(startFt, page.towerHeightFtAgl, pxPerFt) + (cur.y - startSvg.y),
-                        page.towerHeightFtAgl,
+                        ftAglToY(startFt, layoutHeightFt, pxPerFt) + (cur.y - startSvg.y),
+                        layoutHeightFt,
                         snapFt,
-                        page.guideBandsFt,
+                        visibleGuideBands,
                         pxPerFt,
                       ),
                       offsetX: lastOffsetX,
@@ -1017,9 +1241,9 @@ export default function TowerDraftRenderer({
         </svg>
       </div>
 
-      {tallTowerProfile && (
+      {tallTowerMode && (
         <TowerDraftMinimap
-          towerHeightFt={page.towerHeightFtAgl}
+          towerHeightFt={layoutHeightFt}
           pxPerFt={pxPerFt}
           contentOffsetY={contentOffsetY}
           guideBandsFt={page.guideBandsFt}
@@ -1036,8 +1260,12 @@ export default function TowerDraftRenderer({
         onZoomIn={panZoom.zoomInView}
         onZoomOut={panZoom.zoomOutView}
         onFitAll={() => {
-          if (tallTowerProfile) applyTallTowerViewport();
+          if (tallTowerMode) applyTallTowerViewport();
           else panZoom.fitAllView(viewBounds);
+          saveTowerDraftViewport(viewportStorageKey, {
+            zoom: panZoom.zoom,
+            pan: panZoom.viewOffset,
+          });
         }}
       />
 

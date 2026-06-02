@@ -124,7 +124,7 @@ export default function TowerDraftMinimap({
             width={innerW}
             height={innerH}
             preserveAspectRatio={TOWER_REFERENCE_MINIMAP_PRESERVE_ASPECT}
-            opacity={0.9}
+            opacity={elevationRef.opacity ?? 0.5}
             style={{
               mixBlendMode:
                 elevationRef.blendMode === "multiply"
