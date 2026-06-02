@@ -17,7 +17,19 @@ try {
   gitHash = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
 } catch { /* not a git repo or git not available */ }
 
+/** trackIT repo .env.local (envDir below) — IIS hostname e.g. http://ow-casf-trackit:5174/ */
+const devPublicHost = process.env.VITE_DEV_PUBLIC_HOST?.trim()
+const devPublicClientPort = process.env.VITE_DEV_PUBLIC_PORT?.trim()
+
+const devAllowedHosts = [
+  ...(devPublicHost ? [devPublicHost] : ['ow-casf-trackit']),
+  'localhost',
+  '127.0.0.1',
+]
+
 export default defineConfig({
+  // Pick up VITE_DEV_PUBLIC_* from trackIT .env.local when running via npm run dev:all
+  envDir: path.resolve(__dirname, '..'),
   // Resolve TypeScript sources before .js so stale emitted .js shadows can't silently win.
   resolve: {
     extensions: ['.mjs', '.mts', '.ts', '.tsx', '.js', '.jsx', '.json'],
@@ -78,5 +90,19 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_HASH__: JSON.stringify(gitHash),
+  },
+  server: {
+    strictPort: true,
+    // Vite 6+ blocks unknown Host headers (IIS / corporate DNS → ow-casf-trackit:5174).
+    allowedHosts: devAllowedHosts,
+    hmr: devPublicHost
+      ? {
+          host: devPublicHost,
+          ...(devPublicClientPort ? { clientPort: Number(devPublicClientPort) } : {}),
+        }
+      : undefined,
+  },
+  preview: {
+    allowedHosts: devAllowedHosts,
   },
 })
