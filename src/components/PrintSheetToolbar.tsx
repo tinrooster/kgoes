@@ -80,12 +80,15 @@ export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Pro
   };
 
   return (
-    <div className="flex flex-col border-b border-blue-200 dark:border-[var(--color-border)] bg-blue-50 dark:bg-[var(--color-surface)] text-xs" data-print-hide>
+    <div
+      className="flex flex-col border-b border-[var(--color-border)] bg-[var(--color-surface)] text-xs dark:!border-slate-700 dark:!bg-slate-900 dark:text-slate-100"
+      data-print-hide
+    >
     <div className="flex items-center gap-3 px-3 py-1.5 flex-wrap">
       {/* Paper size */}
-      <label className="text-neutral-500 dark:text-[var(--color-text-muted)] uppercase tracking-wider" style={{ fontSize: 9 }}>Paper</label>
+      <label className="text-[var(--color-text-muted)] uppercase tracking-wider" style={{ fontSize: 9 }}>Paper</label>
       <select
-        className="bg-white dark:bg-[var(--color-surface-2)] border border-neutral-200 dark:border-[var(--color-border)] text-neutral-700 dark:text-[var(--color-text)] rounded px-2 py-0.5 text-xs outline-none focus:border-blue-400"
+        className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-0.5 text-xs text-[var(--color-text)] outline-none focus:border-blue-500"
         value={page.paperId}
         onChange={(e) => setPrintSheetPaper(page.id, e.target.value, page.orientation, page.customWidthIn, page.customHeightIn)}
       >
@@ -103,10 +106,10 @@ export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Pro
             step={0.01}
             value={page.customWidthIn ?? 24}
             onChange={(e) => setPrintSheetPaper(page.id, "custom", page.orientation, Number(e.target.value), page.customHeightIn ?? 36)}
-            className="w-16 bg-white dark:bg-[var(--color-surface-2)] border border-neutral-200 dark:border-[var(--color-border)] text-neutral-700 dark:text-[var(--color-text)] rounded px-2 py-0.5 text-xs outline-none focus:border-blue-400"
+            className="w-16 bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-0.5 text-xs text-[var(--color-text)] outline-none focus:border-blue-500"
             title="Width (in)"
           />
-          <span className="text-neutral-400 dark:text-[var(--color-text-muted)]">×</span>
+          <span className="text-[var(--color-text-muted)]">×</span>
           <input
             type="number"
             min={1}
@@ -114,16 +117,16 @@ export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Pro
             step={0.01}
             value={page.customHeightIn ?? 36}
             onChange={(e) => setPrintSheetPaper(page.id, "custom", page.orientation, page.customWidthIn ?? 24, Number(e.target.value))}
-            className="w-16 bg-white dark:bg-[var(--color-surface-2)] border border-neutral-200 dark:border-[var(--color-border)] text-neutral-700 dark:text-[var(--color-text)] rounded px-2 py-0.5 text-xs outline-none focus:border-blue-400"
+            className="w-16 bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-0.5 text-xs text-[var(--color-text)] outline-none focus:border-blue-500"
             title="Height (in)"
           />
-          <span className="text-neutral-500 dark:text-[var(--color-text-muted)]" style={{ fontSize: 9 }}>in</span>
+          <span className="text-[var(--color-text-muted)]" style={{ fontSize: 9 }}>in</span>
         </>
       )}
 
       {/* Orientation */}
       <button
-        className={`px-2 py-0.5 rounded border text-xs transition-colors ${page.orientation === "landscape" ? "bg-blue-50 dark:bg-[color-mix(in_srgb,var(--color-surface)_70%,#3b82f6_30%)] border-blue-400 text-blue-700 dark:text-blue-200" : "bg-white dark:bg-[var(--color-surface-2)] border-neutral-200 dark:border-[var(--color-border)] text-neutral-600 dark:text-[var(--color-text)] hover:border-neutral-400 dark:hover:border-[var(--color-text-muted)]"}`}
+        className={`px-2 py-0.5 rounded border text-xs transition-colors ${page.orientation === "landscape" ? "bg-blue-600 text-white border-blue-600" : "bg-[var(--color-bg)] border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"}`}
         onClick={() => setPrintSheetPaper(page.id, page.paperId, page.orientation === "landscape" ? "portrait" : "landscape")}
       >
         {page.orientation === "landscape" ? "↔ Landscape" : "↕ Portrait"}
@@ -141,15 +144,15 @@ export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Pro
             }));
           }}
         />
-        <span className="text-neutral-600 dark:text-[var(--color-text)]">Title Block</span>
+        <span className="text-[var(--color-text)]">Title Block</span>
       </label>
 
-      <div className="border-l border-neutral-200 dark:border-[var(--color-border)] h-4" />
+      <div className="border-l border-[var(--color-border)] h-4" />
 
       {hasDrawing && fitDrawingTargets.length > 0 && (
         <button
           type="button"
-          className="px-2 py-0.5 rounded border border-blue-300 bg-white text-blue-700 hover:bg-blue-50 text-xs transition-colors"
+          className="px-2 py-0.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] text-xs transition-colors"
           title={
             selectedDrawing.length > 0
               ? "Resize selected drawing view to fill the printable area"
@@ -164,9 +167,9 @@ export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Pro
       {/* Auto-fill from drawing or rack elevations */}
       {(hasDrawing || elevationPages.length > 0) && (
         <div className="flex items-center gap-1">
-          <span className="text-neutral-500 dark:text-[var(--color-text-muted)]">Auto-Fill from:</span>
+          <span className="text-[var(--color-text-muted)]">Auto-Fill from:</span>
           <select
-            className="bg-white dark:bg-[var(--color-surface-2)] border border-neutral-200 dark:border-[var(--color-border)] text-neutral-700 dark:text-[var(--color-text)] rounded px-2 py-0.5 text-xs outline-none focus:border-blue-400"
+            className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-0.5 text-xs text-[var(--color-text)] outline-none focus:border-blue-500"
             defaultValue=""
             onChange={(e) => {
               const value = e.target.value;
@@ -206,9 +209,9 @@ export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Pro
       {/* Add viewport manually */}
       {(hasDrawing || elevationPages.length > 0) && (
         <div className="flex items-center gap-1">
-          <span className="text-neutral-500 dark:text-[var(--color-text-muted)]">Add View:</span>
+          <span className="text-[var(--color-text-muted)]">Add View:</span>
           <select
-            className="bg-white dark:bg-[var(--color-surface-2)] border border-neutral-200 dark:border-[var(--color-border)] text-neutral-700 dark:text-[var(--color-text)] rounded px-2 py-0.5 text-xs outline-none focus:border-blue-400"
+            className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-0.5 text-xs text-[var(--color-text)] outline-none focus:border-blue-500"
             defaultValue=""
             onChange={(e) => {
               const value = e.target.value;
@@ -250,7 +253,7 @@ export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Pro
 
       {/* Sheet count */}
       {sheetCount > 1 && (
-        <span className="text-neutral-500 dark:text-[var(--color-text-muted)]" style={{ fontFamily: "monospace", fontSize: 11 }}>
+        <span className="text-[var(--color-text-muted)]" style={{ fontFamily: "monospace", fontSize: 11 }}>
           Print View {sheetIndex} of {sheetCount}
         </span>
       )}
@@ -258,7 +261,7 @@ export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Pro
       {/* Clear all */}
       {page.viewports.length > 0 && (
         <button
-          className="px-2 py-0.5 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded border border-transparent hover:border-red-200 transition-colors"
+          className="px-2 py-0.5 text-xs text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded border border-transparent hover:border-red-500/40 transition-colors"
           onClick={() => { for (const vp of page.viewports) removeViewport(page.id, vp.id); }}
         >
           Clear All
@@ -267,15 +270,15 @@ export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Pro
 
       {/* Export PDF — same handler as File → Export → Export Print Sheets */}
       <button
-        className="px-3 py-1 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+        className="px-3 py-1 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors border border-blue-600"
         onClick={() => { void runPrintSheetExport(); }}
       >
         Export PDF
       </button>
     </div>
 
-    <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-t border-blue-100 dark:border-[var(--color-border)] bg-white/60 dark:bg-[var(--color-surface-2)]/60">
-      <span className="text-[10px] uppercase tracking-wider text-neutral-400 dark:text-[var(--color-text-muted)] shrink-0">Align</span>
+    <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-t border-[var(--color-border)] bg-[var(--color-bg)] dark:!border-slate-700 dark:!bg-slate-800">
+      <span className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] shrink-0 dark:text-slate-300">Align</span>
       <LayoutToolbarButton
         disabled={selCount < 2}
         onClick={() => onLayout("align-center-h")}
@@ -304,8 +307,8 @@ export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Pro
       >
         <IconAlignBottom />
       </LayoutToolbarButton>
-      <span className="text-neutral-300 dark:text-[var(--color-border)]">|</span>
-      <span className="text-[10px] uppercase tracking-wider text-neutral-400 dark:text-[var(--color-text-muted)] shrink-0">Distribute</span>
+      <span className="text-[var(--color-border)] dark:text-slate-600">|</span>
+      <span className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] shrink-0 dark:text-slate-300">Distribute</span>
       <LayoutToolbarButton
         disabled={selCount < 2}
         onClick={() => onLayout("distribute-h")}
@@ -320,7 +323,7 @@ export default function PrintSheetToolbar({ page, selectedVpIds, onLayout }: Pro
       >
         <IconDistributeSpacingVertical />
       </LayoutToolbarButton>
-      <span className="text-[10px] text-neutral-400 dark:text-[var(--color-text-muted)] ml-auto">
+      <span className="text-[10px] text-[var(--color-text-muted)] ml-auto dark:text-slate-300">
         {selCount < 1
           ? "Drag right (blue) = fully inside · drag left (green) = center inside box"
           : `${selCount} view${selCount === 1 ? "" : "s"} selected`}

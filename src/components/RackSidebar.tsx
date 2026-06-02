@@ -135,7 +135,7 @@ export default function RackSidebar({ page }: RackSidebarProps) {
       className="flex flex-col text-xs overflow-hidden shrink-0"
       style={{
         width: 264,
-        background: "var(--ti-sunken)",
+        background: "var(--color-bg)",
         borderRight: "1px solid var(--ti-border)",
         fontFamily: "var(--ti-font-sans)",
       }}

@@ -816,7 +816,7 @@ export default function PrintSheetRenderer({ page, selectedVpIds, onSelectionCha
     <div className="flex-1 relative overflow-hidden">
       <div
         ref={containerRef}
-        className="absolute inset-0 bg-neutral-300 outline-none"
+        className="absolute inset-0 bg-[var(--color-canvas-origin)] outline-none"
         tabIndex={0}
         style={{ cursor: isPanning ? "grabbing" : spaceHeld ? "grab" : "default", userSelect: "none" }}
         onKeyDown={handleKeyDown}

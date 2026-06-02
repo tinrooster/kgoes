@@ -1576,6 +1576,7 @@ function SchematicCanvas() {
       ref={rfContainerRef}
       className={[
         debugEdges ? "debug-active" : "",
+        printView ? "print-view-mode" : "",
         selectionDirection ? `selection-${selectionDirection}` : "",
         panMode === "pan-first" && !shiftHeld && !isMobile ? "pan-mode" : "",
       ].filter(Boolean).join(" ") || undefined}
@@ -1778,7 +1779,12 @@ function SchematicCanvas() {
         </div>
       )}
       {!printView && <CanvasOriginOverlay />}
-      <Background variant={BackgroundVariant.Dots} gap={GRID_SIZE} size={1} color={isDark ? "#374151" : "#d4d4d4"} />
+      <Background
+        variant={BackgroundVariant.Dots}
+        gap={GRID_SIZE}
+        size={1}
+        color={printView ? (isDark ? "#4b5563" : "#c1c7d2") : (isDark ? "#374151" : "#d4d4d4")}
+      />
       <AutoRouteChip />
       <AutoRouteConfirmDialog />
       <RoutingDebugOverlay />

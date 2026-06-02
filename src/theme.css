@@ -206,7 +206,7 @@
   --color-custom: #64748b;    /* cool gray */
 }
 
-.dark {
+:is(.dark, [data-theme="dark"]) {
   --color-bg: #0f172a;
   --color-surface: #1e293b;
   --color-surface-hover: #334155;
@@ -218,5 +218,5 @@
   --color-power-neutral: #b0b0b0;
   --color-power-l1: #e5e5e5;
   /* Canvas origin overlay — slightly lighter than bg to mark non-printable zone */
-  --color-canvas-origin: #1e293b;
+  --color-canvas-origin: #111827;
 }

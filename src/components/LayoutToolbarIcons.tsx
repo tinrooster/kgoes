@@ -83,7 +83,7 @@ export function LayoutToolbarButton({
   return (
     <button
       type="button"
-      className="p-1.5 rounded border border-neutral-300 hover:bg-neutral-50 disabled:opacity-40 disabled:pointer-events-none text-neutral-700"
+      className="p-1.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] disabled:opacity-40 disabled:pointer-events-none dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-700"
       disabled={disabled}
       onClick={onClick}
       title={title}

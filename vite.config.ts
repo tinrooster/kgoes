@@ -7,8 +7,8 @@ import { readFileSync } from 'fs'
 import { execSync } from 'child_process'
 import { KGO_ES_DESCRIPTION, KGO_ES_NAME, KGO_ES_PAGE_TITLE } from './src/branding'
 
-// Use temp dir for cache to avoid file-locking issues
-const cacheDir = path.join(os.tmpdir(), 'vite-easyschematic')
+// Use a repo-specific temp cache dir to avoid stale cross-project Vite transforms.
+const cacheDir = path.join(os.tmpdir(), 'vite-kgoes-trackit-v2')
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
 

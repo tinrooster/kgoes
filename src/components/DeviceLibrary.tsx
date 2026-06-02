@@ -1334,7 +1334,7 @@ export default function DeviceLibrary() {
       <div style={{
         width: 44, flexShrink: 0,
         borderRight: "1px solid var(--ti-border)",
-        background: "var(--ti-sunken)",
+        background: "var(--color-bg)",
         display: "flex", flexDirection: "column", alignItems: "center",
         height: "100%", paddingTop: 10, gap: 8,
       }}>
@@ -1352,7 +1352,7 @@ export default function DeviceLibrary() {
         width: collapsed ? 44 : 264,
         flexShrink: 0,
         borderRight: "1px solid var(--ti-border)",
-        background: "var(--ti-sunken)",
+        background: "var(--color-bg)",
         display: "flex", flexDirection: "column",
         height: "100%", overflow: "hidden",
         transition: "width 150ms",
