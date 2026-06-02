@@ -32,33 +32,48 @@ export default function TowerDraftTrackItPanel({ page, onSelectLevel }: TowerDra
   };
 
   return (
-    <div className="border-b border-[var(--color-border)] shrink-0" data-print-hide>
+    <div
+      className="shrink-0"
+      style={{ borderBottom: "1px solid var(--ti-border)", fontFamily: "var(--ti-font-sans)" }}
+      data-print-hide
+    >
       <button
         type="button"
-        className="w-full px-2 py-1.5 text-left text-[10px] uppercase tracking-wider text-blue-600 dark:text-blue-400 hover:bg-[var(--color-surface-hover)]"
+        className="ti-row-hover w-full text-left"
+        style={{
+          padding: "6px 8px",
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: "0.07em",
+          textTransform: "uppercase",
+          color: "var(--ti-accent)",
+        }}
         onClick={() => setOpen((v) => !v)}
       >
         trackIT site {open ? "▾" : "▸"}
       </button>
       {open && context ? (
-        <div className="px-2 pb-2 space-y-1.5 text-[11px]">
-          <div className="font-medium text-[var(--color-text)] truncate" title={context.siteName}>
+        <div style={{ padding: "0 8px 8px", display: "flex", flexDirection: "column", gap: 5, fontSize: 11 }}>
+          <div
+            style={{ fontWeight: 500, color: "var(--ti-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            title={context.siteName}
+          >
             {context.siteName} ({context.siteCode})
           </div>
-          <div className="text-[var(--color-text-muted)]">
+          <div style={{ color: "var(--ti-muted)" }}>
             {context.towerHeightFt}′ tower
             {context.towerCompany ? ` · ${context.towerCompany}` : ""}
             {context.callSign ? ` · ${context.callSign}` : ""}
           </div>
           {context.latitude != null && context.longitude != null ? (
-            <div className="text-[var(--color-text-muted)] font-mono tabular-nums">
+            <div style={{ color: "var(--ti-muted)", fontFamily: "var(--ti-font-mono)", fontSize: 10 }}>
               {context.latitude.toFixed(5)}, {context.longitude.toFixed(5)}
             </div>
           ) : null}
           {context.antennaLevels.length === 0 ? (
-            <p className="text-[var(--color-text-muted)]">No antenna levels in trackIT yet.</p>
+            <p style={{ color: "var(--ti-muted)" }}>No antenna levels in trackIT yet.</p>
           ) : (
-            <ul className="space-y-0.5 max-h-28 overflow-y-auto">
+            <ul style={{ maxHeight: 112, overflowY: "auto" }}>
               {context.antennaLevels.map((level) => {
                 const pl = page.placements.find((p) => p.plantLocationId === level.id);
                 const status = pl
@@ -70,11 +85,12 @@ export default function TowerDraftTrackItPanel({ page, onSelectLevel }: TowerDra
                   <li key={level.id}>
                     <button
                       type="button"
-                      className="w-full text-left truncate hover:text-blue-600 dark:hover:text-blue-400"
+                      className="ti-row-hover w-full text-left"
+                      style={{ padding: "2px 4px", fontSize: 11, color: "var(--ti-ink-2)", borderRadius: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                       title={`${level.code} · ${level.mountHeightM?.toFixed(1) ?? "?"} m`}
                       onClick={() => onSelectLevel(level.id)}
                     >
-                      <span className="text-[10px] mr-1">{badge}</span>
+                      <span style={{ fontSize: 10, marginRight: 3 }}>{badge}</span>
                       {level.mountHeightM != null
                         ? `${mountHeightMToFtAgl(level.mountHeightM)}′`
                         : "—"}{" "}
@@ -87,7 +103,7 @@ export default function TowerDraftTrackItPanel({ page, onSelectLevel }: TowerDra
           )}
           <button
             type="button"
-            className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline"
+            style={{ fontSize: 10, color: "var(--ti-accent)", textAlign: "left", textDecoration: "underline", cursor: "pointer" }}
             onClick={openInTrackIt}
           >
             Open tower stack in trackIT

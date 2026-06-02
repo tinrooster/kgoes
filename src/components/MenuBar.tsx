@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useSyncDrawerStore } from "../sidebarStore";
 import { useReactFlow } from "@xyflow/react";
 import {
@@ -198,7 +198,7 @@ export default function MenuBar() {
   });
   const syncPillWarning = syncStatus.pillWarning || syncDrawerOpen;
 
-  const handleSyncPillClick = (e: MouseEvent<HTMLButtonElement>) => {
+  const handleSyncPillClick = (e: ReactMouseEvent<HTMLButtonElement>) => {
     if (e.altKey) {
       toggleSyncDrawer();
       return;
@@ -263,8 +263,8 @@ export default function MenuBar() {
   // Close menu on outside click or Escape
   useEffect(() => {
     if (!openMenu) return;
-    const handleClick = (e: MouseEvent) => {
-      if (menuBarRef.current && !menuBarRef.current.contains(e.target as Node)) {
+    const handleClick = (e: globalThis.MouseEvent) => {
+      if (menuBarRef.current && !menuBarRef.current.contains(e.target as globalThis.Node)) {
         setOpenMenu(null);
       }
     };

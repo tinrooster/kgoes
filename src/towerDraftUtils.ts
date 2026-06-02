@@ -29,13 +29,13 @@ export const TOWER_DRAFT_FACES_BAND_OFFSET_Y = 36;
 export const TOWER_DRAFT_PLACEMENT_SPACING = 38;
 
 /** Ground line Y for a given tower height (base at bottom). */
-export function towerDraftGroundY(towerHeightFt: number): number {
-  return TOWER_DRAFT_PAD_TOP + towerHeightFt * TOWER_DRAFT_PX_PER_FT;
+export function towerDraftGroundY(towerHeightFt: number, pxPerFt = TOWER_DRAFT_PX_PER_FT): number {
+  return TOWER_DRAFT_PAD_TOP + towerHeightFt * pxPerFt;
 }
 
 /** Canvas Y for a height in ft AGL (0 = base). */
-export function ftAglToY(ftAgl: number, towerHeightFt: number): number {
-  return towerDraftGroundY(towerHeightFt) - ftAgl * TOWER_DRAFT_PX_PER_FT;
+export function ftAglToY(ftAgl: number, towerHeightFt: number, pxPerFt = TOWER_DRAFT_PX_PER_FT): number {
+  return towerDraftGroundY(towerHeightFt, pxPerFt) - ftAgl * pxPerFt;
 }
 
 export const TOWER_DRAFT_SNAP_LEVEL = -1;
@@ -69,9 +69,10 @@ export function yToFtAglWithSnap(
   towerHeightFt: number,
   snapFt: number,
   guideBandsFt?: { ftAgl: number }[],
+  pxPerFt = TOWER_DRAFT_PX_PER_FT,
 ): number {
-  const ground = towerDraftGroundY(towerHeightFt);
-  const raw = (ground - y) / TOWER_DRAFT_PX_PER_FT;
+  const ground = towerDraftGroundY(towerHeightFt, pxPerFt);
+  const raw = (ground - y) / pxPerFt;
   return resolveSnapMountHeight(raw, towerHeightFt, snapFt, guideBandsFt);
 }
 
@@ -92,8 +93,8 @@ export function placementSyncStatus(
 }
 
 
-export function towerDraftContentHeight(towerHeightFt: number): number {
-  return TOWER_DRAFT_PAD_TOP + towerHeightFt * TOWER_DRAFT_PX_PER_FT + TOWER_DRAFT_PAD_BOTTOM;
+export function towerDraftContentHeight(towerHeightFt: number, pxPerFt = TOWER_DRAFT_PX_PER_FT): number {
+  return TOWER_DRAFT_PAD_TOP + towerHeightFt * pxPerFt + TOWER_DRAFT_PAD_BOTTOM;
 }
 
 export function towerDraftContentWidth(): number {

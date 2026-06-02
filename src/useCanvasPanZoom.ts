@@ -10,6 +10,7 @@ export interface CanvasPanZoomState {
   zoomInView: () => void;
   zoomOutView: () => void;
   fitAllView: (bounds: ContentBounds | null) => void;
+  applyViewport: (zoom: number, pan: { x: number; y: number }) => void;
   onMouseDown: (e: React.MouseEvent) => void;
   onMouseMove: (e: React.MouseEvent) => void;
   onMouseUp: (e: React.MouseEvent) => void;
@@ -22,6 +23,8 @@ export function useCanvasPanZoom(options?: {
   /** Fit these bounds when the container mounts or deps change. */
   fitBounds?: ContentBounds | null;
   fitDeps?: unknown[];
+  /** When false, skip auto-fit on mount (tall-tower profile sets viewport manually). */
+  autoFit?: boolean;
 }): CanvasPanZoomState {
   const containerRef = useRef<HTMLDivElement>(null);
   const [viewOffset, setViewOffset] = useState(options?.initialOffset ?? { x: 40, y: 40 });
@@ -79,11 +82,19 @@ export function useCanvasPanZoom(options?: {
   }, [setViewport]);
 
   useEffect(() => {
+    if (options?.autoFit === false) return;
     if (!options?.fitBounds) return;
     const timer = window.setTimeout(() => fitAllView(options.fitBounds ?? null), 0);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fitDeps is intentional external trigger
-  }, [fitAllView, options?.fitBounds, ...(options?.fitDeps ?? [])]);
+  }, [fitAllView, options?.autoFit, options?.fitBounds, ...(options?.fitDeps ?? [])]);
+
+  const applyViewport = useCallback(
+    (z: number, pan: { x: number; y: number }) => {
+      setViewport(z, pan);
+    },
+    [setViewport],
+  );
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 1 || (e.button === 0 && e.altKey)) {
@@ -124,6 +135,7 @@ export function useCanvasPanZoom(options?: {
     zoomInView,
     zoomOutView,
     fitAllView,
+    applyViewport,
     onMouseDown,
     onMouseMove,
     onMouseUp,

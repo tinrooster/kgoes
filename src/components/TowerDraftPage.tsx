@@ -28,6 +28,7 @@ export default function TowerDraftPageView() {
   const removeTowerDraftPlacement = useSchematicStore((s) => s.removeTowerDraftPlacement);
   const removeTowerDraftPolyline = useSchematicStore((s) => s.removeTowerDraftPolyline);
   const updateTowerDraftPage = useSchematicStore((s) => s.updateTowerDraftPage);
+  const updateTowerDraftPlacement = useSchematicStore((s) => s.updateTowerDraftPlacement);
   const syncTowerDraftFromSchematicDevices = useSchematicStore((s) => s.syncTowerDraftFromSchematicDevices);
   const suggestTowerDraftFeedlines = useSchematicStore((s) => s.suggestTowerDraftFeedlines);
   const requestTowerDraftFocus = useSchematicStore((s) => s.requestTowerDraftFocus);
@@ -96,6 +97,21 @@ export default function TowerDraftPageView() {
     }
   };
 
+  const openSurveyInTrackIt = trackItTowerContext?.siteCode
+    ? () => {
+        try {
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage(
+              { type: "KGO_ES_FOCUS_TOWER_LEVEL", payload: { siteCode: trackItTowerContext.siteCode } },
+              "*",
+            );
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    : undefined;
+
   useEffect(() => {
     if (!pageId) return;
     const onKey = (e: KeyboardEvent) => {
@@ -159,6 +175,7 @@ export default function TowerDraftPageView() {
             setSelectedPlacementId(id);
             setSelectedPolylineId(null);
           }}
+          onOpenSurveyInTrackIt={openSurveyInTrackIt}
         />
       ) : (
         <TowerDraftRenderer
@@ -305,6 +322,9 @@ export default function TowerDraftPageView() {
         onRemovePlacement={(placementId) => {
           removeTowerDraftPlacement(page.id, placementId);
           if (selectedPlacementId === placementId) setSelectedPlacementId(null);
+        }}
+        onSetPlacementFace={(placementId, face) => {
+          updateTowerDraftPlacement(page.id, placementId, { towerFace: face });
         }}
       />
     </div>

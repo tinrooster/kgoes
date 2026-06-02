@@ -6038,6 +6038,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       trackItTowerContext: typeof trackItTowerContext;
       siteLicensed?: RfLicensedMetadata | null;
       titleBlock?: TitleBlock;
+      pages?: SchematicPage[];
     } = { trackItTowerContext };
     if (trackItTowerContext?.callSign?.trim()) {
       const prev = get().siteLicensed ?? {};
@@ -6049,6 +6050,33 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       const tb = get().titleBlock;
       if (!tb.venue?.trim()) {
         patch.titleBlock = { ...tb, venue: trackItTowerContext.siteName.trim() };
+      }
+    }
+    if (trackItTowerContext) {
+      const ctxH = trackItTowerContext.towerHeightFt;
+      const ctxRef = trackItTowerContext.elevationReferenceImage;
+      if (ctxH || ctxRef?.url) {
+        const pages = get().pages;
+        let pagesChanged = false;
+        const nextPages = pages.map((p) => {
+          if (p.type !== "tower-draft") return p;
+          const td = p as TowerDraftPage;
+          let next = td;
+          if (ctxH && td.towerHeightFtAgl < ctxH - 1) {
+            next = { ...next, towerHeightFtAgl: ctxH };
+            pagesChanged = true;
+          }
+          if (ctxRef?.url && !td.elevationReferenceImage?.url) {
+            next = {
+              ...next,
+              elevationReferenceImage: ctxRef,
+              polylines: [],
+            };
+            pagesChanged = true;
+          }
+          return next;
+        });
+        if (pagesChanged) patch.pages = nextPages;
       }
     }
     set(patch);

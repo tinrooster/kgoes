@@ -215,7 +215,7 @@ export default function TowerDraftSidebar({
     <aside
       data-print-hide
       style={{
-        width: 268,
+        width: 264,
         flexShrink: 0,
         borderRight: "1px solid var(--ti-border)",
         background: "var(--ti-sunken)",
@@ -325,6 +325,7 @@ export default function TowerDraftSidebar({
                           placementId: pl.id,
                           deviceNodeId: pl.deviceNodeId,
                           plantLocationId: pl.plantLocationId,
+                          towerFace: pl.towerFace,
                           screenX: e.clientX,
                           screenY: e.clientY,
                         });

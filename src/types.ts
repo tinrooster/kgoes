@@ -866,6 +866,18 @@ export interface TowerDraftPlacement {
 
 export type TowerDraftLineStyle = "solid" | "dashed" | "dotted";
 
+/** Photographic / line-art elevation underlay (trackIT mountaintop reference art). */
+export interface TowerElevationReferenceImage {
+  url: string;
+  detailUrl?: string;
+  label?: string;
+  opacity?: number;
+  align?: "center" | "left";
+  fullBleed?: boolean;
+  blendMode?: "normal" | "lighten" | "screen" | "multiply";
+  contentScale?: number;
+}
+
 /** User-drawn polyline segment (tower leg, guy wire, callout line). */
 export interface TowerDraftPolyline {
   id: string;
@@ -889,6 +901,8 @@ export interface TowerDraftPage {
   guideBandsFt: TowerGuideBandFt[];
   placements: TowerDraftPlacement[];
   polylines: TowerDraftPolyline[];
+  /** Profile underlay — preferred over generated lattice polylines. */
+  elevationReferenceImage?: TowerElevationReferenceImage;
   labelLayers?: { designation?: boolean; azimuth?: boolean; band?: boolean };
 }
 
@@ -1120,6 +1134,16 @@ export type TrackItTowerSiteContext = {
     title?: string;
     drawingType?: string;
   }[];
+  elevationReferenceImage?: TowerElevationReferenceImage;
+  elevationViewport?: {
+    tallTowerMode: boolean;
+    tallTowerThresholdFt?: number;
+    defaultViewportSpanFt?: number;
+    initialFocusFtAgl?: number;
+    workingZoomRatio?: number;
+    minPxPerFt?: number;
+    guideBandsFt?: { ftAgl: number; label?: string }[];
+  };
 };
 
 /** Persisted trackIT numbering sync (see trackitBridge.ts). */

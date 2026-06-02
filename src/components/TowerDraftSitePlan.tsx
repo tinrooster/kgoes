@@ -23,6 +23,7 @@ interface TowerDraftSitePlanProps {
   selectedPlacementId: string | null;
   onSelectPlacement: (id: string | null) => void;
   embedded?: boolean;
+  onOpenSurveyInTrackIt?: () => void;
 }
 
 const W = 660;
@@ -53,6 +54,7 @@ export default function TowerDraftSitePlan({
   selectedPlacementId,
   onSelectPlacement,
   embedded = false,
+  onOpenSurveyInTrackIt,
 }: TowerDraftSitePlanProps) {
   const nodes = useSchematicStore((s) => s.nodes);
   const edges = useSchematicStore((s) => s.edges);
@@ -301,6 +303,19 @@ export default function TowerDraftSitePlan({
           Device azimuth · click to select
         </text>
       </g>
+
+      {trackItTowerContext?.latitude != null && trackItTowerContext?.longitude != null && (
+        <text
+          x={W - 10}
+          y={H - 10}
+          textAnchor="end"
+          fontSize={9}
+          fill="var(--ti-muted)"
+          fontFamily="var(--ti-font-mono)"
+        >
+          {trackItTowerContext.latitude.toFixed(5)}, {trackItTowerContext.longitude.toFixed(5)}
+        </text>
+      )}
     </svg>
   );
 
@@ -334,6 +349,30 @@ export default function TowerDraftSitePlan({
         onZoomOut={panZoom.zoomOutView}
         onFitAll={() => panZoom.fitAllView(viewBounds)}
       />
+      {onOpenSurveyInTrackIt && (
+        <button
+          type="button"
+          style={{
+            position: "absolute",
+            top: 10,
+            right: 10,
+            height: 28,
+            padding: "0 12px",
+            borderRadius: 8,
+            border: "1px solid var(--ti-border)",
+            background: "color-mix(in oklab, var(--ti-surface) 90%, transparent)",
+            color: "var(--ti-ink-2)",
+            fontSize: 11.5,
+            fontWeight: 500,
+            cursor: "pointer",
+            fontFamily: "var(--ti-font-sans)",
+            backdropFilter: "blur(6px)",
+          }}
+          onClick={onOpenSurveyInTrackIt}
+        >
+          Site survey in trackIT ↗
+        </button>
+      )}
     </div>
   );
 
