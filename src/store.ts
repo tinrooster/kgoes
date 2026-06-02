@@ -1,4 +1,15 @@
 import { create } from "zustand";
+import { layoutRackPositions } from "./rackLayout";
+import { getDevicesInRoom } from "./rackLink";
+import {
+  applyRackFillOrderPreset,
+  applyTowerDatacomHubPreset,
+  formatApplyPresetSummary,
+  RACK_FILL_ORDER_PRESET_ID,
+  TOWER_DATACOM_HUB_PRESET_ID,
+  type RackFillOrderApplyOptions,
+  type TowerDatacomHubApplyOptions,
+} from "./rackDistributionPresets";
 import { pushLibraryBackup } from "./libraryTemplateBackup";
 import {
   applyNodeChanges,
@@ -913,8 +924,16 @@ interface SchematicState {
   setPrintSheetPaper: (pageId: string, paperId: string, orientation: "landscape" | "portrait", customWidthIn?: number, customHeightIn?: number) => void;
   /** Move a rack (and all its placements + accessories) from one rack-elevation page to another. */
   moveRackToPage: (srcPageId: string, rackId: string, dstPageId: string) => void;
-  /** Lay out all racks on an elevation page in a horizontal row with aligned tops. */
-  layoutRacksOnPage: (pageId: string) => void;
+  /** Lay out all racks on an elevation page (single row or grid). */
+  layoutRacksOnPage: (
+    pageId: string,
+    options?: import("./rackLayout").LayoutRackPositionsOptions,
+  ) => void;
+  /** Pan/zoom the rack canvas to one rack (from sidebar / list). */
+  rackFocusRequest: { pageId: string; rackId: string } | null;
+  requestRackFocus: (pageId: string, rackId: string) => void;
+  selectedRackId: string | null;
+  setSelectedRackId: (rackId: string | null) => void;
   /** Highlight a schematic port from rack elevation (links to edges). */
   selectedRackPort: { deviceNodeId: string; portId: string } | null;
   setSelectedRackPort: (sel: { deviceNodeId: string; portId: string } | null) => void;
@@ -929,6 +948,20 @@ interface SchematicState {
     link: Omit<import("./types").RackCrossLink, "id">,
   ) => string;
   removeRackCrossLink: (pageId: string, linkId: string) => void;
+  updateRackCrossLink: (
+    pageId: string,
+    linkId: string,
+    patch: Partial<Omit<import("./types").RackCrossLink, "id">>,
+  ) => void;
+  selectedCrossLinkId: string | null;
+  setSelectedCrossLinkId: (linkId: string | null) => void;
+  /** Apply a facility distribution preset (jack fields + trunk cross-links). */
+  applyRackDistributionPreset: (
+    pageId: string,
+    presetId: string,
+    options: TowerDatacomHubApplyOptions | RackFillOrderApplyOptions,
+  ) => void;
+  updateRackElevationPage: (pageId: string, patch: Partial<Pick<RackElevationPage, "showTrunkCallouts" | "label">>) => void;
   /** Rebalance half-rack sides and clear stale placement flags after device rack metadata changes. */
   syncRackPlacementsForDevice: (deviceNodeId: string) => void;
 
@@ -1706,6 +1739,9 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   activePage: "schematic",
   selectedRackPort: null,
   schematicFocusRequest: null,
+  rackFocusRequest: null,
+  selectedRackId: null,
+  selectedCrossLinkId: null,
   facePlateEditNodeId: null,
   facePlateDefinitionLayouts: {},
   deviceDefinitionRackMetadata: {},
@@ -5511,19 +5547,13 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     get().saveToLocalStorage();
   },
 
-  layoutRacksOnPage: (pageId) => {
+  layoutRacksOnPage: (pageId, options) => {
     const state = get();
     const page = state.pages.find((p) => p.id === pageId && p.type === "rack-elevation") as RackElevationPage | undefined;
     if (!page || page.racks.length < 2) return;
     pushUndo({ nodes: state.nodes, edges: state.edges });
-    const H_SPACING = 320;
-    const startX = 40;
-    const startY = 40;
-    const sorted = [...page.racks].sort((a, b) => a.position.x - b.position.x || a.position.y - b.position.y);
-    const posById = new Map<string, { x: number; y: number }>();
-    sorted.forEach((rack, i) => {
-      posById.set(rack.id, { x: startX + i * H_SPACING, y: startY });
-    });
+    const maxHeightU = page.racks.reduce((m, r) => Math.max(m, r.heightU), 0);
+    const posById = layoutRackPositions(page.racks, { maxHeightU, ...options });
     set({
       pages: mapElevationPage(state.pages, pageId, (p) => ({
         ...p,
@@ -5537,6 +5567,12 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     });
     get().saveToLocalStorage();
   },
+
+  requestRackFocus: (pageId, rackId) => {
+    set({ rackFocusRequest: { pageId, rackId }, selectedRackId: rackId });
+  },
+
+  setSelectedRackId: (rackId) => set({ selectedRackId: rackId }),
 
   setSelectedRackPort: (sel) => set({ selectedRackPort: sel }),
 
@@ -5580,8 +5616,134 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...p,
         crossLinks: (p.crossLinks ?? []).filter((l) => l.id !== linkId),
       })),
+      selectedCrossLinkId: state.selectedCrossLinkId === linkId ? null : state.selectedCrossLinkId,
       undoSize: undoStack.length,
       redoSize: 0,
+    });
+    get().saveToLocalStorage();
+  },
+
+  updateRackCrossLink: (pageId, linkId, patch) => {
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    set({
+      pages: mapElevationPage(state.pages, pageId, (p) => ({
+        ...p,
+        crossLinks: (p.crossLinks ?? []).map((l) => (l.id === linkId ? { ...l, ...patch } : l)),
+      })),
+      undoSize: undoStack.length,
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+  },
+
+  setSelectedCrossLinkId: (linkId) => set({ selectedCrossLinkId: linkId }),
+
+  applyRackDistributionPreset: (pageId, presetId, options) => {
+    const state = get();
+    const page = state.pages.find((p) => p.id === pageId && p.type === "rack-elevation") as RackElevationPage | undefined;
+    if (!page) return;
+
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+
+    let updatedPage = page;
+    let summary = "Preset applied";
+
+    if (presetId === TOWER_DATACOM_HUB_PRESET_ID) {
+      const hub = applyTowerDatacomHubPreset(
+        page,
+        options as TowerDatacomHubApplyOptions,
+        {
+          accessory: nextAccessoryId,
+          crossLink: () => crypto.randomUUID(),
+          deviceNode: () => crypto.randomUUID(),
+          placement: () => nextPlacementId(),
+        },
+      );
+      updatedPage = hub.page;
+
+      const removeIds = new Set(hub.removedJackDeviceNodeIds);
+      const keptNodes = state.nodes.filter((n) => !removeIds.has(n.id));
+      const jackNodes: DeviceNode[] = hub.jackFields.map((jf, i) => {
+        const rack = hub.page.racks.find((r) => r.id === jf.placement.rackId);
+        const linkedRoomId = rack?.linkedRoomId;
+        if (linkedRoomId) {
+          const roomDevices = getDevicesInRoom(linkedRoomId, keptNodes);
+          const stackIndex = roomDevices.length + i;
+          return {
+            id: jf.deviceNodeId,
+            type: "device",
+            parentId: linkedRoomId,
+            position: { x: 48, y: 48 + stackIndex * 72 },
+            data: jf.deviceData,
+          };
+        }
+        return {
+          id: jf.deviceNodeId,
+          type: "device",
+          position: { x: -4000 - i * 24, y: -4000 },
+          data: jf.deviceData,
+        };
+      });
+
+      set({
+        nodes: [...keptNodes, ...jackNodes],
+        pages: mapElevationPage(state.pages, pageId, () => hub.page),
+        undoSize: undoStack.length,
+        redoSize: 0,
+      });
+      get().saveToLocalStorage();
+      summary = formatApplyPresetSummary(hub.result);
+
+      const link = state.trackItLink;
+      if (link && typeof window !== "undefined") {
+        const opts = options as TowerDatacomHubApplyOptions;
+        const schematicJson = get().exportToJSON();
+        window.opener?.postMessage(
+          {
+            type: "KGO_ES_DISTRIBUTION_PRESET_APPLIED",
+            drawingId: link.drawingId,
+            pageId,
+            presetId,
+            masterRackId: opts.masterRackId,
+            ethTrunkRackIds: opts.ethTrunkRackIds,
+            jackFieldPorts: opts.jackFieldPorts ?? 24,
+            designationPrefix: opts.designationPrefix ?? "RACK",
+            schematicJson,
+          },
+          window.location.origin,
+        );
+      }
+      get().addToast(summary, "success");
+      return;
+    }
+
+    if (presetId === RACK_FILL_ORDER_PRESET_ID) {
+      const { page: next, result } = applyRackFillOrderPreset(
+        page,
+        options as RackFillOrderApplyOptions,
+        {
+          accessory: nextAccessoryId,
+          crossLink: () => crypto.randomUUID(),
+        },
+      );
+      updatedPage = next;
+      summary = formatApplyPresetSummary(result);
+    }
+
+    set({
+      pages: mapElevationPage(state.pages, pageId, () => updatedPage),
+      undoSize: undoStack.length,
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+    get().addToast(summary, "success");
+  },
+
+  updateRackElevationPage: (pageId, patch) => {
+    const state = get();
+    set({
+      pages: mapElevationPage(state.pages, pageId, (p) => ({ ...p, ...patch })),
     });
     get().saveToLocalStorage();
   },
