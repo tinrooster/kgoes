@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSchematicStore } from "../store";
-import { confirmDialog } from "../appDialogStore";
-import type { DeviceData, RackElevationPage, RackType, RackData, RoomData } from "../types";
+import { confirmDialog, promptDialog } from "../appDialogStore";
+import type { DeviceData, RackElevationPage, RackType, RackData, RoomData, RackCrossLink } from "../types";
 import { RACK_TYPE_LABELS } from "../types";
 import { getRackMountSummary, shelfThrowdownDimensionsMissing } from "../rackMount";
 import { aggregateRackStats, computeRackStats, formatStatsLine } from "../rackStats";
 import { getDevicesInRoom } from "../rackLink";
 import { resolveDeviceLabel } from "../displayName";
+import { nextRackPosition, sortRacksByLabel } from "../rackLayout";
 import { TiIcon } from "./ti/TiBase";
+import RackDistributionPresetDialog from "./RackDistributionPresetDialog";
+import { formatFillOrderPlainText, normalizeFillOrderSummary } from "../rackFillCatalog";
+import { RACK_DISTRIBUTION_PRESETS } from "../rackDistributionPresets";
 
 /** Shared drag state — set by sidebar, read by RackRenderer during dragOver.
  *  (dataTransfer.getData is blocked during dragover for security; this fallback
@@ -25,6 +29,15 @@ export default function RackSidebar({ page }: RackSidebarProps) {
   const updateRack = useSchematicStore((s) => s.updateRack);
   const moveRackToPage = useSchematicStore((s) => s.moveRackToPage);
   const layoutRacksOnPage = useSchematicStore((s) => s.layoutRacksOnPage);
+  const requestRackFocus = useSchematicStore((s) => s.requestRackFocus);
+  const selectedRackId = useSchematicStore((s) => s.selectedRackId);
+  const setSelectedRackId = useSchematicStore((s) => s.setSelectedRackId);
+  const selectedCrossLinkId = useSchematicStore((s) => s.selectedCrossLinkId);
+  const setSelectedCrossLinkId = useSchematicStore((s) => s.setSelectedCrossLinkId);
+  const removeRackCrossLink = useSchematicStore((s) => s.removeRackCrossLink);
+  const updateRackCrossLink = useSchematicStore((s) => s.updateRackCrossLink);
+  const addToast = useSchematicStore((s) => s.addToast);
+  const updateRackElevationPage = useSchematicStore((s) => s.updateRackElevationPage);
   const allPagesForMove = useSchematicStore((s) => s.pages);
   const useShortNames = useSchematicStore((s) => s.useShortNames);
   const otherElevationPages = useMemo(() =>
@@ -32,6 +45,7 @@ export default function RackSidebar({ page }: RackSidebarProps) {
     [allPagesForMove, page.id],
   );
   const [showAddRack, setShowAddRack] = useState(false);
+  const [showDistributionPreset, setShowDistributionPreset] = useState(false);
   const [editRack, setEditRack] = useState<RackData | null>(null);
   const [search, setSearch] = useState("");
   const [editingRackId, setEditingRackId] = useState<string | null>(null);
@@ -43,6 +57,13 @@ export default function RackSidebar({ page }: RackSidebarProps) {
     nodeId: string;
     deviceData: DeviceData;
   } | null>(null);
+
+  const fillBom = useMemo(
+    () => normalizeFillOrderSummary(page.fillOrderSummary),
+    [page.fillOrderSummary],
+  );
+
+  const racksByLabel = useMemo(() => sortRacksByLabel(page.racks), [page.racks]);
 
   const setEditingNodeId = useSchematicStore((s) => s.setEditingNodeId);
   const setFacePlateEditNodeId = useSchematicStore((s) => s.setFacePlateEditNodeId);
@@ -234,17 +255,170 @@ export default function RackSidebar({ page }: RackSidebarProps) {
         </div>
       )}
 
-      {/* Racks on this page */}
-      {page.racks.length > 1 && (
+      {/* Distribution presets */}
+      {page.racks.length >= RACK_DISTRIBUTION_PRESETS[0]!.minRacks && (
         <div className="px-2 pt-2 pb-0">
           <button
             type="button"
-            className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300"
-            onClick={() => layoutRacksOnPage(page.id)}
-            title="Arrange racks in a horizontal row with aligned U tops"
+            className="w-full px-2 py-1.5 text-[11px] rounded border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100 hover:border-blue-300 font-medium"
+            onClick={() => setShowDistributionPreset(true)}
+            title="Apply MDF/datacom hub jack fields and trunk callouts"
           >
-            Align racks in row
+            Apply distribution preset…
           </button>
+        </div>
+      )}
+
+      {fillBom ? (
+        <div className="mx-2 mt-2 p-2 rounded border border-neutral-200 bg-neutral-50 text-[11px]">
+          <div className="font-semibold text-neutral-600 mb-1">Procurement BOM</div>
+          <table className="w-full text-[10px] mb-1.5">
+            <thead>
+              <tr className="text-neutral-500 text-left">
+                <th className="pr-1">Qty</th>
+                <th className="pr-1">RU</th>
+                <th className="pr-1">P/N</th>
+                <th className="text-right">$</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fillBom.lines.map((line) => (
+                <tr key={`${line.kind}-${line.heightU}-${line.partNumber}`}>
+                  <td className="tabular-nums pr-1">{line.qty}</td>
+                  <td className="pr-1">{line.heightU}</td>
+                  <td className="pr-1 font-mono truncate max-w-[88px]" title={line.description}>
+                    {line.partNumber}
+                  </td>
+                  <td className="text-right tabular-nums">{line.lineCostUsd.toFixed(0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="text-neutral-600 tabular-nums leading-snug">
+            {fillBom.totalPanels} panels · {fillBom.totalU}U · {fillBom.totalScrews} screws ·{" "}
+            {fillBom.totalCageNuts} cage nuts ·{" "}
+            <span className="font-medium">~${fillBom.estimatedCostUsd.toFixed(2)}</span>
+          </p>
+          <button
+            type="button"
+            className="mt-1.5 text-[10px] text-blue-700 hover:underline"
+            onClick={() => {
+              const text = formatFillOrderPlainText(fillBom);
+              void navigator.clipboard.writeText(text).then(
+                () => addToast("BOM copied (TSV)", "success"),
+                () => addToast("Could not copy to clipboard", "error"),
+              );
+            }}
+          >
+            Copy BOM for ordering
+          </button>
+        </div>
+      ) : null}
+
+      {/* Rack layout */}
+      {page.racks.length > 1 && (
+        <div className="px-2 pt-2 pb-0 flex flex-col gap-1">
+          <div
+            className="font-semibold text-neutral-500 uppercase tracking-wider px-0.5"
+            style={{ fontSize: 9 }}
+          >
+            Layout
+          </div>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              className="flex-1 px-2 py-1 text-[11px] rounded border border-neutral-200 text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300"
+              onClick={() => layoutRacksOnPage(page.id, { mode: "row" })}
+              title="Single horizontal row, aligned U tops"
+            >
+              1 row
+            </button>
+            <button
+              type="button"
+              className="flex-1 px-2 py-1 text-[11px] rounded border border-neutral-200 text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300"
+              onClick={() => layoutRacksOnPage(page.id, { mode: "grid", columns: 6 })}
+              title="Two or more rows, 6 racks per row (e.g. Sutro 12-rack site)"
+            >
+              2×6 grid
+            </button>
+          </div>
+          {page.racks.length > 6 && page.racks.length % 6 !== 0 && (
+            <button
+              type="button"
+              className="w-full px-2 py-1 text-[10px] rounded border border-dashed border-neutral-200 text-neutral-500 hover:bg-neutral-50"
+              onClick={() =>
+                layoutRacksOnPage(page.id, {
+                  mode: "grid",
+                  columns: Math.min(6, Math.ceil(page.racks.length / 2)),
+                })
+              }
+              title="Wrap racks into rows with up to 6 columns"
+            >
+              Grid ({Math.ceil(page.racks.length / Math.min(6, Math.ceil(page.racks.length / 2)))} rows)
+            </button>
+          )}
+        </div>
+      )}
+
+      {(page.crossLinks?.length ?? 0) > 0 && (
+        <div className="p-2 border-b border-neutral-200">
+          <div className="flex items-center justify-between mb-1">
+            <div className="font-semibold text-neutral-500 uppercase tracking-wider" style={{ fontSize: 9 }}>
+              Cross-links ({page.crossLinks!.length})
+            </div>
+            <label className="flex items-center gap-1 text-[10px] text-neutral-500 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={page.showTrunkCallouts !== false}
+                onChange={(e) =>
+                  updateRackElevationPage(page.id, { showTrunkCallouts: e.target.checked })
+                }
+              />
+              Show trunks
+            </label>
+          </div>
+          {page.crossLinks!.map((link) => {
+            const from = page.racks.find((r) => r.id === link.fromRackId);
+            const to = page.racks.find((r) => r.id === link.toRackId);
+            const isSelected = selectedCrossLinkId === link.id;
+            return (
+              <CrossLinkSidebarRow
+                key={link.id}
+                link={link}
+                fromLabel={from?.label ?? "?"}
+                toLabel={to?.label ?? "?"}
+                isSelected={isSelected}
+                onSelect={() => setSelectedCrossLinkId(link.id)}
+                onEdit={async () => {
+                  const next = await promptDialog({
+                    title: "Edit cross-link label",
+                    label: "Callout label",
+                    defaultValue: link.label,
+                    confirmLabel: "Save",
+                  });
+                  if (next == null) return;
+                  const trimmed = next.trim();
+                  if (!trimmed) {
+                    addToast("Label cannot be empty", "error");
+                    return;
+                  }
+                  updateRackCrossLink(page.id, link.id, { label: trimmed });
+                }}
+                onDelete={async () => {
+                  const ok = await confirmDialog({
+                    title: "Delete cross-link",
+                    message: `Remove “${link.label}”?`,
+                    tone: "danger",
+                    confirmLabel: "Delete",
+                  });
+                  if (ok) {
+                    removeRackCrossLink(page.id, link.id);
+                    if (selectedCrossLinkId === link.id) setSelectedCrossLinkId(null);
+                  }
+                }}
+              />
+            );
+          })}
         </div>
       )}
 
@@ -253,11 +427,22 @@ export default function RackSidebar({ page }: RackSidebarProps) {
           <div className="font-semibold text-neutral-500 mb-1 uppercase tracking-wider" style={{ fontSize: 9 }}>
             Racks ({page.racks.length})
           </div>
-          {page.racks.map((rack) => {
+          {racksByLabel.map((rack) => {
             const placementCount = page.placements.filter((p) => p.rackId === rack.id).length;
             const isEditing = editingRackId === rack.id;
+            const isSelected = selectedRackId === rack.id;
             return (
-              <div key={rack.id} className="flex items-center justify-between py-0.5 text-neutral-700 group">
+              <div
+                key={rack.id}
+                className={`flex items-center justify-between py-0.5 px-1 -mx-1 rounded cursor-pointer group ${
+                  isSelected ? "bg-blue-50 text-blue-900 ring-1 ring-blue-200" : "text-neutral-700 hover:bg-neutral-50"
+                }`}
+                onClick={() => {
+                  setSelectedRackId(rack.id);
+                  requestRackFocus(page.id, rack.id);
+                }}
+                title="Click to focus this rack on the canvas"
+              >
                 {isEditing ? (
                   <input
                     className="flex-1 min-w-0 bg-white border border-blue-400 rounded px-1 py-0 text-xs outline-none"
@@ -276,8 +461,12 @@ export default function RackSidebar({ page }: RackSidebarProps) {
                   />
                 ) : (
                   <span
-                    className="truncate cursor-pointer"
-                    onDoubleClick={() => { setEditingRackId(rack.id); setEditingRackLabel(rack.label); }}
+                    className="truncate"
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      setEditingRackId(rack.id);
+                      setEditingRackLabel(rack.label);
+                    }}
                     title="Double-click to rename"
                   >
                     {rack.label} ({rack.heightU}U)
@@ -288,6 +477,7 @@ export default function RackSidebar({ page }: RackSidebarProps) {
                   {otherElevationPages.length > 0 && (
                     <div className="relative">
                       <button
+                        type="button"
                         className="text-neutral-300 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity"
                         title="Move to page"
                         onClick={(e) => { e.stopPropagation(); setMoveMenuRackId(moveMenuRackId === rack.id ? null : rack.id); }}
@@ -310,16 +500,19 @@ export default function RackSidebar({ page }: RackSidebarProps) {
                     </div>
                   )}
                   <button
+                    type="button"
                     className="text-neutral-300 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity"
                     title={`Edit ${rack.label}`}
-                    onClick={() => setEditRack(rack)}
+                    onClick={(e) => { e.stopPropagation(); setEditRack(rack); }}
                   >
                     ✎
                   </button>
                   <button
+                    type="button"
                     className="text-neutral-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                     title={`Delete ${rack.label}`}
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       void (async () => {
                         const ok = await confirmDialog({
                           title: "Delete rack",
@@ -456,6 +649,13 @@ export default function RackSidebar({ page }: RackSidebarProps) {
         />
       )}
 
+      {showDistributionPreset && (
+        <RackDistributionPresetDialog
+          page={page}
+          onClose={() => setShowDistributionPreset(false)}
+        />
+      )}
+
       {/* Edit Rack Dialog */}
       {editRack && (
         <EditRackDialog
@@ -506,6 +706,59 @@ export default function RackSidebar({ page }: RackSidebarProps) {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function CrossLinkSidebarRow({
+  link,
+  fromLabel,
+  toLabel,
+  isSelected,
+  onSelect,
+  onEdit,
+  onDelete,
+}: {
+  link: RackCrossLink;
+  fromLabel: string;
+  toLabel: string;
+  isSelected: boolean;
+  onSelect: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div
+      className={`flex items-start justify-between gap-1 py-1 px-1 -mx-1 rounded cursor-pointer group ${
+        isSelected ? "bg-blue-50 ring-1 ring-blue-200" : "hover:bg-neutral-50"
+      }`}
+      onClick={onSelect}
+      title={`${fromLabel} → ${toLabel}`}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium text-neutral-800">{link.label}</div>
+        <div className="truncate text-[10px] text-neutral-400">
+          {fromLabel} → {toLabel}
+        </div>
+      </div>
+      <span className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
+        <button
+          type="button"
+          className="text-neutral-300 hover:text-blue-600 px-0.5"
+          title="Edit label"
+          onClick={(e) => { e.stopPropagation(); onEdit(); }}
+        >
+          ✎
+        </button>
+        <button
+          type="button"
+          className="text-neutral-300 hover:text-red-500 px-0.5"
+          title="Delete cross-link"
+          onClick={(e) => { e.stopPropagation(); void onDelete(); }}
+        >
+          ×
+        </button>
+      </span>
     </div>
   );
 }
@@ -624,11 +877,21 @@ const RACK_PRESETS: RackPreset[] = [
 
 function AddRackDialog({ pageId, rackCount, onClose }: { pageId: string; rackCount: number; onClose: () => void }) {
   const addRack = useSchematicStore((s) => s.addRack);
+  const existingRacks = useSchematicStore((s) => {
+    const page = s.pages.find((p) => p.id === pageId && p.type === "rack-elevation");
+    return page?.type === "rack-elevation" ? page.racks : [];
+  });
   const [mode, setMode] = useState<"presets" | "custom">("presets");
   const [label, setLabel] = useState(`Rack ${rackCount + 1}`);
   const [rackType, setRackType] = useState<RackType>("floor-19");
   const [heightU, setHeightU] = useState(42);
   const [depthMm, setDepthMm] = useState(600);
+
+  const defaultPosition = useMemo(() => {
+    const maxHeightU = existingRacks.reduce((m, r) => Math.max(m, r.heightU), 42);
+    const columns = existingRacks.length >= 6 ? 6 : Math.max(1, existingRacks.length);
+    return nextRackPosition(existingRacks, { columns, maxHeightU });
+  }, [existingRacks]);
 
   const applyPreset = useCallback((preset: RackPreset) => {
     addRack(pageId, {
@@ -637,10 +900,10 @@ function AddRackDialog({ pageId, rackCount, onClose }: { pageId: string; rackCou
       heightU: preset.heightU,
       depthMm: preset.depthMm,
       widthClass: "19in",
-      position: { x: rackCount * 400, y: 0 },
+      position: defaultPosition,
     });
     onClose();
-  }, [pageId, rackCount, addRack, onClose]);
+  }, [pageId, rackCount, addRack, onClose, defaultPosition]);
 
   const handleCustomSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
@@ -650,10 +913,10 @@ function AddRackDialog({ pageId, rackCount, onClose }: { pageId: string; rackCou
       heightU: Math.max(2, Math.min(60, Math.round(heightU))),
       depthMm: Math.max(100, Math.min(2000, Math.round(depthMm))),
       widthClass: "19in",
-      position: { x: rackCount * 400, y: 0 },
+      position: defaultPosition,
     });
     onClose();
-  }, [pageId, label, rackType, heightU, depthMm, rackCount, addRack, onClose]);
+  }, [pageId, label, rackType, heightU, depthMm, rackCount, addRack, onClose, defaultPosition]);
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>

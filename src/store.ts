@@ -5725,6 +5725,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         {
           accessory: nextAccessoryId,
           crossLink: () => crypto.randomUUID(),
+          deviceNode: () => crypto.randomUUID(),
+          placement: () => nextPlacementId(),
         },
       );
       updatedPage = next;

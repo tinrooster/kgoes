@@ -1,4 +1,5 @@
 import type { Node, Edge } from "@xyflow/react";
+import type { FillOrderSummary } from "./rackFillCatalog";
 
 export type ConnectorType =
   | "bnc" | "hdmi" | "displayport" | "vga"
@@ -761,6 +762,8 @@ export interface RackData {
   /** Position on the rack page canvas */
   position: { x: number; y: number };
   linkedRoomId?: string;
+  /** Short plant/cable code (e.g. RACK07, STR01); auto-filled from label when preset applies. */
+  designation?: string;
 }
 
 export interface RackDevicePlacement {
@@ -784,6 +787,9 @@ export interface RackDevicePlacement {
    *  in mm. `x` is offset from the shelf's left inner-rail; `y` is height above the
    *  shelf surface (for stacking). Default {x:0, y:0} when undefined. */
   shelfOffsetMm?: { x: number; y: number };
+  /** When set, placement was created by a distribution preset (supports replace-on-reapply). */
+  distributionPresetId?: string;
+  distributionPresetRole?: "jack-field";
 }
 
 /** A front + rear pair whose summed depth exceeds the rack's internal depth at overlapping U positions. */
@@ -817,6 +823,9 @@ export interface RackAccessory {
   /** Usable depth for shelf-mounted gear in mm (only meaningful when type === "shelf").
    *  Defaults to ~60% of rack.depthMm when unset. */
   shelfDepthMm?: number;
+  /** When set, item was created by a distribution preset (supports replace-on-reapply). */
+  distributionPresetId?: string;
+  distributionPresetRole?: "jack-field" | "blank-fill" | "vent-fill";
 }
 
 /** Documentation arrow between racks on a facility elevation sheet (not a cable edge). */
@@ -827,6 +836,9 @@ export interface RackCrossLink {
   label: string;
   fromDeviceNodeId?: string;
   toDeviceNodeId?: string;
+  /** When set, item was created by a distribution preset (supports replace-on-reapply). */
+  distributionPresetId?: string;
+  distributionPresetRole?: "eth-trunk" | "fiber-trunk";
 }
 
 export interface RackElevationPage {
@@ -838,6 +850,10 @@ export interface RackElevationPage {
   accessories: RackAccessory[];
   /** Cross-rack callouts (e.g. FIREWALL → ETHERNET PATCH). */
   crossLinks?: RackCrossLink[];
+  /** When false, preset-tagged trunk callouts are hidden (manual cross-links still show). */
+  showTrunkCallouts?: boolean;
+  /** Last rack-fill-order preset summary (procurement BOM). */
+  fillOrderSummary?: FillOrderSummary;
 }
 
 export type TowerDraftTowerType = "self_support" | "guyed" | "monopole";

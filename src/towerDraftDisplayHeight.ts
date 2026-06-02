@@ -1,7 +1,5 @@
 import type { TowerDraftPage, TrackItTowerSiteContext } from "./types";
 import type { TowerElevationView } from "./towerDraftFaces";
-import { isTowerSectionElevationView } from "./towerDraftFaces";
-
 /** Face-column / box views: operational top AGL (L6 + headroom; no spire). */
 export const SUTRO_FACE_LAYOUT_HEIGHT_FT_AGL = 800;
 

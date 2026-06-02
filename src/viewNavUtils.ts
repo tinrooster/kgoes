@@ -82,13 +82,22 @@ export function contentBoundsAspect(bounds: ContentBounds): number {
 
 /** Compute pan (top-left offset) and zoom to fit content in a viewport element. */
 /** Rack elevation canvas bounds (matches RackRenderer layout constants). */
+const RACK_PAGE_RACK_W = 260 + 40 + 28;
+const RACK_PAGE_RACK_H_PAD = 40 + 24 + 40;
+
+export function rackFootprintSize(maxHeightU: number): { width: number; height: number } {
+  return {
+    width: RACK_PAGE_RACK_W,
+    height: RACK_PAGE_RACK_H_PAD + maxHeightU * 24,
+  };
+}
+
 export function rackPageContentBounds(
   racks: { position: { x: number; y: number }; heightU: number }[],
   maxHeightU: number,
 ): ContentBounds | null {
   if (racks.length === 0) return null;
-  const rackW = 260 + 40 + 28;
-  const rackH = 40 + 24 + maxHeightU * 24 + 40;
+  const { width: rackW, height: rackH } = rackFootprintSize(maxHeightU);
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -100,6 +109,21 @@ export function rackPageContentBounds(
     maxY = Math.max(maxY, rack.position.y + rackH);
   }
   return { minX, minY, maxX, maxY };
+}
+
+/** Bounds for a single rack column (focus / zoom one rack). */
+export function rackContentBoundsForRack(
+  rack: { position: { x: number; y: number }; heightU: number },
+  maxHeightU: number,
+  padding = 32,
+): ContentBounds {
+  const { width: rackW, height: rackH } = rackFootprintSize(maxHeightU);
+  return {
+    minX: rack.position.x - padding,
+    minY: rack.position.y - padding,
+    maxX: rack.position.x + rackW + padding,
+    maxY: rack.position.y + rackH + padding,
+  };
 }
 
 export function computeFitViewport(

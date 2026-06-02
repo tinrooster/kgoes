@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type WheelEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type WheelEvent as ReactWheelEvent } from "react";
 import { computeFitViewport, type ContentBounds } from "./viewNavUtils";
 import { clampViewZoom, clampViewZoomContinuous, stepViewZoom } from "./viewZoomUtils";
 
@@ -24,10 +24,10 @@ export interface CanvasPanZoomState {
   onMouseDown: (e: React.MouseEvent) => void;
   onMouseMove: (e: React.MouseEvent) => void;
   onMouseUp: (e: React.MouseEvent) => void;
-  onWheel?: (e: WheelEvent<HTMLDivElement>) => void;
+  onWheel?: (e: ReactWheelEvent<HTMLDivElement>) => void;
   onDoubleClick?: (e: React.MouseEvent) => void;
   /** Attach to canvas root + SVG (passive: false). Call from parent useEffect. */
-  onWheelNative: (e: WheelEvent) => void;
+  onWheelNative: (e: globalThis.WheelEvent) => void;
   onPointerInside: () => void;
   onPointerOutside: () => void;
   transform: string;
@@ -208,14 +208,14 @@ export function useCanvasPanZoom(options?: {
     setIsPanning(false);
   }, [isPanning, viewOffset]);
 
-  const wheelDeltaY = useCallback((e: WheelEvent): number => {
-    if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) return e.deltaY * 16;
-    if (e.deltaMode === WheelEvent.DOM_DELTA_PAGE) return e.deltaY * 120;
+  const wheelDeltaY = useCallback((e: globalThis.WheelEvent): number => {
+    if (e.deltaMode === globalThis.WheelEvent.DOM_DELTA_LINE) return e.deltaY * 16;
+    if (e.deltaMode === globalThis.WheelEvent.DOM_DELTA_PAGE) return e.deltaY * 120;
     return e.deltaY;
   }, []);
 
   const onWheelNative = useCallback(
-    (e: WheelEvent) => {
+    (e: globalThis.WheelEvent) => {
       if (!profileMapNavRef.current || mapNavDisabledRef.current) return;
       const el = containerRef.current;
       if (!el) return;
@@ -279,7 +279,7 @@ export function useCanvasPanZoom(options?: {
   }, []);
 
   const onWheel = useCallback(
-    (e: WheelEvent<HTMLDivElement>) => {
+    (e: ReactWheelEvent<HTMLDivElement>) => {
       onWheelNative(e.nativeEvent);
     },
     [onWheelNative],

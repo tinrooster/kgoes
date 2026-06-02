@@ -237,7 +237,7 @@ export default function TowerDraftRenderer({
     () => loadTowerDraftViewportForView(page.id, elevationView),
     [page.id, elevationView],
   );
-  const persistViewportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistViewportTimerRef = useRef<number | null>(null);
   const onViewportPersist = useCallback(
     (zoom: number, pan: { x: number; y: number }) => {
       if (persistViewportTimerRef.current) clearTimeout(persistViewportTimerRef.current);

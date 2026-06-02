@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  isSutroTowerDraftContext,
   resolveCatalogTowerHeightFtAgl,
   resolveTowerDraftLayoutHeightFt,
   SUTRO_CATALOG_TOP_FT_AGL,

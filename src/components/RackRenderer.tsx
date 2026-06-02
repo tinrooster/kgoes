@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useSchematicStore } from "../store";
-import { computeFitViewport, rackPageContentBounds } from "../viewNavUtils";
+import { computeFitViewport, rackContentBoundsForRack, rackPageContentBounds } from "../viewNavUtils";
 import { stepViewZoom } from "../viewZoomUtils";
 import ViewNavBar from "./ViewNavBar";
 import type { RackData, RackDevicePlacement, RackAccessory, RackDepthConflict, DeviceData, RackElevationPage, RackCrossLink } from "../types";
@@ -30,6 +30,8 @@ import { SIGNAL_COLORS } from "../types";
 import { ConnectorIcon, getConnectorSpec } from "./connectorIcons";
 import { draggedDeviceHeightU, draggedDeviceNodeId } from "./RackSidebar";
 import { getDevicesInRoom, proposeRackPlacements } from "../rackLink";
+import { routeRackCrossLink } from "../rackCrossLinkRoute";
+import { filterVisibleCrossLinks } from "../rackDistributionPresets";
 import { confirmDialog, promptDialog } from "../appDialogStore";
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -986,31 +988,80 @@ function SideViewRack({
 function CrossLinkLayer({
   links,
   racks,
+  selectedLinkId,
+  onSelect,
+  onContextMenu,
 }: {
   links: RackCrossLink[];
   racks: RackData[];
+  selectedLinkId: string | null;
+  onSelect: (linkId: string) => void;
+  onContextMenu: (e: React.MouseEvent, link: RackCrossLink) => void;
 }) {
   if (links.length === 0 || racks.length < 2) return null;
   const byId = new Map(racks.map((r) => [r.id, r]));
   return (
-    <g style={{ pointerEvents: "none" }}>
-      {links.map((link) => {
+    <g>
+      {links.map((link, linkIndex) => {
         const from = byId.get(link.fromRackId);
         const to = byId.get(link.toRackId);
         if (!from || !to) return null;
-        const fromX = from.position.x + RACK_PAD_X + RULER_WIDTH + RACK_WIDTH / 2;
-        const fromY = from.position.y + RACK_PAD_Y - 6;
-        const toX = to.position.x + RACK_PAD_X + RULER_WIDTH + RACK_WIDTH / 2;
-        const toY = to.position.y + RACK_PAD_Y - 6;
-        const midX = (fromX + toX) / 2;
-        const arcY = Math.min(fromY, toY) - 28;
-        const path = `M ${fromX} ${fromY} Q ${midX} ${arcY} ${toX} ${toY}`;
+        const route = routeRackCrossLink(from, to, racks, linkIndex, link.label);
+        const label = link.label.trim() || `${from.label} → ${to.label}`;
+        const textW = route.labelWidth;
+        const textH = 14;
+        const selected = selectedLinkId === link.id;
+        const stroke = selected ? "#2563eb" : "#475569";
+        const strokeW = selected ? 2.5 : 1.5;
         return (
           <g key={link.id}>
-            <path d={path} fill="none" stroke="#64748b" strokeWidth={1.25} markerEnd="url(#rack-crosslink-arrow)" />
-            <text x={midX} y={arcY - 4} textAnchor="middle" fontSize={8} fill="#475569" fontWeight={600}>
-              {link.label}
-            </text>
+            <path
+              d={route.pathD}
+              fill="none"
+              stroke="transparent"
+              strokeWidth={14}
+              style={{ cursor: "pointer", pointerEvents: "stroke" }}
+              onClick={(e) => { e.stopPropagation(); onSelect(link.id); }}
+              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(e, link); }}
+            />
+            <path
+              d={route.pathD}
+              fill="none"
+              stroke={stroke}
+              strokeWidth={strokeW}
+              markerEnd="url(#rack-crosslink-arrow)"
+              style={{ pointerEvents: "none" }}
+            />
+            {label && (
+              <g
+                style={{ cursor: "pointer" }}
+                onClick={(e) => { e.stopPropagation(); onSelect(link.id); }}
+                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(e, link); }}
+              >
+                <rect
+                  x={route.labelX - textW / 2}
+                  y={route.labelY - textH + 2}
+                  width={textW}
+                  height={textH}
+                  rx={3}
+                  fill="#ffffff"
+                  stroke={selected ? "#2563eb" : "#cbd5e1"}
+                  strokeWidth={selected ? 1.25 : 0.75}
+                />
+                <text
+                  x={route.labelX}
+                  y={route.labelY}
+                  textAnchor="middle"
+                  dominantBaseline="auto"
+                  fontSize={10}
+                  fill="#1e293b"
+                  fontWeight={600}
+                  style={{ pointerEvents: "none" }}
+                >
+                  {label}
+                </text>
+              </g>
+            )}
           </g>
         );
       })}
@@ -1456,6 +1507,13 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
   const removeRackAccessory = useSchematicStore((s) => s.removeRackAccessory);
   const updateRackAccessory = useSchematicStore((s) => s.updateRackAccessory);
   const removeRack = useSchematicStore((s) => s.removeRack);
+  const rackFocusRequest = useSchematicStore((s) => s.rackFocusRequest);
+  const selectedRackId = useSchematicStore((s) => s.selectedRackId);
+  const setSelectedRackId = useSchematicStore((s) => s.setSelectedRackId);
+  const selectedCrossLinkId = useSchematicStore((s) => s.selectedCrossLinkId);
+  const setSelectedCrossLinkId = useSchematicStore((s) => s.setSelectedCrossLinkId);
+  const removeRackCrossLink = useSchematicStore((s) => s.removeRackCrossLink);
+  const updateRackCrossLink = useSchematicStore((s) => s.updateRackCrossLink);
   const useShortNames = useSchematicStore((s) => s.useShortNames);
   const wrapDeviceLabels = useSchematicStore((s) => s.wrapDeviceLabels);
   const schematicDefaults = useMemo<SchematicDisplayDefaults>(
@@ -1464,6 +1522,11 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
   );
   // Edit Rack dialog (opened from rack-context menu)
   const [editRackTarget, setEditRackTarget] = useState<RackData | null>(null);
+  const [crossLinkContextMenu, setCrossLinkContextMenu] = useState<{
+    screenX: number;
+    screenY: number;
+    link: RackCrossLink;
+  } | null>(null);
 
   // Device context menu in rack view
   const [rackContextMenu, setRackContextMenu] = useState<{
@@ -1665,6 +1728,25 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
   }, [page.id, fitAllView, page.racks.length]);
 
   useEffect(() => {
+    if (!rackFocusRequest || rackFocusRequest.pageId !== page.id) return;
+    const rack = page.racks.find((r) => r.id === rackFocusRequest.rackId);
+    if (!rack) {
+      useSchematicStore.setState({ rackFocusRequest: null });
+      return;
+    }
+    const el = containerRef.current;
+    if (!el) return;
+    const bounds = rackContentBoundsForRack(rack, maxRackHeightU, 48);
+    const { zoom: z, pan } = computeFitViewport(el.clientWidth, el.clientHeight, bounds, {
+      maxZoom: 1.5,
+      minZoom: 0.25,
+      padding: 56,
+    });
+    setViewport(z, pan);
+    useSchematicStore.setState({ rackFocusRequest: null });
+  }, [rackFocusRequest, page.id, page.racks, maxRackHeightU, setViewport]);
+
+  useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const handler = (e: WheelEvent) => {
@@ -1732,8 +1814,11 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
       panStart.current = { x: e.clientX, y: e.clientY, ox: viewOffset.x, oy: viewOffset.y };
     } else if (e.button === 0) {
       setSelectedPlacementId(null);
+      setSelectedRackId(null);
+      setSelectedCrossLinkId(null);
+      setCrossLinkContextMenu(null);
     }
-  }, [viewOffset, inRackDrag]);
+  }, [viewOffset, inRackDrag, setSelectedRackId, setSelectedCrossLinkId]);
 
   const onMouseMove = useCallback((e: MouseEvent) => {
     if (isPanning) {
@@ -2089,12 +2174,52 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
 
   const onDragLeave = useCallback(() => { setDropTarget(null); }, []);
 
-  const onKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if ((e.key === "Delete" || e.key === "Backspace") && selectedPlacementId) {
-      removeRackPlacement(page.id, selectedPlacementId);
-      setSelectedPlacementId(null);
+  const editCrossLinkLabel = useCallback(async (link: RackCrossLink) => {
+    const next = await promptDialog({
+      title: "Edit cross-link label",
+      label: "Callout label",
+      defaultValue: link.label,
+      confirmLabel: "Save",
+    });
+    if (next == null) return;
+    const trimmed = next.trim();
+    if (!trimmed) {
+      addToast("Label cannot be empty", "error");
+      return;
     }
-  }, [selectedPlacementId, page.id, removeRackPlacement]);
+    updateRackCrossLink(page.id, link.id, { label: trimmed });
+    addToast("Cross-link updated", "success");
+  }, [page.id, updateRackCrossLink, addToast]);
+
+  const deleteCrossLink = useCallback(async (link: RackCrossLink) => {
+    const ok = await confirmDialog({
+      title: "Delete cross-link",
+      message: `Remove “${link.label}”?`,
+      tone: "danger",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
+    removeRackCrossLink(page.id, link.id);
+    setSelectedCrossLinkId(null);
+    addToast("Cross-link removed", "info");
+  }, [page.id, removeRackCrossLink, setSelectedCrossLinkId, addToast]);
+
+  const onKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Delete" || e.key === "Backspace") {
+      if (selectedCrossLinkId) {
+        const link = (page.crossLinks ?? []).find((l) => l.id === selectedCrossLinkId);
+        if (link) {
+          e.preventDefault();
+          void deleteCrossLink(link);
+        }
+        return;
+      }
+      if (selectedPlacementId) {
+        removeRackPlacement(page.id, selectedPlacementId);
+        setSelectedPlacementId(null);
+      }
+    }
+  }, [selectedPlacementId, selectedCrossLinkId, page.crossLinks, page.id, removeRackPlacement, deleteCrossLink]);
 
   // Right-click on empty rack space → "Add Accessory" menu
   const onCanvasContextMenu = useCallback((e: React.MouseEvent) => {
@@ -2249,6 +2374,7 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
           setSlotContextMenu(null);
           setAccessoryContextMenu(null);
           setShelfOccupantMenu(null);
+          setCrossLinkContextMenu(null);
           setSelectedRackPort(null);
         }}
         onContextMenu={onCanvasContextMenu}
@@ -2260,8 +2386,11 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
           )}
           {page.racks.map((rack) => {
             const hideRuler = page.racks.length > 1;
+            const isRackSelected = selectedRackId === rack.id;
             const ox = rack.position.x + RACK_PAD_X + RULER_WIDTH;
             const oy = rack.position.y + RACK_PAD_Y + LABEL_HEIGHT + (maxRackHeightU - rack.heightU) * PX_PER_U;
+            const rackCanvasW = viewMode === "side" ? sideViewWidthPx(rack) : RACK_WIDTH;
+            const rackCanvasH = rack.heightU * PX_PER_U;
             // Visible (non-shelf-mounted) placements participate in face-specific layout & occupancy
             const visiblePlacements = page.placements.filter((p) => p.rackId === rack.id && !p.mountedOnShelfId);
             const activePlacements = visiblePlacements.filter((p) => p.face === activeFace);
@@ -2280,7 +2409,27 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
             if (viewMode === "side") {
               const sideW = sideViewWidthPx(rack);
               return (
-                <g key={rack.id} transform={`translate(${ox}, ${oy})`}>
+                <g
+                  key={rack.id}
+                  transform={`translate(${ox}, ${oy})`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedRackId(rack.id);
+                  }}
+                >
+                  {isRackSelected && (
+                    <rect
+                      x={-6}
+                      y={-LABEL_HEIGHT - 8}
+                      width={sideW + 12}
+                      height={rackCanvasH + LABEL_HEIGHT + 36}
+                      fill="none"
+                      stroke="#2563eb"
+                      strokeWidth={2}
+                      rx={4}
+                      style={{ pointerEvents: "none" }}
+                    />
+                  )}
                   <RackLabel rack={rack} width={sideW} onRename={handleRenameRack} />
                   <SideViewRack
                     rack={rack}
@@ -2302,7 +2451,27 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
             }
 
             return (
-              <g key={rack.id} transform={`translate(${ox}, ${oy})`}>
+              <g
+                key={rack.id}
+                transform={`translate(${ox}, ${oy})`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedRackId(rack.id);
+                }}
+              >
+                {isRackSelected && (
+                  <rect
+                    x={-6}
+                    y={-LABEL_HEIGHT - 8}
+                    width={rackCanvasW + 12}
+                    height={rackCanvasH + LABEL_HEIGHT + 36}
+                    fill="none"
+                    stroke="#2563eb"
+                    strokeWidth={2}
+                    rx={4}
+                    style={{ pointerEvents: "none" }}
+                  />
+                )}
                 <RackLabel rack={rack} onRename={handleRenameRack} />
                 {conflicts.length > 0 && (
                   <g
@@ -2459,7 +2628,22 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
             );
           })}
 
-          <CrossLinkLayer links={page.crossLinks ?? []} racks={page.racks} />
+          <CrossLinkLayer
+            links={filterVisibleCrossLinks(page.crossLinks ?? [], page.showTrunkCallouts !== false)}
+            racks={page.racks}
+            selectedLinkId={selectedCrossLinkId}
+            onSelect={(linkId) => {
+              setSelectedCrossLinkId(linkId);
+              setSelectedRackId(null);
+              setSelectedPlacementId(null);
+            }}
+            onContextMenu={(e, link) => {
+              setSelectedCrossLinkId(link.id);
+              setCrossLinkContextMenu({ screenX: e.clientX, screenY: e.clientY, link });
+              setRackContextMenu(null);
+              setSlotContextMenu(null);
+            }}
+          />
 
           {page.racks.length === 0 && (
             <text x={200} y={200} fontSize={14} fill="#999" textAnchor="middle">No racks yet. Use the sidebar to add a rack.</text>
@@ -2488,6 +2672,36 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
       {inRackDrag && dropTarget && !dropTarget.valid && dropTarget.rackId && isRackRearBlocked(dropTarget.rackId) && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-red-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg pointer-events-none">
           2-post racks have no rear mounting
+        </div>
+      )}
+
+      {/* Cross-link context menu */}
+      {crossLinkContextMenu && (
+        <div
+          className="fixed z-50 bg-white rounded-lg shadow-xl border border-neutral-200 py-1 text-xs min-w-[160px]"
+          style={{ left: crossLinkContextMenu.screenX, top: crossLinkContextMenu.screenY }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="w-full text-left px-3 py-1.5 hover:bg-neutral-100"
+            onClick={() => {
+              void editCrossLinkLabel(crossLinkContextMenu.link);
+              setCrossLinkContextMenu(null);
+            }}
+          >
+            Edit label…
+          </button>
+          <button
+            type="button"
+            className="w-full text-left px-3 py-1.5 hover:bg-neutral-100 text-red-600"
+            onClick={() => {
+              void deleteCrossLink(crossLinkContextMenu.link);
+              setCrossLinkContextMenu(null);
+            }}
+          >
+            Delete cross-link
+          </button>
         </div>
       )}
 

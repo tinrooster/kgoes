@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getBundledTemplates, fetchTemplates } from "../templateApi";
 import { useSchematicStore } from "../store";
 import { confirmDialog } from "../appDialogStore";
@@ -25,6 +25,10 @@ import DeviceLibraryAgentTab from "./DeviceLibraryAgentTab";
 
 type SortKey = "label" | "manufacturer" | "deviceType" | "source";
 type SourceFilter = "all" | "bundled" | "custom";
+type ViewMode = "browse" | "queue";
+
+const KGO_DEVICE_ADD_QUEUE_TAG = "kgo-es-deviceadd";
+const WORKFLOW_TAGS = new Set([KGO_DEVICE_ADD_QUEUE_TAG]);
 
 function sourceLabel(template: DeviceTemplate, customIds: Set<string>): string {
   const key = templateKey(template);
@@ -52,7 +56,7 @@ export default function DeviceLibraryAdminPanel() {
 
   const [bundledTemplates, setBundledTemplates] = useState<DeviceTemplate[]>(getBundledTemplates);
   const [search, setSearch] = useState("");
-  const [tagFilter, setTagFilter] = useState("kgo-es-deviceadd");
+  const [viewMode, setViewMode] = useState<ViewMode>("browse");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("label");
   const [sortAsc, setSortAsc] = useState(true);
@@ -61,6 +65,8 @@ export default function DeviceLibraryAdminPanel() {
   const [showLogin, setShowLogin] = useState(false);
   const [editingTagsKey, setEditingTagsKey] = useState<string | null>(null);
   const [editingTagsValue, setEditingTagsValue] = useState("");
+  const [expandedIdKey, setExpandedIdKey] = useState<string | null>(null);
+  const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [backups, setBackups] = useState<LibraryBackupEntry[]>([]);
 
   useEffect(() => {
@@ -90,6 +96,11 @@ export default function DeviceLibraryAdminPanel() {
     return merged;
   }, [bundledTemplates, customTemplates, hiddenIds]);
 
+  const queueCount = useMemo(
+    () => allTemplates.filter((t) => templateHasTag(t, KGO_DEVICE_ADD_QUEUE_TAG)).length,
+    [allTemplates],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = allTemplates.filter((t) => {
@@ -97,7 +108,7 @@ export default function DeviceLibraryAdminPanel() {
       const isCustom = customIds.has(key);
       if (sourceFilter === "bundled" && isCustom && !t.id?.startsWith("kgo-")) return false;
       if (sourceFilter === "custom" && !isCustom) return false;
-      if (tagFilter.trim() && !templateHasTag(t, tagFilter.trim())) return false;
+      if (viewMode === "queue" && !templateHasTag(t, KGO_DEVICE_ADD_QUEUE_TAG)) return false;
       if (!q) return true;
       const hay = [t.label, t.manufacturer, t.modelNumber, t.deviceType, ...(t.searchTerms ?? [])]
         .filter(Boolean)
@@ -131,7 +142,7 @@ export default function DeviceLibraryAdminPanel() {
     });
 
     return list;
-  }, [allTemplates, customIds, search, tagFilter, sourceFilter, sortKey, sortAsc]);
+  }, [allTemplates, customIds, search, viewMode, sourceFilter, sortKey, sortAsc]);
 
   const focusRow = useMemo(() => {
     if (!focusTemplateId) return null;
@@ -222,8 +233,22 @@ export default function DeviceLibraryAdminPanel() {
   const close = () => {
     setSelected(new Set());
     setEditingTagsKey(null);
+    setExpandedIdKey(null);
+    setOpenMenuKey(null);
     closeDeviceAdmin();
   };
+
+  const copyTemplateId = useCallback(
+    async (id: string, label: string) => {
+      try {
+        await navigator.clipboard.writeText(id);
+        addToast(`Copied ID for ${label}`, "success");
+      } catch {
+        addToast("Could not copy ID", "error");
+      }
+    },
+    [addToast],
+  );
 
   if (!open) return null;
 
@@ -270,20 +295,21 @@ export default function DeviceLibraryAdminPanel() {
           ) : (
             <>
               <div className="px-4 py-3 border-b border-[var(--color-border)] space-y-2">
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <ViewModeToggle
+                    mode={viewMode}
+                    queueCount={queueCount}
+                    onChange={(mode) => {
+                      setViewMode(mode);
+                      setSelected(new Set());
+                    }}
+                  />
                   <input
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search label, manufacturer, model..."
                     className="flex-1 min-w-[160px] rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-xs text-[var(--color-text)] outline-none focus:border-blue-500"
-                  />
-                  <input
-                    type="text"
-                    value={tagFilter}
-                    onChange={(e) => setTagFilter(e.target.value)}
-                    placeholder="Tag filter"
-                    className="w-40 rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-xs text-[var(--color-text)] outline-none focus:border-blue-500"
                   />
                   <select
                     value={sourceFilter}
@@ -316,6 +342,7 @@ export default function DeviceLibraryAdminPanel() {
                 <div className="flex flex-wrap items-center gap-2 text-[10px]">
                   <span className="text-[var(--color-text-muted)]">
                     {filtered.length} template{filtered.length === 1 ? "" : "s"}
+                    {viewMode === "queue" ? " in queue" : ""}
                     {selected.size > 0 ? ` · ${selected.size} selected` : ""}
                   </span>
                   {focusRow && (
@@ -335,29 +362,33 @@ export default function DeviceLibraryAdminPanel() {
                     >
                       Backup now
                     </button>
-                    <input
-                      type="text"
-                      value={bulkTag}
-                      onChange={(e) => setBulkTag(e.target.value)}
-                      placeholder="Bulk tag"
-                      className="w-28 rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-1.5 py-1 text-[10px] text-[var(--color-text)]"
-                    />
-                    <button
-                      type="button"
-                      disabled={selected.size === 0}
-                      onClick={bulkAddTag}
-                      className="rounded border border-[var(--color-border)] px-2 py-1 hover:bg-[var(--color-surface-hover)] disabled:opacity-40 cursor-pointer"
-                    >
-                      Add tag
-                    </button>
-                    <button
-                      type="button"
-                      disabled={selected.size === 0}
-                      onClick={() => void bulkSubmit()}
-                      className="rounded border border-blue-500/40 bg-blue-500/15 text-blue-700 dark:text-blue-200 px-2 py-1 hover:bg-blue-500/25 disabled:opacity-40 cursor-pointer"
-                    >
-                      Submit selected
-                    </button>
+                    {(viewMode === "queue" || selected.size > 0) && (
+                      <>
+                        <input
+                          type="text"
+                          value={bulkTag}
+                          onChange={(e) => setBulkTag(e.target.value)}
+                          placeholder="Bulk tag"
+                          className="w-28 rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-1.5 py-1 text-[10px] text-[var(--color-text)]"
+                        />
+                        <button
+                          type="button"
+                          disabled={selected.size === 0}
+                          onClick={bulkAddTag}
+                          className="rounded border border-[var(--color-border)] px-2 py-1 hover:bg-[var(--color-surface-hover)] disabled:opacity-40 cursor-pointer"
+                        >
+                          Add tag
+                        </button>
+                        <button
+                          type="button"
+                          disabled={selected.size === 0}
+                          onClick={() => void bulkSubmit()}
+                          className="rounded border border-blue-500/40 bg-blue-500/15 text-blue-700 dark:text-blue-200 px-2 py-1 hover:bg-blue-500/25 disabled:opacity-40 cursor-pointer"
+                        >
+                          Submit selected
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -378,7 +409,7 @@ export default function DeviceLibraryAdminPanel() {
                       <th className="px-2 py-2">Manufacturer</th>
                       <th className="px-2 py-2">Tags</th>
                       <th className="px-2 py-2">Source</th>
-                      <th className="px-2 py-2 text-right">Actions</th>
+                      <th className="px-2 py-2 w-10" />
                     </tr>
                   </thead>
                   <tbody>
@@ -387,9 +418,12 @@ export default function DeviceLibraryAdminPanel() {
                       const isFocused =
                         !!focusTemplateId &&
                         (template.id === focusTemplateId || key === focusTemplateId);
-                      const tags = (template.searchTerms ?? []).join(", ");
+                      const allTags = template.searchTerms ?? [];
                       const isEditingTags = editingTagsKey === key;
                       const isHidden = hiddenIds.has(key);
+                      const inQueue = templateHasTag(template, KGO_DEVICE_ADD_QUEUE_TAG);
+                      const subtitle = labelSubtitle(template);
+                      const showId = expandedIdKey === key;
 
                       return (
                         <tr
@@ -405,24 +439,61 @@ export default function DeviceLibraryAdminPanel() {
                               type="checkbox"
                               checked={selected.has(key)}
                               onChange={() => toggleSelect(key)}
+                              aria-label={`Select ${template.label}`}
                               className="w-3 h-3 accent-blue-500"
                             />
                           </td>
-                          <td className="px-2 py-2 align-top">
+                          <td className="px-2 py-2 align-top max-w-[220px]">
                             <div className={`font-medium ${isFocused ? "text-[var(--color-text-heading)]" : ""}`}>
                               {template.label}
+                              {inQueue && (
+                                <span className="ml-1.5 rounded bg-violet-500/20 text-violet-700 dark:text-violet-200 px-1 py-px text-[9px] font-normal">
+                                  In queue
+                                </span>
+                              )}
                               {isHidden && (
                                 <span className="ml-1 text-[9px] text-amber-600 dark:text-amber-300">(hidden)</span>
                               )}
                             </div>
-                            <div className="text-[10px] text-[var(--color-text-muted)] truncate max-w-[180px]">
-                              {template.id ?? template.deviceType}
-                            </div>
+                            {showId && template.id ? (
+                              <div className="mt-0.5 flex items-center gap-1 text-[10px] text-[var(--color-text-muted)]">
+                                <code className="truncate font-mono" title={template.id}>
+                                  {template.id}
+                                </code>
+                                <button
+                                  type="button"
+                                  className="shrink-0 underline hover:text-blue-500 cursor-pointer"
+                                  onClick={() => void copyTemplateId(template.id!, template.label)}
+                                >
+                                  Copy
+                                </button>
+                                <button
+                                  type="button"
+                                  className="shrink-0 underline hover:text-blue-500 cursor-pointer"
+                                  onClick={() => setExpandedIdKey(null)}
+                                >
+                                  Hide
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-[var(--color-text-muted)] truncate">
+                                {subtitle}
+                                {template.id && (
+                                  <button
+                                    type="button"
+                                    className="ml-1.5 underline hover:text-blue-500 cursor-pointer"
+                                    onClick={() => setExpandedIdKey(key)}
+                                  >
+                                    Show ID
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </td>
                           <td className="px-2 py-2 align-top text-[var(--color-text-muted)]">
                             {template.manufacturer ?? "—"}
                           </td>
-                          <td className="px-2 py-2 align-top min-w-[140px]">
+                          <td className="px-2 py-2 align-top min-w-[120px] max-w-[200px]">
                             {isEditingTags ? (
                               <input
                                 autoFocus
@@ -439,19 +510,17 @@ export default function DeviceLibraryAdminPanel() {
                                   persistTags(template, editingTagsValue);
                                   setEditingTagsKey(null);
                                 }}
+                                title="Comma-separated search terms"
                                 className="w-full rounded border border-blue-500/50 bg-[var(--color-bg)] px-1 py-0.5 text-[10px] text-[var(--color-text)] outline-none"
                               />
                             ) : (
-                              <button
-                                type="button"
-                                className="text-left text-[10px] text-[var(--color-text-muted)] hover:text-blue-500 cursor-pointer"
-                                onClick={() => {
+                              <TemplateTagChips
+                                terms={allTags}
+                                onEdit={() => {
                                   setEditingTagsKey(key);
-                                  setEditingTagsValue(tags);
+                                  setEditingTagsValue(allTags.join(", "));
                                 }}
-                              >
-                                {tags || "—"}
-                              </button>
+                              />
                             )}
                           </td>
                           <td className="px-2 py-2 align-top">
@@ -459,45 +528,52 @@ export default function DeviceLibraryAdminPanel() {
                               {sourceLabel(template, customIds)}
                             </span>
                           </td>
-                          <td className="px-2 py-2 align-top">
-                            <div className="flex justify-end flex-wrap gap-1">
-                              <ActionBtn
-                                label="Edit"
-                                onClick={() => {
-                                  createAndEditDevice(cloneTemplateDeep(template), LIBRARY_EDIT_PLACEMENT);
-                                  addToast(`Editing ${template.label}`, "info");
-                                }}
-                              />
-                              <ActionBtn
-                                label="Clone"
-                                onClick={() => {
-                                  upsertLibraryTemplate(cloneForUserLibrary(template));
-                                  addToast(`Cloned ${template.label}`, "success");
-                                }}
-                              />
-                              <ActionBtn
-                                label="Submit"
-                                onClick={() =>
-                                  void submitTemplateToCommunity(template).then((r) => {
-                                    if (r === "login_required") setShowLogin(true);
-                                    else addToast("Opened submission", "success");
-                                  }).catch((e) =>
-                                    addToast(e instanceof Error ? e.message : "Failed", "error"),
-                                  )
-                                }
-                              />
-                              {isHidden ? (
-                                <ActionBtn
-                                  label="Restore"
-                                  onClick={() => {
-                                    restoreHiddenLibraryTemplate(key);
-                                    addToast(`Restored ${template.label}`, "success");
-                                  }}
-                                />
-                              ) : (
-                                <ActionBtn label="Del" danger onClick={() => handleDelete(template)} />
-                              )}
-                            </div>
+                          <td className="px-2 py-2 align-top text-right">
+                            <RowActionMenu
+                              open={openMenuKey === key}
+                              onOpenChange={(open) => setOpenMenuKey(open ? key : null)}
+                              items={[
+                                {
+                                  label: "Edit in canvas",
+                                  onClick: () => {
+                                    createAndEditDevice(cloneTemplateDeep(template), LIBRARY_EDIT_PLACEMENT);
+                                    addToast(`Editing ${template.label}`, "info");
+                                  },
+                                },
+                                {
+                                  label: "Clone to library",
+                                  onClick: () => {
+                                    upsertLibraryTemplate(cloneForUserLibrary(template));
+                                    addToast(`Cloned ${template.label}`, "success");
+                                  },
+                                },
+                                {
+                                  label: "Submit to community",
+                                  onClick: () =>
+                                    void submitTemplateToCommunity(template)
+                                      .then((r) => {
+                                        if (r === "login_required") setShowLogin(true);
+                                        else addToast("Opened submission", "success");
+                                      })
+                                      .catch((e) =>
+                                        addToast(e instanceof Error ? e.message : "Failed", "error"),
+                                      ),
+                                },
+                                isHidden
+                                  ? {
+                                      label: "Restore",
+                                      onClick: () => {
+                                        restoreHiddenLibraryTemplate(key);
+                                        addToast(`Restored ${template.label}`, "success");
+                                      },
+                                    }
+                                  : {
+                                      label: "Remove from library",
+                                      danger: true,
+                                      onClick: () => handleDelete(template),
+                                    },
+                              ]}
+                            />
                           </td>
                         </tr>
                       );
@@ -505,7 +581,9 @@ export default function DeviceLibraryAdminPanel() {
                     {filtered.length === 0 && (
                       <tr>
                         <td colSpan={6} className="px-4 py-8 text-center text-[var(--color-text-muted)]">
-                          No templates match the current filters.
+                          {viewMode === "queue"
+                            ? "No templates in the device-add queue. Add devices via the agent tab or tag templates with kgo-es-deviceadd."
+                            : "No templates match your search or filters."}
                         </td>
                       </tr>
                     )}
@@ -543,26 +621,178 @@ export default function DeviceLibraryAdminPanel() {
   );
 }
 
-function ActionBtn({
-  label,
-  onClick,
-  danger,
+function labelSubtitle(template: DeviceTemplate): string {
+  const parts = [template.manufacturer, template.modelNumber].filter(Boolean);
+  if (parts.length > 0) return parts.join(" · ");
+  return template.deviceType ?? "";
+}
+
+function dedupeDisplayTerms(terms: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const term of terms) {
+    if (WORKFLOW_TAGS.has(term)) continue;
+    const key = term.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(term);
+  }
+  return out;
+}
+
+function ViewModeToggle({
+  mode,
+  queueCount,
+  onChange,
 }: {
-  label: string;
-  onClick: () => void;
-  danger?: boolean;
+  mode: ViewMode;
+  queueCount: number;
+  onChange: (mode: ViewMode) => void;
 }) {
+  return (
+    <div
+      className="flex shrink-0 rounded border border-[var(--color-border)] overflow-hidden text-xs"
+      role="group"
+      aria-label="Library view"
+    >
+      <button
+        type="button"
+        onClick={() => onChange("browse")}
+        className={`px-2.5 py-1.5 cursor-pointer transition-colors ${
+          mode === "browse"
+            ? "bg-blue-500/15 text-blue-700 dark:text-blue-200 font-medium"
+            : "text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+        }`}
+      >
+        Browse
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("queue")}
+        className={`px-2.5 py-1.5 border-l border-[var(--color-border)] cursor-pointer transition-colors ${
+          mode === "queue"
+            ? "bg-violet-500/15 text-violet-700 dark:text-violet-200 font-medium"
+            : "text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+        }`}
+      >
+        Device-add queue
+        {queueCount > 0 ? ` (${queueCount})` : ""}
+      </button>
+    </div>
+  );
+}
+
+function TemplateTagChips({ terms, onEdit }: { terms: string[]; onEdit: () => void }) {
+  const display = dedupeDisplayTerms(terms);
+  const maxVisible = 4;
+  const visible = display.slice(0, maxVisible);
+  const overflow = display.length - visible.length;
+
+  if (display.length === 0) {
+    return (
+      <button
+        type="button"
+        className="text-[10px] text-[var(--color-text-muted)] hover:text-blue-500 cursor-pointer"
+        onClick={onEdit}
+      >
+        Add tags
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"
-      onClick={onClick}
-      className={`rounded px-1.5 py-0.5 text-[10px] border cursor-pointer transition-colors ${
-        danger
-          ? "border-red-500/40 text-red-600 dark:text-red-300 hover:bg-red-500/15"
-          : "border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
-      }`}
+      className="flex flex-wrap items-center gap-1 text-left cursor-pointer group"
+      onClick={onEdit}
+      title="Click to edit tags"
     >
-      {label}
+      {visible.map((tag) => (
+        <span
+          key={tag}
+          className="rounded-full bg-[var(--color-bg)] border border-[var(--color-border)] px-1.5 py-px text-[9px] text-[var(--color-text-muted)] group-hover:border-blue-500/40 max-w-[88px] truncate"
+        >
+          {tag}
+        </span>
+      ))}
+      {overflow > 0 && (
+        <span className="text-[9px] text-[var(--color-text-muted)]">+{overflow}</span>
+      )}
     </button>
+  );
+}
+
+type RowMenuItem = {
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+};
+
+function RowActionMenu({
+  open,
+  onOpenChange,
+  items,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  items: RowMenuItem[];
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        onOpenChange(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onOpenChange(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, onOpenChange]);
+
+  return (
+    <div ref={rootRef} className="relative inline-block">
+      <button
+        type="button"
+        aria-label="Row actions"
+        aria-expanded={open}
+        onClick={() => onOpenChange(!open)}
+        className="rounded border border-[var(--color-border)] w-7 h-7 text-sm leading-none hover:bg-[var(--color-surface-hover)] cursor-pointer text-[var(--color-text-muted)]"
+      >
+        ⋮
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full mt-1 z-10 min-w-[168px] rounded border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-lg"
+        >
+          {items.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onOpenChange(false);
+                item.onClick();
+              }}
+              className={`block w-full text-left px-3 py-1.5 text-xs cursor-pointer transition-colors ${
+                item.danger
+                  ? "text-red-600 dark:text-red-300 hover:bg-red-500/10"
+                  : "text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
