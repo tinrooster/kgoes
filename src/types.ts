@@ -178,6 +178,12 @@ export interface RfLicensedMetadata {
 
 /** Microwave / STL link parameters (edge or port scope). */
 export interface RfLinkMetadata {
+  /** Catalog site code for the far-end site (e.g. "SUTRO", "NOC"). */
+  remoteSiteId?: string;
+  /** Human-readable link band (e.g. "18 GHz", "IP / Fiber"). */
+  band?: string;
+  /** Link path distance in miles (explicit override; catalog haversine used when absent). */
+  distanceMi?: number;
   dataRateMbps?: number;
   modulation?: RfModulation | string;
   bandwidthMhz?: number;

@@ -278,6 +278,45 @@ export function RfLinkMetadataEditor({
       <div className="text-[10px] font-medium text-[var(--color-text-heading)]">RF link</div>
       <div className="grid grid-cols-3 gap-2">
         <label className="space-y-0.5">
+          <span className="text-[9px] text-[var(--color-text-muted)]">Remote site</span>
+          <input
+            className={inputClass}
+            value={value.remoteSiteId ?? ""}
+            onChange={(e) => patch({ remoteSiteId: e.target.value || undefined })}
+            placeholder="Site code"
+            title="Far-end catalog site code (e.g. SUTRO, NOC)"
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+        </label>
+        <label className="space-y-0.5">
+          <span className="text-[9px] text-[var(--color-text-muted)]">Band</span>
+          <input
+            className={inputClass}
+            value={value.band ?? ""}
+            onChange={(e) => patch({ band: e.target.value || undefined })}
+            placeholder="e.g. 18 GHz"
+            title="Link band label (e.g. 18 GHz, IP / Fiber)"
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+        </label>
+        <label className="space-y-0.5">
+          <span className="text-[9px] text-[var(--color-text-muted)]">Distance (mi)</span>
+          <input
+            type="number"
+            step="0.1"
+            min={0}
+            className={inputClass}
+            value={value.distanceMi ?? ""}
+            onChange={(e) =>
+              patch({ distanceMi: e.target.value === "" ? undefined : Number(e.target.value) })
+            }
+            title="Link path distance in miles"
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+        </label>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <label className="space-y-0.5">
           <span className="text-[9px] text-[var(--color-text-muted)]">Data rate (Mbps)</span>
           <input
             type="number"
