@@ -21,6 +21,10 @@ import {
   APPEARANCE_SYNC_MESSAGE,
   type AppearanceSyncPayload,
 } from "./sharedAppearanceBridge";
+import {
+  buildTrackItReportCsv,
+  parseTrackItExportTab,
+} from "./trackitReportExport";
 import type {
   SchematicFile,
   TrackItLocationSnapshotEntry,
@@ -77,10 +81,17 @@ type TrackItInboundMessage =
   | { type: "TRACKIT_TOWER_FOCUS"; payload: TrackItTowerFocusPayload }
   | { type: "TRACKIT_FOCUS_PAGE"; payload: TrackItFocusPagePayload }
   | { type: "TRACKIT_LOCATION_SNAPSHOT"; payload: TrackItLocationSnapshotPayload }
+  | { type: "TRACKIT_EXPORT_REPORT"; payload: TrackItExportReportPayload }
   | { type: "TRACKIT_UNDO" }
   | { type: "TRACKIT_UNDO_TO_DEPTH"; depth: number }
   | { type: "TRACKIT_REDO" }
   | { type: typeof APPEARANCE_SYNC_MESSAGE; payload: AppearanceSyncPayload };
+
+export type TrackItExportReportPayload = {
+  requestId: string;
+  reportTab: string;
+  drawingId?: string;
+};
 
 function isTrackItInbound(data: unknown): data is TrackItInboundMessage {
   if (!data || typeof data !== "object") return false;
@@ -94,11 +105,29 @@ function isTrackItInbound(data: unknown): data is TrackItInboundMessage {
     t === "TRACKIT_TOWER_FOCUS" ||
     t === "TRACKIT_FOCUS_PAGE" ||
     t === "TRACKIT_LOCATION_SNAPSHOT" ||
+    t === "TRACKIT_EXPORT_REPORT" ||
     t === "TRACKIT_UNDO" ||
     t === "TRACKIT_UNDO_TO_DEPTH" ||
     t === "TRACKIT_REDO" ||
     t === APPEARANCE_SYNC_MESSAGE
   );
+}
+
+function postReportToOpener(payload: {
+  requestId: string;
+  reportTab: string;
+  filename: string;
+  csv: string;
+  rowCount: number;
+  error?: string;
+}): void {
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({ type: "KGO_ES_REPORT", payload }, "*");
+    }
+  } catch {
+    // cross-origin opener
+  }
 }
 
 function applyAppearanceSync(payload: AppearanceSyncPayload): void {
@@ -367,6 +396,57 @@ export function startTrackItBridge(): void {
         "info",
         3000,
       );
+      return;
+    }
+
+    if (event.data.type === "TRACKIT_EXPORT_REPORT") {
+      const payload = event.data.payload;
+      const requestId = payload?.requestId?.trim();
+      if (!requestId) return;
+      const linkDrawingId = useSchematicStore.getState().trackItLink?.drawingId;
+      if (payload.drawingId && linkDrawingId && payload.drawingId !== linkDrawingId) {
+        postReportToOpener({
+          requestId,
+          reportTab: payload.reportTab,
+          filename: "",
+          csv: "",
+          rowCount: 0,
+          error: "drawing_mismatch",
+        });
+        return;
+      }
+      const tab = parseTrackItExportTab(payload.reportTab);
+      if (!tab) {
+        postReportToOpener({
+          requestId,
+          reportTab: payload.reportTab,
+          filename: "",
+          csv: "",
+          rowCount: 0,
+          error: "unknown_report_tab",
+        });
+        return;
+      }
+      const built = buildTrackItReportCsv(tab);
+      if (!built) {
+        postReportToOpener({
+          requestId,
+          reportTab: payload.reportTab,
+          filename: "",
+          csv: "",
+          rowCount: 0,
+          error: "build_failed",
+        });
+        return;
+      }
+      postReportToOpener({
+        requestId,
+        reportTab: tab,
+        filename: built.filename,
+        csv: built.csv,
+        rowCount: built.rowCount,
+      });
+      useSchematicStore.getState().addToast(`Report sent to trackIT · ${built.rowCount} row(s)`, "success", 3000);
       return;
     }
 
