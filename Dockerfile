@@ -10,7 +10,7 @@ RUN npm run build
 FROM alpine:3.22 AS runtime
 
 RUN apk update \
-  && apk add --no-cache nginx \
+  && apk add --no-cache nginx socat \
   && apk add --no-cache --upgrade libcrypto3 libssl3 libxml2 \
   && rm -rf /var/cache/apk/* \
   && mkdir -p /tmp/nginx/client_body /tmp/nginx/proxy /tmp/nginx/fastcgi \
@@ -20,6 +20,8 @@ RUN apk update \
 
 COPY docker/nginx.main.conf /etc/nginx/nginx.conf
 COPY docker/nginx.conf /etc/nginx/http.d/default.conf
+COPY docker/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 RUN chown -R nginx:nginx /usr/share/nginx/html
@@ -29,4 +31,4 @@ EXPOSE 8080
 
 USER nginx
 
-CMD ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
