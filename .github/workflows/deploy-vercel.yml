@@ -11,7 +11,7 @@ name: Deploy to Vercel (kgoes)
 
 on:
   push:
-    branches: [master]
+    branches: [externaldeployment]
   workflow_dispatch:
 
 jobs:
