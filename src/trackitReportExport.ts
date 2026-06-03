@@ -226,7 +226,7 @@ function buildPowerCsv(schematicName: string): TrackItReportCsvPayload {
 
 function buildPackListCsv(schematicName: string): TrackItReportCsvPayload {
   const store = useSchematicStore.getState();
-  const data = computePackList(store.nodes, store.edges, store.ownedGear);
+  const data = computePackList(store.nodes, store.edges);
   const lines: string[] = [];
   lines.push(`Pack List — ${schematicName}`);
   lines.push(`Generated ${new Date().toLocaleDateString()}`);
