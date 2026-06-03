@@ -6,24 +6,27 @@ RUN npm ci --legacy-peer-deps
 COPY . .
 RUN npm run build
 
-# Production stage
-FROM nginx:bookworm
+# Production stage — Alpine nginx stack matches trackIT Studioshare runtime.
+FROM alpine:3.22 AS runtime
 
-# Patched Debian packages for Wiz cicd-policy-vuln-critical (Studioshare CI):
-# libssl3/openssl >= 3.0.19-1~deb12u2 (CVE-2026-31789),
-# libgnutls30 >= 3.7.9-2+deb12u7 (CVE-2026-42010, CVE-2026-33845).
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends --only-upgrade \
-       libssl3 openssl libgnutls30 \
-  && rm -rf /var/lib/apt/lists/*
+RUN apk update \
+  && apk add --no-cache nginx \
+  && apk add --no-cache --upgrade libcrypto3 libssl3 libxml2 \
+  && rm -rf /var/cache/apk/* \
+  && mkdir -p /tmp/nginx/client_body /tmp/nginx/proxy /tmp/nginx/fastcgi \
+       /tmp/nginx/uwsgi /tmp/nginx/scgi /run/nginx /usr/share/nginx/html \
+  && chown -R nginx:nginx /tmp/nginx /run/nginx /usr/share/nginx/html \
+  && chmod -R g+rwX /tmp/nginx /run/nginx /usr/share/nginx/html
 
 COPY docker/nginx.main.conf /etc/nginx/nginx.conf
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/nginx.conf /etc/nginx/http.d/default.conf
 COPY --from=builder /app/dist /usr/share/nginx/html
+
+RUN chown -R nginx:nginx /usr/share/nginx/html
+
+ENV PORT=8080
 EXPOSE 8080
-RUN useradd -U -u 1000 appuser \
-  && mkdir -p /tmp/nginx/client_body /tmp/nginx/proxy /tmp/nginx/fastcgi \
-       /tmp/nginx/uwsgi /tmp/nginx/scgi \
-  && chown -R 1000:1000 /usr/share/nginx/html /tmp/nginx
-USER 1000
+
+USER nginx
+
 CMD ["nginx", "-g", "daemon off;"]
