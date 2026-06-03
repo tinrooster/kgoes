@@ -17,9 +17,13 @@ RUN apt-get update \
        libssl3 openssl libgnutls30 \
   && rm -rf /var/lib/apt/lists/*
 
+COPY docker/nginx.main.conf /etc/nginx/nginx.conf
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/dist /usr/share/nginx/html
 EXPOSE 80
-RUN useradd -U -u 1000 appuser && chown -R 1000:1000 /usr/share/nginx/html
+RUN useradd -U -u 1000 appuser \
+  && mkdir -p /tmp/nginx/client_body /tmp/nginx/proxy /tmp/nginx/fastcgi \
+       /tmp/nginx/uwsgi /tmp/nginx/scgi \
+  && chown -R 1000:1000 /usr/share/nginx/html /tmp/nginx
 USER 1000
 CMD ["nginx", "-g", "daemon off;"]
