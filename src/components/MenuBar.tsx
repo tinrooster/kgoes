@@ -1325,17 +1325,19 @@ export default function MenuBar() {
           </button>
           <div style={{ width: 1, height: 20, background: "var(--ti-divider)", margin: "0 4px" }} />
           <button
+            type="button"
             onClick={toggleTheme}
             title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
             style={{
               width: 30, height: 30, display: "grid", placeItems: "center",
               border: 0, background: "transparent", borderRadius: 7,
-              fontSize: 15, cursor: "pointer", color: "var(--ti-ink-2)",
+              cursor: "pointer", color: "var(--ti-ink-2)",
               transition: "background 100ms",
             }}
             className="hover:bg-[var(--ti-surface-2,#f0eeea)]"
           >
-            {isDark ? "☀" : "☾"}
+            <TiIcon name={isDark ? "sun" : "moon"} size={16} color="var(--ti-ink-2)" />
           </button>
           <div style={{ width: 1, height: 20, background: "var(--ti-divider)", margin: "0 4px" }} />
           <UserMenuButton />
