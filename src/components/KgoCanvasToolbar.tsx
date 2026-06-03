@@ -16,13 +16,14 @@ import { dispatchOpenViewportEditor } from "../drawingViewportEvents";
 import { useDrawingViewportActions } from "../hooks/useDrawingViewportActions";
 
 function Chip({
-  label, icon, active, badge, compact, onClick, title,
+  label, icon, active, badge, compact, disabled, onClick, title,
 }: {
   label: string;
   icon?: string;
   active?: boolean;
   badge?: number;
   compact?: boolean;
+  disabled?: boolean;
   onClick?: () => void;
   title?: string;
 }) {
@@ -30,6 +31,7 @@ function Chip({
     <button
       type="button"
       title={title}
+      disabled={disabled}
       onClick={onClick}
       aria-label={label}
       style={{
@@ -49,7 +51,8 @@ function Chip({
         fontSize: 12, fontWeight: 500,
         color: active ? "var(--ti-accent-ink)" : "var(--ti-ink-2)",
         fontFamily: "var(--ti-font-sans)",
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.65 : 1,
         transition: "background 100ms, border-color 100ms, color 100ms",
       }}
     >
@@ -144,6 +147,7 @@ function KgoCanvasToolbar() {
   const canvasInteractive = useSchematicStore((s) => s.canvasInteractive);
   const toggleCanvasInteractive = useSchematicStore((s) => s.toggleCanvasInteractive);
   const autoRoute = useSchematicStore((s) => s.autoRoute);
+  const isRouting = useSchematicStore((s) => s.isRouting);
   const toggleAutoRoute = useSchematicStore((s) => s.toggleAutoRoute);
 
   const unnumberedCount = useSchematicStore((s) => {
@@ -231,11 +235,18 @@ function KgoCanvasToolbar() {
 
         <Chip
           icon="signal"
-          label="Auto-route"
+          label={isRouting ? "Routing…" : "Auto-route"}
           compact={compactQuickActions}
-          active={autoRoute}
+          active={autoRoute || isRouting}
+          disabled={isRouting}
           onClick={toggleAutoRoute}
-          title={autoRoute ? "Auto-route on — click to disable" : "Auto-route off — click to enable"}
+          title={
+            isRouting
+              ? "Routing connections…"
+              : autoRoute
+                ? "Auto-route on — click to disable"
+                : "Auto-route off — click to enable"
+          }
         />
         <Chip
           icon="eye"
@@ -254,16 +265,16 @@ function KgoCanvasToolbar() {
         />
         <button
           type="button"
-          title={compactQuickActions ? "Show labeled quick actions" : "Show compact icon quick actions"}
-          aria-label={compactQuickActions ? "Disable compact quick actions" : "Enable compact quick actions"}
+          title={compactQuickActions ? "Show labeled toolbar chips" : "Show icon-only toolbar chips"}
+          aria-label={compactQuickActions ? "Show labeled toolbar chips" : "Show icon-only toolbar chips"}
           onClick={toggleCompactQuickActions}
           style={{
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
             height: 30,
-            minWidth: 30,
-            padding: compactQuickActions ? "0 9px" : "0 10px",
+            width: 30,
+            padding: 0,
             borderRadius: 9,
             border: `1px solid ${compactQuickActions ? "var(--ti-accent)" : "var(--ti-border)"}`,
             background: compactQuickActions
@@ -272,15 +283,16 @@ function KgoCanvasToolbar() {
             backdropFilter: "blur(6px)",
             WebkitBackdropFilter: "blur(6px)",
             boxShadow: "var(--ti-shadow-sm)",
-            fontSize: 11,
-            fontWeight: 600,
-            color: compactQuickActions ? "var(--ti-accent-ink)" : "var(--ti-ink-2)",
             fontFamily: "var(--ti-font-sans)",
             cursor: "pointer",
             transition: "background 100ms, border-color 100ms, color 100ms",
           }}
         >
-          {compactQuickActions ? "I" : "Icons"}
+          <TiIcon
+            name={compactQuickActions ? "list" : "grid"}
+            size={14}
+            color={compactQuickActions ? "var(--ti-accent)" : "var(--ti-muted)"}
+          />
         </button>
 
         <select

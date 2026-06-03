@@ -38,6 +38,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: 'auto',
       workbox: {
         // Force a freshly-installed SW to activate and claim all open tabs
         // immediately, instead of waiting for every client to close. Without
