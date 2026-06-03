@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { checkSession, logout } from "../templateApi";
 import { clearCache } from "../cloudCache";
 import LoginDialog from "./LoginDialog";
+import { isCloudPortalEnabled } from "../deployMode";
 
 interface User {
   id: string;
@@ -17,6 +18,10 @@ export default function UserMenuButton() {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!isCloudPortalEnabled()) {
+      setLoaded(true);
+      return;
+    }
     checkSession().then((u) => {
       setUser(u);
       setLoaded(true);
@@ -46,6 +51,8 @@ export default function UserMenuButton() {
     setUser(null);
     setDropdownOpen(false);
   };
+
+  if (!isCloudPortalEnabled()) return null;
 
   if (!loaded) return null;
 

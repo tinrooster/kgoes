@@ -27,6 +27,7 @@ import { CONNECTORS_WITH_GENDER_VARIATION, DEFAULT_CONNECTOR, NETWORK_SIGNAL_TYP
 import { getBundledTemplates, getCardsByFamily, checkSession, createDraft, createHandoff } from "../templateApi";
 import { getTemplateDrift } from "../templateSync";
 import LoginDialog from "./LoginDialog";
+import { isCloudPortalEnabled } from "../deployMode";
 import { confirmDialog } from "../appDialogStore";
 import CardCreatorDialog from "./CardCreatorDialog";
 import TemplateSyncDialog from "./TemplateSyncDialog";
@@ -149,6 +150,7 @@ function newPortDraft(direction: PortDirection): PortDraft {
 const MIME = "application/easyschematic-port";
 
 export default function DeviceEditor() {
+  const cloudPortal = isCloudPortalEnabled();
   const editingNodeId = useSchematicStore((s) => s.editingNodeId);
   const nodes = useSchematicStore((s) => s.nodes);
   const syncDeviceFromTemplate = useSchematicStore((s) => s.syncDeviceFromTemplate);
@@ -645,6 +647,7 @@ export default function DeviceEditor() {
   }, [node, ports, label, shortName, hostname, updateCustomTemplate, powerDrawW, powerCapacityW, voltage, thermalBtuh, poeBudgetW, poeDrawW, unitCost, heightMm, widthMm, depthMm, weightKg, isVenueProvided, deviceType, color, manufacturer, modelNumber, referenceUrl, category, auxiliaryData, searchTermsRaw, handleSave]);
 
   const handleSubmitToCommunity = useCallback(async () => {
+    if (!cloudPortal) return;
     const finalPorts: Port[] = ports
       .filter((p) => p.label.trim())
       .map((p, i) => ({
@@ -714,7 +717,7 @@ export default function DeviceEditor() {
     } catch (e) {
       console.error("Failed to create draft:", e);
     }
-  }, [ports, label, shortName, deviceType, color, node, hostname, poeBudgetW, poeDrawW, unitCost, manufacturer, modelNumber, referenceUrl, category, powerDrawW, powerCapacityW, voltage, thermalBtuh, heightMm, widthMm, depthMm, weightKg, isVenueProvided, auxiliaryData, searchTermsRaw]);
+  }, [cloudPortal, ports, label, shortName, deviceType, color, node, hostname, poeBudgetW, poeDrawW, unitCost, manufacturer, modelNumber, referenceUrl, category, powerDrawW, powerCapacityW, voltage, thermalBtuh, heightMm, widthMm, depthMm, weightKg, isVenueProvided, auxiliaryData, searchTermsRaw]);
 
   const handleSaveAsPreset = useCallback(() => {
     if (!editingNodeId || !node?.data.templateId) return;
@@ -1947,7 +1950,9 @@ export default function DeviceEditor() {
           >
             Save as User Template
           </button>
-          {(!templateId || dirtyVsTemplate || customTemplates.some((t) => t.id === templateId)) && ports.some((p) => p.label.trim()) && (
+          {cloudPortal &&
+            (!templateId || dirtyVsTemplate || customTemplates.some((t) => t.id === templateId)) &&
+            ports.some((p) => p.label.trim()) && (
             <button
               onClick={handleSubmitToCommunity}
               className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
@@ -2006,7 +2011,9 @@ export default function DeviceEditor() {
           </button>
         </div>
       </div>
-      <LoginDialog open={showLoginDialog} onClose={() => setShowLoginDialog(false)} />
+      {cloudPortal && (
+        <LoginDialog open={showLoginDialog} onClose={() => setShowLoginDialog(false)} />
+      )}
       {showFacePlateEditor && node && (
         <FacePlateEditor
           nodeId={editingNodeId!}

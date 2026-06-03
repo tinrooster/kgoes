@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { checkSession, createDraft, createHandoff } from "../templateApi";
+import { isCloudPortalEnabled } from "../deployMode";
 
 const STORAGE_KEY = "easyschematic-pending-submission";
 const MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
@@ -8,11 +9,13 @@ const DEVICES_URL =
   import.meta.env.VITE_DEVICES_URL ?? "https://devices.easyschematic.live";
 
 export default function PendingSubmissionBanner() {
+  const cloudPortal = isCloudPortalEnabled();
   const [visible, setVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    if (!cloudPortal) return;
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
 
@@ -46,9 +49,9 @@ export default function PendingSubmissionBanner() {
     } catch {
       localStorage.removeItem(STORAGE_KEY);
     }
-  }, []);
+  }, [cloudPortal]);
 
-  if (!visible) return null;
+  if (!cloudPortal || !visible) return null;
 
   const handleSubmit = async () => {
     const raw = localStorage.getItem(STORAGE_KEY);

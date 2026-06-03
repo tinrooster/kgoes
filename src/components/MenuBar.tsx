@@ -28,6 +28,7 @@ import UserMenuButton from "./UserMenuButton";
 import SchematicBrowser from "./SchematicBrowser";
 import LoginDialog from "./LoginDialog";
 import { checkSession, saveSchematicToCloud, updateSchematicInCloud } from "../templateApi";
+import AlignmentMenu from "./AlignmentMenu";
 import ViewOptionsPanel from "./ViewOptionsPanel";
 import ShowInfoPanel from "./ShowInfoPanel";
 import CsvImportWizard from "./CsvImportWizard";
@@ -35,6 +36,7 @@ import SignalColorPanel from "./SignalColorPanel";
 import { useSidebarStore } from "../sidebarStore";
 import { useTheme } from "../hooks/useTheme";
 import { isTrackItDrawingLinked, saveToTrackItParent } from "../trackitIntegration";
+import { isCloudPortalEnabled } from "../deployMode";
 import { computeTrackItSyncStatus } from "../trackitSyncStatus";
 import { insertTowerElevation, insertTowerSitePlan } from "../towerSiteInsert";
 import {
@@ -189,6 +191,7 @@ export default function MenuBar() {
   const trackItLastPushedAt = useSchematicStore((s) => s.trackItLastPushedAt);
   const trackItUnsavedChanges = useSchematicStore((s) => s.trackItUnsavedChanges);
   const isDrawingLinked = isTrackItDrawingLinked();
+  const cloudPortal = isCloudPortalEnabled();
   const unnumberedCount = edges.filter((e) => !e.data?.directAttach && !e.data?.cableId && e.data?.signalType).length;
   const syncStatus = computeTrackItSyncStatus({
     isLinked: isDrawingLinked,
@@ -239,10 +242,11 @@ export default function MenuBar() {
   const [cloudSaving, setCloudSaving] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  // Check login state on mount
+  // Check login state on mount (cloud portal only)
   useEffect(() => {
+    if (!cloudPortal) return;
     checkSession().then((u) => setIsLoggedIn(!!u));
-  }, []);
+  }, [cloudPortal]);
 
   const isOnline = useSchematicStore((s) => s.isOnline);
   const trackItLink = useSchematicStore((s) => s.trackItLink);
@@ -786,9 +790,24 @@ export default function MenuBar() {
             },
           ]
         : []),
-      { type: "separator" },
-      { type: "item", label: cloudSaving ? "Saving..." : isOnline ? "Save to Cloud" : "Save to Cloud (Offline)", disabled: cloudSaving || !isOnline, onClick: handleCloudSave },
-      { type: "item", label: "My Schematics...", disabled: !isLoggedIn, title: isLoggedIn ? undefined : "Must be logged in", onClick: () => setShowSchematicBrowser(true) },
+      ...(cloudPortal
+        ? [
+            { type: "separator" as const },
+            {
+              type: "item" as const,
+              label: cloudSaving ? "Saving..." : isOnline ? "Save to Cloud" : "Save to Cloud (Offline)",
+              disabled: cloudSaving || !isOnline,
+              onClick: handleCloudSave,
+            },
+            {
+              type: "item" as const,
+              label: "My Schematics...",
+              disabled: !isLoggedIn,
+              title: isLoggedIn ? undefined : "Must be logged in",
+              onClick: () => setShowSchematicBrowser(true),
+            },
+          ]
+        : []),
       { type: "separator" },
       { type: "item", label: "Save Device Archive", onClick: handleSaveArchive },
       { type: "item", label: "Import Device Archive...", onClick: handleOpenArchive },
@@ -807,17 +826,21 @@ export default function MenuBar() {
       { type: "item", label: "Select All", shortcut: "Ctrl+A", onClick: () => useSchematicStore.getState().selectAll() },
     ],
     Devices: [
-      {
-        type: "item",
-        label: "Device library admin…",
-        onClick: () => useUiChromeStore.getState().openDeviceAdmin({ tab: "manage" }),
-      },
-      {
-        type: "item",
-        label: "Add devices (agent)…",
-        onClick: () => useUiChromeStore.getState().openDeviceAdmin({ tab: "agent" }),
-      },
-      { type: "separator" },
+      ...(cloudPortal
+        ? [
+            {
+              type: "item" as const,
+              label: "Device library admin…",
+              onClick: () => useUiChromeStore.getState().openDeviceAdmin({ tab: "manage" }),
+            },
+            {
+              type: "item" as const,
+              label: "Add devices (agent)…",
+              onClick: () => useUiChromeStore.getState().openDeviceAdmin({ tab: "agent" }),
+            },
+            { type: "separator" as const },
+          ]
+        : []),
       {
         type: "item",
         label: "Save device archive",
@@ -1169,6 +1192,12 @@ export default function MenuBar() {
               )}
             </div>
           ))}
+          {onDrawingCanvas && (
+            <>
+              <div style={{ width: 1, height: 22, background: "var(--ti-divider)", margin: "0 2px" }} />
+              <AlignmentMenu variant="menubar" />
+            </>
+          )}
         </div>
 
         {/* Center: trackIT link status badge + document title */}
@@ -1487,7 +1516,9 @@ export default function MenuBar() {
       {showSchematicBrowser && (
         <SchematicBrowser onClose={() => setShowSchematicBrowser(false)} />
       )}
-      <LoginDialog open={showCloudLogin} onClose={() => setShowCloudLogin(false)} />
+      {cloudPortal && (
+        <LoginDialog open={showCloudLogin} onClose={() => setShowCloudLogin(false)} />
+      )}
       <DeviceLibraryAdminPanel />
     </div>
   );
