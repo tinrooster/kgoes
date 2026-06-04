@@ -138,36 +138,6 @@ function ResizeSnapGuides({ dragGuides }: { dragGuides: GuideLine[] }) {
   return <SnapGuides guides={combined} />;
 }
 
-function AutoRouteChip() {
-  const autoRoute = useSchematicStore((s) => s.autoRoute);
-  const isRouting = useSchematicStore((s) => s.isRouting);
-  const toggleAutoRoute = useSchematicStore((s) => s.toggleAutoRoute);
-
-  if (isRouting) {
-    return (
-      <div className="absolute top-3 right-3 z-50 bg-black/70 text-white text-xs px-3 py-1.5 rounded-full animate-pulse pointer-events-none">
-        ⚡ Routing…
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={`absolute top-3 right-3 z-50 text-xs px-3 py-1.5 rounded-full cursor-pointer select-none transition-colors ${
-        autoRoute
-          ? "bg-black/50 text-white/90 hover:bg-black/70"
-          : "bg-black/20 text-white/50 hover:bg-black/40"
-      }`}
-      onClick={toggleAutoRoute}
-      title={autoRoute
-        ? "Auto-route is on \u2014 connections route around devices automatically.\nClick to disable for faster editing on large schematics."
-        : "Auto-route is off \u2014 connections use simple L-shapes.\nClick to enable automatic routing."}
-    >
-      {autoRoute ? "\u26a1 Auto-Route" : "Auto-Route Off"}
-    </div>
-  );
-}
-
 function AutoRouteConfirmDialog() {
   const pending = useSchematicStore((s) => s.autoRouteConfirmPending);
   const confirm = useSchematicStore((s) => s.confirmAutoRouteOff);
@@ -1779,13 +1749,7 @@ function SchematicCanvas() {
         </div>
       )}
       {!printView && <CanvasOriginOverlay />}
-      <Background
-        variant={BackgroundVariant.Dots}
-        gap={GRID_SIZE}
-        size={1}
-        color={printView ? (isDark ? "#4b5563" : "#c1c7d2") : (isDark ? "#374151" : "#d4d4d4")}
-      />
-      <AutoRouteChip />
+      <Background variant={BackgroundVariant.Dots} gap={GRID_SIZE} size={1} color={isDark ? "#374151" : "#d4d4d4"} />
       <AutoRouteConfirmDialog />
       <RoutingDebugOverlay />
     </ReactFlow>

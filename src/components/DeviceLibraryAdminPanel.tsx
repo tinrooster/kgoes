@@ -22,6 +22,7 @@ import {
 import { useUiChromeStore } from "../uiChromeStore";
 import LoginDialog from "./LoginDialog";
 import DeviceLibraryAgentTab from "./DeviceLibraryAgentTab";
+import { isCloudPortalEnabled } from "../deployMode";
 
 type SortKey = "label" | "manufacturer" | "deviceType" | "source";
 type SourceFilter = "all" | "bundled" | "custom";
@@ -38,6 +39,7 @@ function sourceLabel(template: DeviceTemplate, customIds: Set<string>): string {
 }
 
 export default function DeviceLibraryAdminPanel() {
+  const cloudPortal = isCloudPortalEnabled();
   const open = useUiChromeStore((s) => s.deviceAdminOpen);
   const tab = useUiChromeStore((s) => s.deviceAdminTab);
   const focusTemplateId = useUiChromeStore((s) => s.deviceAdminFocusId);
@@ -250,7 +252,7 @@ export default function DeviceLibraryAdminPanel() {
     [addToast],
   );
 
-  if (!open) return null;
+  if (!cloudPortal || !open) return null;
 
   return (
     <>

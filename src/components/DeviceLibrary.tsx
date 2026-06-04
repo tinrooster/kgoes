@@ -14,6 +14,7 @@ import DeviceLibraryTemplateContextMenu, {
   type LibraryTemplateMenuState,
 } from "./DeviceLibraryTemplateContextMenu";
 import LoginDialog from "./LoginDialog";
+import { isCloudPortalEnabled } from "../deployMode";
 import { templateKey } from "../deviceTemplateActions";
 import { mergeDeviceLibraryTemplates, bundledTemplateKeys, isPureUserTemplate } from "../deviceLibraryMerge";
 import { useUiChromeStore } from "../uiChromeStore";
@@ -1088,6 +1089,7 @@ function OwnedGearTab({ query }: { query: string }) {
 }
 
 export default function DeviceLibrary() {
+  const cloudPortal = isCloudPortalEnabled();
   const customTemplates = useSchematicStore((s) => s.customTemplates);
   const ownedGear = useSchematicStore((s) => s.ownedGear);
   const removeCustomTemplate = useSchematicStore((s) => s.removeCustomTemplate);
@@ -1773,10 +1775,12 @@ export default function DeviceLibrary() {
         menu={templateMenu}
         onClose={() => setTemplateMenu(null)}
         groups={customTemplateGroups}
-        onOpenAdmin={(template) => openAdminPanel(template)}
-        onLoginRequired={() => setShowLoginDialog(true)}
+        onOpenAdmin={cloudPortal ? (template) => openAdminPanel(template) : undefined}
+        onLoginRequired={cloudPortal ? () => setShowLoginDialog(true) : undefined}
       />
-      <LoginDialog open={showLoginDialog} onClose={() => setShowLoginDialog(false)} />
+      {cloudPortal && (
+        <LoginDialog open={showLoginDialog} onClose={() => setShowLoginDialog(false)} />
+      )}
     </div>
   );
 }
