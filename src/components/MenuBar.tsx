@@ -25,6 +25,7 @@ import AboutDialog from "./AboutDialog";
 import PreferencesDialog from "./PreferencesDialog";
 import RoomDistancesDialog from "./RoomDistancesDialog";
 import UserMenuButton from "./UserMenuButton";
+import UndoHistoryControls from "./UndoHistoryControls";
 import SchematicBrowser from "./SchematicBrowser";
 import LoginDialog from "./LoginDialog";
 import { checkSession, saveSchematicToCloud, updateSchematicInCloud } from "../templateApi";
@@ -1262,38 +1263,7 @@ export default function MenuBar() {
             <TiIcon name="arrowSwap" size={12} color="currentColor" />
           </button>
           <div style={{ width: 1, height: 20, background: "var(--ti-divider)", margin: "0 4px" }} />
-          <button
-            title="Undo (Ctrl+Z)"
-            disabled={undoSize === 0}
-            onClick={undo}
-            style={{
-              width: 30, height: 30, display: "grid", placeItems: "center",
-              border: 0, background: "transparent", borderRadius: 7,
-              color: "var(--ti-ink-2)", cursor: undoSize === 0 ? "not-allowed" : "pointer",
-              opacity: undoSize === 0 ? 0.3 : 1, transition: "background 100ms",
-            }}
-            className="hover:bg-[var(--ti-surface-2,#f0eeea)]"
-          >
-            <svg viewBox="0 0 16 16" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 7h7a3 3 0 0 1 0 6H9" /><path d="M6 4 3 7l3 3" />
-            </svg>
-          </button>
-          <button
-            title="Redo (Ctrl+Shift+Z)"
-            disabled={redoSize === 0}
-            onClick={redo}
-            style={{
-              width: 30, height: 30, display: "grid", placeItems: "center",
-              border: 0, background: "transparent", borderRadius: 7,
-              color: "var(--ti-ink-2)", cursor: redoSize === 0 ? "not-allowed" : "pointer",
-              opacity: redoSize === 0 ? 0.3 : 1, transition: "background 100ms",
-            }}
-            className="hover:bg-[var(--ti-surface-2,#f0eeea)]"
-          >
-            <svg viewBox="0 0 16 16" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M13 7H6a3 3 0 0 0 0 6h1" /><path d="M10 4l3 3-3 3" />
-            </svg>
-          </button>
+          <UndoHistoryControls variant="desktop" />
           <div style={{ width: 1, height: 20, background: "var(--ti-divider)", margin: "0 4px" }} />
           <button
             onClick={toggleTheme}
@@ -1339,28 +1309,7 @@ export default function MenuBar() {
         <div className="fixed inset-0 z-[100] bg-[var(--color-surface)] flex flex-col">
           {/* Overlay header: undo/redo + close */}
           <div className="flex items-center justify-between px-3 h-12 border-b border-[var(--color-border)] shrink-0">
-            <div className="flex items-center gap-2">
-              <button
-                disabled={undoSize === 0}
-                onClick={undo}
-                className="p-2 rounded hover:bg-[var(--color-surface-hover)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[var(--color-text)]"
-              >
-                <svg viewBox="0 0 16 16" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 7h7a3 3 0 0 1 0 6H9" />
-                  <path d="M6 4 3 7l3 3" />
-                </svg>
-              </button>
-              <button
-                disabled={redoSize === 0}
-                onClick={redo}
-                className="p-2 rounded hover:bg-[var(--color-surface-hover)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[var(--color-text)]"
-              >
-                <svg viewBox="0 0 16 16" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M13 7H6a3 3 0 0 0 0 6h1" />
-                  <path d="M10 4l3 3-3 3" />
-                </svg>
-              </button>
-            </div>
+            <UndoHistoryControls variant="mobile" />
             <span className="text-sm font-semibold text-[var(--color-text-heading)]">Menu</span>
             <div className="flex items-center gap-1">
               <button

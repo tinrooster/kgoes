@@ -12,6 +12,7 @@ import {
 } from "./store";
 import { useSidebarStore } from "./sidebarStore";
 import { LEGACY_SCHEMATIC_PAGE_ID } from "./drawingPageUtils";
+import { listSchematicUndoHistory } from "./schematicUndo";
 import type { SchematicFile, TrackItLinkContext } from "./types";
 
 /** Mirrors trackIT `TrackItFocusPagePayload` (Pack tab sheet deep links). */
@@ -141,6 +142,31 @@ export function isTrackItPopupOpener(): boolean {
     return !!(typeof window !== "undefined" && window.opener && !window.opener.closed);
   } catch {
     return false;
+  }
+}
+
+/** Push current schematic JSON to trackIT opener (Plant drawing panel). */
+export function notifyTrackItParentUndoState(): void {
+  if (!isTrackItPopupOpener()) return;
+  try {
+    const store = useSchematicStore.getState();
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(
+        {
+          type: "KGO_ES_UNDO_STATE",
+          payload: {
+            canUndo: store.canUndo(),
+            canRedo: store.canRedo(),
+            undoSize: store.undoSize,
+            redoSize: store.redoSize,
+            undoHistory: listSchematicUndoHistory(8),
+          },
+        },
+        "*",
+      );
+    }
+  } catch {
+    // cross-origin opener
   }
 }
 

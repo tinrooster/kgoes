@@ -77,6 +77,9 @@ type TrackItInboundMessage =
   | { type: "TRACKIT_TOWER_FOCUS"; payload: TrackItTowerFocusPayload }
   | { type: "TRACKIT_FOCUS_PAGE"; payload: TrackItFocusPagePayload }
   | { type: "TRACKIT_LOCATION_SNAPSHOT"; payload: TrackItLocationSnapshotPayload }
+  | { type: "TRACKIT_UNDO" }
+  | { type: "TRACKIT_UNDO_TO_DEPTH"; depth: number }
+  | { type: "TRACKIT_REDO" }
   | { type: typeof APPEARANCE_SYNC_MESSAGE; payload: AppearanceSyncPayload };
 
 function isTrackItInbound(data: unknown): data is TrackItInboundMessage {
@@ -91,6 +94,9 @@ function isTrackItInbound(data: unknown): data is TrackItInboundMessage {
     t === "TRACKIT_TOWER_FOCUS" ||
     t === "TRACKIT_FOCUS_PAGE" ||
     t === "TRACKIT_LOCATION_SNAPSHOT" ||
+    t === "TRACKIT_UNDO" ||
+    t === "TRACKIT_UNDO_TO_DEPTH" ||
+    t === "TRACKIT_REDO" ||
     t === APPEARANCE_SYNC_MESSAGE
   );
 }
@@ -361,6 +367,24 @@ export function startTrackItBridge(): void {
         "info",
         3000,
       );
+      return;
+    }
+
+    if (event.data.type === "TRACKIT_UNDO") {
+      useSchematicStore.getState().undo();
+      return;
+    }
+
+    if (event.data.type === "TRACKIT_UNDO_TO_DEPTH") {
+      const depth = (event.data as { depth?: number }).depth;
+      if (typeof depth === "number" && depth > 0) {
+        useSchematicStore.getState().undoToDepth(depth);
+      }
+      return;
+    }
+
+    if (event.data.type === "TRACKIT_REDO") {
+      useSchematicStore.getState().redo();
       return;
     }
 

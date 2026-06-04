@@ -6,8 +6,12 @@ import ErrorBoundary from "./components/ErrorBoundary.tsx";
 import App from "./App.tsx";
 import { refreshDevBuildHash } from "./buildVersion";
 import { startTrackItBridge } from "./trackitBridge";
+import { setSchematicUndoStateListener } from "./schematicUndo";
+import { notifyTrackItParentUndoState } from "./trackitIntegration";
 
 startTrackItBridge();
+setSchematicUndoStateListener(() => notifyTrackItParentUndoState());
+notifyTrackItParentUndoState();
 
 if (import.meta.env.DEV) {
   void refreshDevBuildHash();
