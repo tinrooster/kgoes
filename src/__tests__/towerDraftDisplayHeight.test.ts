@@ -30,6 +30,12 @@ describe("towerDraftLayoutHeight", () => {
     expect(resolveTowerDraftLayoutHeightFt(polluted, null, "profile")).toBe(SUTRO_CATALOG_TOP_FT_AGL);
   });
 
+  it("ignores generic 150 ft page height for Sutro profile", () => {
+    const starter = { ...sutroPage, towerHeightFtAgl: 150 };
+    expect(resolveCatalogTowerHeightFtAgl(starter, null)).toBe(977);
+    expect(resolveTowerDraftLayoutHeightFt(starter, null, "profile")).toBe(977);
+  });
+
   it("face views cap Sutro at 800 ft", () => {
     expect(resolveTowerDraftLayoutHeightFt(sutroPage, null, "all-faces")).toBe(
       SUTRO_FACE_LAYOUT_HEIGHT_FT_AGL,

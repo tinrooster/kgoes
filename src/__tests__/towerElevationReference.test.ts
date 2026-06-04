@@ -22,6 +22,15 @@ describe("pickElevationReferenceUrl", () => {
       ),
     ).toBe("https://cdn.example/tower.png");
   });
+
+  it("prefers trackIT context over stale absolute ES host for same mountaintop path", () => {
+    expect(
+      pickElevationReferenceUrl(
+        "https://kgoes.vercel.app/assets/mountaintops/sutro/sutro-elevation-ref.png",
+        "https://trackit.example/assets/mountaintops/sutro/sutro-elevation-ref.png",
+      ),
+    ).toBe("https://trackit.example/assets/mountaintops/sutro/sutro-elevation-ref.png");
+  });
 });
 
 describe("mergeTowerElevationReference", () => {

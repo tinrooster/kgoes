@@ -8,6 +8,11 @@ export const SUTRO_CATALOG_TOP_FT_AGL = 977;
 
 const DEFAULT_TOWER_HEIGHT_FT_AGL = 150;
 
+/** True when stored tower-draft page still uses the generic 150 ft starter scale. */
+export function isGenericTowerDraftHeight(towerHeightFtAgl: number | undefined): boolean {
+  return towerHeightFtAgl == null || towerHeightFtAgl <= DEFAULT_TOWER_HEIGHT_FT_AGL;
+}
+
 function sanitizeTowerHeightFtAgl(
   raw: number | undefined,
   page: TowerDraftPage,
@@ -25,11 +30,15 @@ export function resolveCatalogTowerHeightFtAgl(
   page: TowerDraftPage,
   context?: TrackItTowerSiteContext | null,
 ): number {
+  const sutro = isSutroTowerDraftContext(page, context);
   for (const raw of [context?.towerHeightFt, page.towerHeightFtAgl]) {
     const ft = sanitizeTowerHeightFtAgl(raw, page, context);
-    if (ft > 0) return ft;
+    if (ft > 0) {
+      if (sutro && isGenericTowerDraftHeight(ft)) continue;
+      return ft;
+    }
   }
-  if (isSutroTowerDraftContext(page, context)) return SUTRO_CATALOG_TOP_FT_AGL;
+  if (sutro) return SUTRO_CATALOG_TOP_FT_AGL;
   return DEFAULT_TOWER_HEIGHT_FT_AGL;
 }
 

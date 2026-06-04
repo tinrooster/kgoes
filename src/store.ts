@@ -117,8 +117,7 @@ import {
   towerDraftGroundY,
   towerDraftTowerCenterX,
 } from "./towerDraftUtils";
-import { resolveCatalogTowerHeightFtAgl } from "./towerDraftDisplayHeight";
-import { pickElevationReferenceUrl } from "./towerElevationReference";
+import { normalizeTowerDraftPages } from "./towerDraftPageNormalize";
 import {
   blockSlotNumbers,
   formatCableNumber,
@@ -5984,7 +5983,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       for (const n of nodes) {
         if (n.type === "device") deviceDataMap.set(n.id, n.data as DeviceData);
       }
-      const pages = reconcileShelfPlacementsForPages(data.pages ?? [], deviceDataMap);
+      let pages = reconcileShelfPlacementsForPages(data.pages ?? [], deviceDataMap);
+      pages = normalizeTowerDraftPages(pages, get().trackItTowerContext);
       // Always apply colors — if file has none, reset to defaults
       const colors = data.signalColors ?? {};
       applySignalColors(colors);
@@ -6221,49 +6221,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     if (trackItTowerContext) {
       const ctxRef = trackItTowerContext.elevationReferenceImage;
       if (trackItTowerContext.towerHeightFt || ctxRef?.url) {
-        const pages = get().pages;
-        let pagesChanged = false;
-        const nextPages = pages.map((p) => {
-          if (p.type !== "tower-draft") return p;
-          const td = p as TowerDraftPage;
-          let next = td;
-          const catalogH = resolveCatalogTowerHeightFtAgl(td, trackItTowerContext);
-          if (catalogH > 0 && Math.abs(td.towerHeightFtAgl - catalogH) > 1) {
-            next = { ...next, towerHeightFtAgl: catalogH };
-            pagesChanged = true;
-          }
-          if (ctxRef?.url) {
-            const mergedRef = {
-              ...ctxRef,
-              ...td.elevationReferenceImage,
-              url:
-                pickElevationReferenceUrl(td.elevationReferenceImage?.url, ctxRef.url) ??
-                ctxRef.url,
-              detailUrl: pickElevationReferenceUrl(
-                td.elevationReferenceImage?.detailUrl,
-                ctxRef.detailUrl,
-              ),
-              imageAspectRatio:
-                td.elevationReferenceImage?.imageAspectRatio ?? ctxRef.imageAspectRatio,
-              fullBleed: td.elevationReferenceImage?.fullBleed ?? ctxRef.fullBleed,
-              contentScale: td.elevationReferenceImage?.contentScale ?? ctxRef.contentScale,
-              opacity: td.elevationReferenceImage?.opacity ?? ctxRef.opacity,
-              blendMode: td.elevationReferenceImage?.blendMode ?? ctxRef.blendMode,
-            };
-            const prevJson = JSON.stringify(td.elevationReferenceImage ?? null);
-            const nextJson = JSON.stringify(mergedRef);
-            if (prevJson !== nextJson) {
-              next = {
-                ...next,
-                elevationReferenceImage: mergedRef,
-                polylines: td.elevationReferenceImage?.url ? td.polylines : [],
-              };
-              pagesChanged = true;
-            }
-          }
-          return next;
-        });
-        if (pagesChanged) patch.pages = nextPages;
+        const nextPages = normalizeTowerDraftPages(get().pages, trackItTowerContext);
+        if (nextPages !== get().pages) patch.pages = nextPages;
       }
     }
     set(patch);
@@ -6480,6 +6439,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       if (n.type === "device") importDeviceDataMap.set(n.id, n.data as DeviceData);
     }
     let importPages = reconcileShelfPlacementsForPages(data.pages ?? [], importDeviceDataMap);
+    importPages = normalizeTowerDraftPages(importPages, get().trackItTowerContext);
     if (!importPages.some((p) => p.type === "drawing")) {
       importPages = [createDrawingPage("Drawing", "drawing-1", { nodes, edges }), ...importPages];
     }

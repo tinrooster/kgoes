@@ -53,9 +53,23 @@ export function isAbsoluteHttpUrl(url: string): boolean {
   return /^https?:\/\//i.test(url.trim());
 }
 
+/** Pathname for relative or absolute mountaintop asset URLs (for deduping hosts). */
+export function mountaintopAssetPathname(url: string): string | null {
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("/")) return trimmed.split("?")[0] ?? trimmed;
+  try {
+    return new URL(trimmed).pathname;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Prefer absolute trackIT asset URLs over relative `/assets/…` paths stored on the page.
- * KGO-ES is hosted separately; relative paths resolve on the ES origin and 404.
+ * KGO-ES is hosted separately; relative paths resolve on the ES origin and 404 unless
+ * the asset is also published under kgoes/public. When page + context refer to the same
+ * mountaintop file, prefer context (trackIT origin) over a stale absolute page URL on ES.
  */
 export function pickElevationReferenceUrl(
   pageUrl?: string | null,
@@ -63,6 +77,20 @@ export function pickElevationReferenceUrl(
 ): string | undefined {
   const page = pageUrl?.trim() || undefined;
   const ctx = ctxUrl?.trim() || undefined;
+  const pagePath = page ? mountaintopAssetPathname(page) : null;
+  const ctxPath = ctx ? mountaintopAssetPathname(ctx) : null;
+  const sameMountaintopAsset =
+    !!pagePath &&
+    !!ctxPath &&
+    pagePath === ctxPath &&
+    pagePath.includes("/assets/mountaintops/");
+
+  if (sameMountaintopAsset) {
+    if (ctx && isAbsoluteHttpUrl(ctx)) return ctx;
+    if (page && isAbsoluteHttpUrl(page)) return page;
+    return ctx ?? page;
+  }
+
   if (page && isAbsoluteHttpUrl(page)) return page;
   if (ctx && isAbsoluteHttpUrl(ctx)) return ctx;
   if (page?.startsWith("/assets/") && ctx && isAbsoluteHttpUrl(ctx)) return ctx;
