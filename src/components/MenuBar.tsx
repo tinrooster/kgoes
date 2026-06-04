@@ -337,7 +337,10 @@ export default function MenuBar() {
   }, []);
 
   const trackItLinked = isTrackItDrawingLinked();
-  const projectChipLabel = trackItLink?.dwgNumber?.trim() || "GenericENGTruck";
+  const projectChipLabel =
+    trackItLink?.dwgNumber?.trim() ||
+    trackItLink?.drawingName?.trim() ||
+    schematicName;
   const activeDrawingPage = resolveActiveDrawingPage(activePage, pages);
   const projectChipDisplay =
     activeDrawingPage?.label ?? projectChipLabel;

@@ -118,6 +118,7 @@ import {
   towerDraftTowerCenterX,
 } from "./towerDraftUtils";
 import { resolveCatalogTowerHeightFtAgl } from "./towerDraftDisplayHeight";
+import { pickElevationReferenceUrl } from "./towerElevationReference";
 import {
   blockSlotNumbers,
   formatCableNumber,
@@ -6235,7 +6236,13 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
             const mergedRef = {
               ...ctxRef,
               ...td.elevationReferenceImage,
-              url: td.elevationReferenceImage?.url?.trim() || ctxRef.url,
+              url:
+                pickElevationReferenceUrl(td.elevationReferenceImage?.url, ctxRef.url) ??
+                ctxRef.url,
+              detailUrl: pickElevationReferenceUrl(
+                td.elevationReferenceImage?.detailUrl,
+                ctxRef.detailUrl,
+              ),
               imageAspectRatio:
                 td.elevationReferenceImage?.imageAspectRatio ?? ctxRef.imageAspectRatio,
               fullBleed: td.elevationReferenceImage?.fullBleed ?? ctxRef.fullBleed,
