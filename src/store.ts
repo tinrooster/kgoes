@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { layoutRackPositions } from "./rackLayout";
+import { layoutRackPositions, inferGridColumns, rackLayoutReverseOrder } from "./rackLayout";
+import { defaultRackElevationViewports } from "./rackElevationViewportUtils";
 import { getDevicesInRoom } from "./rackLink";
 import {
   applyRackFillOrderPreset,
@@ -14,9 +15,15 @@ import {
 import { upgradeJackFieldNodesForPages } from "./rackJackFieldDevice";
 import {
   buildHubPortPairEdges,
-  layoutHubJackFieldsInRoom,
-  resolveHubDrawingRoomId,
+  layoutHubJackFieldsForDrawing,
+  stripHubJackFieldEdges,
 } from "./hubDrawingLayout";
+import type { CableSegment } from "./topology/domain/types";
+import {
+  collectHubJackFieldBindings,
+  hubEdgesFromMatrixSegments,
+  resolveHubMatrixPair,
+} from "./topology/adapters/hubMatrix";
 import { pushLibraryBackup } from "./libraryTemplateBackup";
 import {
   applyNodeChanges,
@@ -48,6 +55,7 @@ import type {
   TowerDraftPlacement,
   DrawingPage,
   DrawingViewportPreset,
+  RackElevationViewportPreset,
   TitleBlock,
   TitleBlockLayout,
   TemplatePreset,
@@ -86,6 +94,7 @@ import {
   ensureDrawingPageGraphs,
   isDrawingCanvasActive,
   LEGACY_SCHEMATIC_PAGE_ID,
+  mergeHubGraphIntoDrawingPages,
   persistActiveDrawingGraph,
   resolveActiveDrawingPage,
   stripEdgesForPersist,
@@ -955,6 +964,13 @@ interface SchematicState {
     pageId: string,
     options?: import("./rackLayout").LayoutRackPositionsOptions,
   ) => void;
+  addRackElevationViewport: (pageId: string, preset: Omit<RackElevationViewportPreset, "id">) => string;
+  updateRackElevationViewport: (
+    pageId: string,
+    viewportId: string,
+    patch: Partial<RackElevationViewportPreset>,
+  ) => void;
+  removeRackElevationViewport: (pageId: string, viewportId: string) => void;
   /** Pan/zoom the rack canvas to one rack (from sidebar / list). */
   rackFocusRequest: { pageId: string; rackId: string } | null;
   requestRackFocus: (pageId: string, rackId: string) => void;
@@ -983,13 +999,20 @@ interface SchematicState {
   setSelectedCrossLinkId: (linkId: string | null) => void;
   /** Spread datacom hub jack-field devices in linked drawing room(s); optional port-pair wiring. */
   relayoutHubDrawing: (pageId: string, options?: { wirePortPairs?: boolean }) => void;
+  /** Sync matrix-view port patches to schematic hub jack-field edges for one satellite rack. */
+  syncHubMatrixSegments: (
+    pageId: string,
+    masterRackId: string,
+    destRackId: string,
+    segments: CableSegment[],
+  ) => void;
   /** Apply a facility distribution preset (jack fields + trunk cross-links). */
   applyRackDistributionPreset: (
     pageId: string,
     presetId: string,
     options: TowerDatacomHubApplyOptions | RackFillOrderApplyOptions,
   ) => void;
-  updateRackElevationPage: (pageId: string, patch: Partial<Pick<RackElevationPage, "showTrunkCallouts" | "label">>) => void;
+  updateRackElevationPage: (pageId: string, patch: Partial<Pick<RackElevationPage, "showTrunkCallouts" | "label" | "rackLayoutReverseOrder" | "rackLayoutSerpentine">>) => void;
   /** Rebalance half-rack sides and clear stale placement flags after device rack metadata changes. */
   syncRackPlacementsForDevice: (deviceNodeId: string) => void;
 
@@ -1177,6 +1200,11 @@ function nextDrawingPageId(): string {
 let drawingViewportIdCounter = 0;
 function nextDrawingViewportId(): string {
   return `drawvp-${++drawingViewportIdCounter}`;
+}
+
+let rackElevationViewportIdCounter = 0;
+function nextRackElevationViewportId(): string {
+  return `rackvp-${++rackElevationViewportIdCounter}`;
 }
 
 let viewportIdCounter = 0;
@@ -4624,7 +4652,16 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const state = get();
     pushUndo({ nodes: state.nodes, edges: state.edges });
     const id = nextRackPageId();
-    const page: RackElevationPage = { id, label, type: "rack-elevation", racks: [], placements: [], accessories: [], crossLinks: [] };
+    const page: RackElevationPage = {
+      id,
+      label,
+      type: "rack-elevation",
+      racks: [],
+      placements: [],
+      accessories: [],
+      crossLinks: [],
+      viewports: defaultRackElevationViewports(),
+    };
     set({ pages: [...state.pages, page], activePage: id, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
     return id;
@@ -5622,7 +5659,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     if (!page || page.racks.length < 2) return;
     pushUndo({ nodes: state.nodes, edges: state.edges });
     const maxHeightU = page.racks.reduce((m, r) => Math.max(m, r.heightU), 0);
-    const posById = layoutRackPositions(page.racks, { maxHeightU, ...options });
+    const serpentineRows = options?.serpentineRows ?? rackLayoutReverseOrder(page);
+    const posById = layoutRackPositions(page.racks, { maxHeightU, serpentineRows, ...options });
     set({
       pages: mapElevationPage(state.pages, pageId, (p) => ({
         ...p,
@@ -5630,6 +5668,57 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
           const pos = posById.get(r.id);
           return pos ? { ...r, position: pos } : r;
         }),
+        ...(options?.serpentineRows != null
+          ? { rackLayoutReverseOrder: options.serpentineRows, rackLayoutSerpentine: undefined }
+          : {}),
+      })),
+      undoSize: schematicUndoSize(),
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+  },
+
+  addRackElevationViewport: (pageId, preset) => {
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    const id = nextRackElevationViewportId();
+    const entry: RackElevationViewportPreset = { ...preset, id };
+    set({
+      pages: mapElevationPage(state.pages, pageId, (p) => ({
+        ...p,
+        viewports: [...(p.viewports ?? defaultRackElevationViewports()), entry],
+      })),
+      undoSize: schematicUndoSize(),
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+    return id;
+  },
+
+  updateRackElevationViewport: (pageId, viewportId, patch) => {
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    set({
+      pages: mapElevationPage(state.pages, pageId, (p) => ({
+        ...p,
+        viewports: (p.viewports ?? defaultRackElevationViewports()).map((v) =>
+          v.id === viewportId ? { ...v, ...patch } : v,
+        ),
+      })),
+      undoSize: schematicUndoSize(),
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+  },
+
+  removeRackElevationViewport: (pageId, viewportId) => {
+    if (viewportId === "overview") return;
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    set({
+      pages: mapElevationPage(state.pages, pageId, (p) => ({
+        ...p,
+        viewports: (p.viewports ?? defaultRackElevationViewports()).filter((v) => v.id !== viewportId),
       })),
       undoSize: schematicUndoSize(),
       redoSize: 0,
@@ -5741,34 +5830,17 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
     pushUndo({ nodes: state.nodes, edges: state.edges });
 
-    const layoutByNode = new Map<string, { x: number; y: number }>();
-    const fieldsByRoom = new Map<string, typeof jackFields>();
-    for (const jf of jackFields) {
-      const rack = page.racks.find((r) => r.id === jf.placement.rackId);
-      const roomId = resolveHubDrawingRoomId(rack, masterRack);
-      if (!roomId) continue;
-      const list = fieldsByRoom.get(roomId) ?? [];
-      list.push(jf);
-      fieldsByRoom.set(roomId, list);
-    }
-    if (fieldsByRoom.size === 0) {
-      get().addToast(
-        "Link the master rack to a Drawing room (double-click the room → rack link, or 🔗 on SR01)",
-        "info",
-      );
+    const { layoutByNode, hubRoomId, placedInLinkedRoom } = layoutHubJackFieldsForDrawing({
+      jackFields,
+      racks: page.racks,
+      masterRackId,
+      masterRack,
+      plan: page.distributionPlan,
+    });
+    if (layoutByNode.size === 0) {
+      get().addToast("No jack-field devices to place on Drawing", "info");
       return;
     }
-    for (const [, fields] of fieldsByRoom) {
-      const roomLayout = layoutHubJackFieldsInRoom({
-        jackFields: fields,
-        racks: page.racks,
-        masterRackId,
-        plan: page.distributionPlan,
-      });
-      for (const [id, pos] of roomLayout) layoutByNode.set(id, pos);
-    }
-
-    const hubRoomId = masterRack?.linkedRoomId;
     let nodes = state.nodes.map((n) => {
       if (n.type !== "device") return n;
       const pos = layoutByNode.get(n.id);
@@ -5782,35 +5854,112 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
     nodes = upgradeJackFieldNodesForPages(nodes, [page]);
 
+    // Refresh jack field list after port upgrades (wire uses passthrough port ids).
+    const jackFieldsForWire = jackPlacements
+      .map((pl) => {
+        const node = nodes.find((n) => n.id === pl.deviceNodeId && n.type === "device");
+        if (!node) return null;
+        return {
+          deviceNodeId: pl.deviceNodeId,
+          deviceData: node.data as DeviceData,
+          placement: pl,
+        };
+      })
+      .filter((jf): jf is NonNullable<typeof jf> => jf != null);
+
     let edges = state.edges;
-    let wireAdded = 0;
+    const jackIdSet = new Set(jackPlacements.map((p) => p.deviceNodeId));
     if (options?.wirePortPairs !== false && page.distributionPlan.fanout?.mode === "port-pair") {
+      edges = stripHubJackFieldEdges(edges, jackIdSet);
+    }
+    let wireAdded = 0;
+    let wireSkipped = 0;
+    let drewTrunkLines = false;
+    const destJackCount = jackFieldsForWire.filter((jf) => jf.placement.rackId !== masterRackId).length;
+    if (options?.wirePortPairs !== false && page.distributionPlan.fanout?.mode === "port-pair" && jackFieldsForWire.length > 0) {
       const wire = buildHubPortPairEdges({
         nodes,
-        jackFields,
+        jackFields: jackFieldsForWire,
         racks: page.racks,
         masterRackId,
         plan: page.distributionPlan,
         existingEdges: edges,
         nextEdgeId,
       });
+      wireSkipped = wire.skipped;
+      drewTrunkLines = wire.drewTrunkLines;
       if (wire.edges.length > 0) {
         edges = [...edges, ...wire.edges];
         wireAdded = wire.added;
       }
     }
 
-    set({ nodes, edges, undoSize: schematicUndoSize(), redoSize: 0 });
+    const jackNodeIds = jackPlacements.map((p) => p.deviceNodeId);
+    const pages = mergeHubGraphIntoDrawingPages(state.pages, nodes, edges, jackNodeIds);
+
+    set({ nodes, edges, pages, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
-    const parts = [`Laid out ${layoutByNode.size} jack-field device(s) in drawing`];
+    const parts = [`Placed ${layoutByNode.size} EJF device(s) on Drawing`];
     if (wireAdded > 0) {
-      parts.push(`${wireAdded} new run(s)`);
+      parts.push(
+        drewTrunkLines
+          ? `${wireAdded} trunk line(s)`
+          : `${wireAdded} cable run(s)`,
+      );
     } else if (page.distributionPlan.fanout?.mode !== "port-pair") {
-      parts.push("no schematic runs (fanout is trunk-per-dest — set Port-pair in preset)");
+      parts.push("no runs (set Fan-out to Port-pair in distribution preset)");
+    } else if (destJackCount === 0) {
+      parts.push("no satellite jack fields on elevation — re-apply distribution preset");
+    } else if (wireSkipped > 0) {
+      parts.push(`0 new runs (${wireSkipped} port pairs skipped — re-apply preset)`);
     } else {
-      parts.push("no new runs (need satellite jack fields off the master rack)");
+      parts.push("cable runs already exist");
+    }
+    if (!placedInLinkedRoom) {
+      parts.push("optional: link Rack 1 to a room below to group devices");
     }
     get().addToast(parts.join(" · "), wireAdded > 0 ? "success" : "info");
+  },
+
+  syncHubMatrixSegments: (pageId, masterRackId, destRackId, segments) => {
+    const state = get();
+    const page = state.pages.find((p) => p.id === pageId && p.type === "rack-elevation") as
+      | import("./types").RackElevationPage
+      | undefined;
+    if (!page) return;
+
+    const prefix = page.distributionPlan?.layout?.designationPrefix ?? "RACK";
+    const bindings = collectHubJackFieldBindings(page, state.nodes, masterRackId, prefix);
+    const pair = resolveHubMatrixPair(
+      bindings,
+      page,
+      masterRackId,
+      destRackId,
+      page.distributionPlan ?? null,
+    );
+    if (!pair) {
+      get().addToast("Could not resolve jack-field pair for matrix sync", "info");
+      return;
+    }
+
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+
+    const nextEdges = hubEdgesFromMatrixSegments({
+      segments,
+      pair,
+      existingEdges: state.edges,
+      nextEdgeId,
+    });
+
+    const jackNodeIds = bindings.map((b) => b.deviceNodeId);
+    const pages = mergeHubGraphIntoDrawingPages(state.pages, state.nodes, nextEdges, jackNodeIds);
+
+    set({ edges: nextEdges, pages, undoSize: schematicUndoSize(), redoSize: 0 });
+    get().saveToLocalStorage();
+    get().addToast(
+      `Matrix: ${segments.length} patch(es) synced to Drawing for ${pair.destBinding.rackCode}`,
+      "success",
+    );
   },
 
   applyRackDistributionPreset: (pageId, presetId, options) => {
@@ -5835,52 +5984,38 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
           placement: () => nextPlacementId(),
         },
       );
-      updatedPage = hubOpts.distributionPlan
+      const hubPage = hubOpts.distributionPlan
         ? { ...hub.page, distributionPlan: hubOpts.distributionPlan }
         : hub.page;
 
       const removeIds = new Set(hub.removedJackDeviceNodeIds);
       const keptNodes = state.nodes.filter((n) => !removeIds.has(n.id));
-      const hubPage = hub.page;
       const plan = hubOpts.distributionPlan ?? hubPage.distributionPlan;
 
       const masterRack = hub.page.racks.find((r) => r.id === hubOpts.masterRackId);
-      const hubRoomId = masterRack?.linkedRoomId;
 
-      let jackNodes: DeviceNode[] = hub.jackFields.map((jf, i) => {
-        const rack = hub.page.racks.find((r) => r.id === jf.placement.rackId);
-        const linkedRoomId = resolveHubDrawingRoomId(rack, masterRack);
-        return {
-          id: jf.deviceNodeId,
-          type: "device" as const,
-          ...(linkedRoomId ? { parentId: linkedRoomId } : {}),
-          position: linkedRoomId ? { x: 64, y: 64 } : { x: -4000 - i * 24, y: -4000 },
-          data: jf.deviceData,
-        };
+      let jackNodes: DeviceNode[] = hub.jackFields.map((jf) => ({
+        id: jf.deviceNodeId,
+        type: "device" as const,
+        position: { x: 0, y: 0 },
+        data: jf.deviceData,
+      }));
+
+      const { layoutByNode, hubRoomId: layoutHubRoomId, placedInLinkedRoom } = layoutHubJackFieldsForDrawing({
+        jackFields: hub.jackFields,
+        racks: hub.page.racks,
+        masterRackId: hubOpts.masterRackId,
+        masterRack,
+        plan,
       });
-
-      const layoutByNode = new Map<string, { x: number; y: number }>();
-      const fieldsByRoom = new Map<string, typeof hub.jackFields>();
-      for (const jf of hub.jackFields) {
-        const rack = hub.page.racks.find((r) => r.id === jf.placement.rackId);
-        const roomId = resolveHubDrawingRoomId(rack, masterRack);
-        if (!roomId) continue;
-        const list = fieldsByRoom.get(roomId) ?? [];
-        list.push(jf);
-        fieldsByRoom.set(roomId, list);
-      }
-      for (const [, fields] of fieldsByRoom) {
-        const roomLayout = layoutHubJackFieldsInRoom({
-          jackFields: fields,
-          racks: hub.page.racks,
-          masterRackId: hubOpts.masterRackId,
-          plan,
-        });
-        for (const [id, pos] of roomLayout) layoutByNode.set(id, pos);
-      }
       jackNodes = jackNodes.map((n) => {
         const pos = layoutByNode.get(n.id);
-        return pos ? { ...n, position: pos } : n;
+        if (!pos) return n;
+        const inHubRoom = layoutHubRoomId && hub.jackFields.some((jf) => jf.deviceNodeId === n.id);
+        const { parentId: _drop, ...rest } = n;
+        return inHubRoom && layoutHubRoomId
+          ? { ...rest, position: pos, parentId: layoutHubRoomId }
+          : { ...rest, position: pos };
       });
 
       jackNodes = upgradeJackFieldNodesForPages(jackNodes, [hubPage]) as DeviceNode[];
@@ -5889,7 +6024,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
       let nextEdges = state.edges;
       let wireAdded = 0;
-      if (plan?.fanout?.mode === "port-pair" && fieldsByRoom.size > 0) {
+      let drewTrunkLines = false;
+      const hubJackIds = new Set(hub.jackFields.map((jf) => jf.deviceNodeId));
+      if (plan?.fanout?.mode === "port-pair" && hub.jackFields.length > 0) {
+        nextEdges = stripHubJackFieldEdges(nextEdges, hubJackIds);
         const wire = buildHubPortPairEdges({
           nodes: mergedNodes,
           jackFields: hub.jackFields,
@@ -5899,16 +6037,25 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
           existingEdges: nextEdges,
           nextEdgeId,
         });
+        drewTrunkLines = wire.drewTrunkLines;
         if (wire.edges.length > 0) {
           nextEdges = [...nextEdges, ...wire.edges];
           wireAdded = wire.added;
         }
       }
 
+      const jackNodeIds = hub.jackFields.map((jf) => jf.deviceNodeId);
+      const pagesWithHub = mergeHubGraphIntoDrawingPages(
+        mapElevationPage(state.pages, pageId, () => hubPage),
+        mergedNodes,
+        nextEdges,
+        jackNodeIds,
+      );
+
       set({
         nodes: mergedNodes,
         edges: nextEdges,
-        pages: mapElevationPage(state.pages, pageId, () => hubPage),
+        pages: pagesWithHub,
         undoSize: schematicUndoSize(),
         redoSize: 0,
       });
@@ -5918,7 +6065,14 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         summary += ` · ${layoutByNode.size} device(s) laid out in drawing`;
       }
       if (wireAdded > 0) {
-        summary += ` · ${wireAdded} run(s) wired`;
+        summary += drewTrunkLines
+          ? ` · ${wireAdded} trunk line(s) wired`
+          : ` · ${wireAdded} run(s) wired`;
+      } else if (plan?.fanout?.mode === "port-pair") {
+        summary += " · no new runs (check satellite jack fields on elevation)";
+      }
+      if (!placedInLinkedRoom && layoutByNode.size > 0) {
+        summary += " · EJF on Drawing canvas (link Rack 1 to a room to group)";
       }
 
       const link = state.trackItLink;
@@ -5941,7 +6095,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
             distributionPlan: pageAfter?.distributionPlan ?? opts.distributionPlan,
             schematicJson,
           },
-          window.location.origin,
+          "*",
         );
       }
       get().addToast(summary, "success");
@@ -6425,7 +6579,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     if (trackItLink?.measurementSystem) {
       get().setMeasurementSystem(trackItLink.measurementSystem);
     }
-    set({ trackItLink });
+    set({
+      trackItLink,
+      ...(trackItLink ? { fileHandle: null } : {}),
+    });
     setSchematicUndoScope(resolveSchematicUndoScope(get()));
     restoreSchematicUndoFromSession();
     syncUndoCounters();

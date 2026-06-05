@@ -1,5 +1,7 @@
 import type { DeviceData, TowerDraftPage, TrackItTowerSiteContext } from "./types";
 import { resolveDeviceLabel } from "./displayName";
+import { feedlineForDevice } from "./towerDraftFeedlines";
+import { towerFeedTypeShortLabel } from "./towerDraftFeedType";
 
 export type TowerDraftScheduleRow = {
   designation: string;
@@ -9,6 +11,9 @@ export type TowerDraftScheduleRow = {
   band: string;
   locationCode: string;
   nodeId: string;
+  feedlineEstFt: string;
+  feedlineType: string;
+  feedlineTo: string;
 };
 
 function bandFromDevice(data: DeviceData | undefined): string {
@@ -35,6 +40,7 @@ export function buildTowerDraftScheduleRows(
       const level = pl.plantLocationId ? levelById.get(pl.plantLocationId) : undefined;
       const az =
         data?.rfInstallation?.azimuthDeg ?? level?.azimuthDeg;
+      const feedline = feedlineForDevice(page, pl.deviceNodeId);
       return {
         designation: label,
         deviceType: data?.deviceType ?? "",
@@ -43,14 +49,39 @@ export function buildTowerDraftScheduleRows(
         band: bandFromDevice(data),
         locationCode: level?.code ?? "",
         nodeId: pl.deviceNodeId,
+        feedlineEstFt: feedline?.feedlineEstFt != null ? String(feedline.feedlineEstFt) : "",
+        feedlineType: towerFeedTypeShortLabel(feedline?.feedType, data?.deviceType),
+        feedlineTo: feedline?.feedlineToLabel ?? "",
       };
     });
 }
 
 export function towerDraftScheduleToCsv(rows: TowerDraftScheduleRow[]): string {
-  const header = ["Designation", "Device type", "Ft AGL", "Azimuth", "Band", "Location code", "Node ID"];
+  const header = [
+    "Designation",
+    "Device type",
+    "Ft AGL",
+    "Azimuth",
+    "Band",
+    "Location code",
+    "Node ID",
+    "Feedline ft est",
+    "Feedline type",
+    "Feedline to",
+  ];
   const lines = rows.map((r) =>
-    [r.designation, r.deviceType, r.mountHeightFtAgl, r.azimuthDeg, r.band, r.locationCode, r.nodeId]
+    [
+      r.designation,
+      r.deviceType,
+      r.mountHeightFtAgl,
+      r.azimuthDeg,
+      r.band,
+      r.locationCode,
+      r.nodeId,
+      r.feedlineEstFt,
+      r.feedlineType,
+      r.feedlineTo,
+    ]
       .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
       .join(","),
   );

@@ -7,6 +7,7 @@ import {
   guessMasterRackId,
   jackFieldSpec,
 } from "../rackDistributionPresets";
+import { buildDistributionPlanFromHubDialog } from "../distributionPlan";
 import type { RackElevationPage } from "../types";
 
 function mockPage(rackCount: number): RackElevationPage {
@@ -51,6 +52,49 @@ describe("applyTowerDatacomHubPreset", () => {
     expect(out.crossLinks).toHaveLength(2);
     expect(out.placements.filter((p) => p.distributionPresetRole === "jack-field")).toHaveLength(4);
     expect(out.showTrunkCallouts).toBe(true);
+  });
+
+  it("stacks master EJF with blank spacers (6 panels → 12U from bottomU)", () => {
+    const page = mockPage(3);
+    const masterId = guessMasterRackId(page.racks)!;
+    const distributionPlan = buildDistributionPlanFromHubDialog({
+      designationPrefix: "SR",
+      masterDesignation: "SR01",
+      gridColumns: 3,
+      rowCount: 1,
+      jackFieldBottomU: 30,
+      jackFieldPorts: 12,
+    });
+    let nodeN = 0;
+    let placeP = 0;
+    const hub = applyTowerDatacomHubPreset(
+      page,
+      {
+        masterRackId: masterId,
+        ethTrunkRackIds: [],
+        jackFieldPorts: 12,
+        jackFieldBottomU: 30,
+        distributionPlan,
+      },
+      {
+        accessory: () => "a1",
+        crossLink: () => "l1",
+        deviceNode: () => `n${++nodeN}`,
+        placement: () => `p${++placeP}`,
+      },
+    );
+    expect(distributionPlan.jackFields.panelCount).toBe(6);
+    const masterJacks = hub.page.placements
+      .filter((p) => p.rackId === masterId && p.distributionPresetRole === "jack-field")
+      .sort((a, b) => a.uPosition - b.uPosition);
+    expect(masterJacks[0]?.distributionPresetPanelIndex).toBe(1);
+    expect(masterJacks).toHaveLength(6);
+    expect(masterJacks.map((p) => p.uPosition)).toEqual([30, 32, 34, 36, 38, 40]);
+    const masterBlanks = hub.page.accessories
+      .filter((a) => a.rackId === masterId && a.distributionPresetRole === "blank-fill")
+      .sort((a, b) => a.uPosition - b.uPosition);
+    expect(masterBlanks.map((a) => a.uPosition)).toEqual([31, 33, 35, 37, 39, 41]);
+    expect(hub.page.placements.filter((p) => p.distributionPresetRole === "jack-field")).toHaveLength(8);
   });
 
   it("uses 48-port jack field height", () => {

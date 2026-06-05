@@ -14,6 +14,7 @@ import { activeReservedBlocks } from "../trackitNumberingUtils";
 import { isPersistedDrawingViewport } from "../drawingPageUtils";
 import { dispatchOpenViewportEditor } from "../drawingViewportEvents";
 import { useDrawingViewportActions } from "../hooks/useDrawingViewportActions";
+import AlignmentMenu from "./AlignmentMenu";
 
 function Chip({
   label, icon, active, badge, compact, onClick, title,
@@ -252,6 +253,7 @@ function KgoCanvasToolbar() {
           onClick={toggleCanvasInteractive}
           title={canvasInteractive ? "Canvas is interactive — click to unlock" : "Canvas is locked — click to unlock"}
         />
+        <AlignmentMenu variant="toolbar" />
         <button
           type="button"
           title={compactQuickActions ? "Show labeled quick actions" : "Show compact icon quick actions"}

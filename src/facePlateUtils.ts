@@ -122,6 +122,20 @@ export function autoLayoutPanelItems(
     });
   };
 
+  const layoutPatchGrid = (gridItems: FacePlateItem[], cols = 6) => {
+    const n = gridItems.length;
+    const rows = Math.ceil(n / cols);
+    gridItems.forEach((it, i) => {
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+      const rowY = rows <= 1 ? 50 : row === 0 ? 28 : 72;
+      positions[it.key] = {
+        x: snapFacePlateCoord(((col + 0.5) / cols) * 100, snap),
+        y: snapFacePlateCoord(rowY, snap),
+      };
+    });
+  };
+
   // Group signal items by section for multi-row patch panels
   const sections = new Map<string, FacePlateItem[]>();
   for (const it of signalItems) {
@@ -131,7 +145,15 @@ export function autoLayoutPanelItems(
   }
 
   const sectionKeys = [...sections.keys()];
-  sectionKeys.forEach((key, idx) => layoutRow(sections.get(key)!, idx, sectionKeys.length));
+  if (sectionKeys.length === 1 && signalItems.length > 6) {
+    layoutPatchGrid(signalItems, 6);
+  } else {
+    sectionKeys.forEach((key, idx) => {
+      const sectionItems = sections.get(key)!;
+      if (sectionItems.length > 6) layoutPatchGrid(sectionItems, 6);
+      else layoutRow(sectionItems, idx, sectionKeys.length);
+    });
+  }
 
   if (powerItems.length > 0) {
     powerItems.forEach((it, i) => {
@@ -203,6 +225,36 @@ export interface ResolvedFacePlatePort {
   sideTag?: string;
   x: number;
   y: number;
+}
+
+/**
+ * Pixel centers for ports on a narrow rack slot (e.g. 1U patch panel).
+ * Uses two rows of six when there are more than eight ports.
+ */
+export function rackFacePlatePortCenters(
+  portCount: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  labelReservePx = 14,
+): { cx: number; cy: number }[] {
+  if (portCount <= 0) return [];
+  const cols = portCount > 6 ? 6 : portCount;
+  const rows = Math.ceil(portCount / cols);
+  const top = y + labelReservePx;
+  const bandH = Math.max(6, h - labelReservePx - 2);
+  const out: { cx: number; cy: number }[] = [];
+  for (let i = 0; i < portCount; i += 1) {
+    const row = Math.floor(i / cols);
+    const col = i % cols;
+    const rowY = rows <= 1 ? 0.5 : row === 0 ? 0.28 : 0.72;
+    out.push({
+      cx: x + ((col + 0.5) / cols) * w,
+      cy: top + rowY * bandH,
+    });
+  }
+  return out;
 }
 
 /** Ports to draw on a rack face (front or rear elevation). */

@@ -68,6 +68,7 @@ import {
   resolveTowerElevationReference,
   towerElevationReferenceLayout,
 } from "../towerElevationReference";
+import { feedlineStrokeDash } from "../towerDraftFeedType";
 import {
   computeGlyphViewportBoost,
   computeTallTowerInitialViewport,
@@ -935,16 +936,29 @@ export default function TowerDraftRenderer({
             />
           )}
 
-          {page.polylines.map((pl) => {
+          {page.polylines
+            .filter((pl) => !pl.feedlineFromNodeId || isProfile)
+            .map((pl) => {
             const selected = pl.id === selectedPolylineId;
+            const linkedPlacement =
+              pl.feedlineFromNodeId &&
+              page.placements.find((p) => p.deviceNodeId === pl.feedlineFromNodeId);
+            const linkedSelected =
+              linkedPlacement != null && linkedPlacement.id === selectedPlacementId;
+            const feedlineActive = selected || linkedSelected;
+            const dash =
+              pl.lineStyle != null
+                ? towerDraftPolylineDash(pl.lineStyle)
+                : feedlineStrokeDash(pl.feedType);
             return pl.points.length >= 2 ? (
               <polyline
                 key={pl.id}
                 points={pl.points.map((p) => `${p.x},${p.y}`).join(" ")}
                 fill="none"
-                stroke={selected ? "var(--ti-accent)" : pl.strokeColor ?? "var(--ti-faint)"}
-                strokeWidth={(pl.strokeWidth ?? 1.5) + (selected ? 0.75 : 0)}
-                strokeDasharray={towerDraftPolylineDash(pl.lineStyle)}
+                stroke={feedlineActive ? "var(--ti-accent)" : pl.strokeColor ?? "var(--ti-faint)"}
+                strokeWidth={(pl.strokeWidth ?? 1.5) + (feedlineActive ? 0.75 : 0)}
+                strokeDasharray={dash}
+                opacity={pl.feedlineFromNodeId ? (feedlineActive ? 0.95 : 0.55) : 1}
                 vectorEffect="non-scaling-stroke"
                 style={{ cursor: drawMode ? "crosshair" : "pointer" }}
                 onClick={(ev) => {

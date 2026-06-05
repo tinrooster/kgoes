@@ -796,6 +796,8 @@ export interface RackDevicePlacement {
   /** When set, placement was created by a distribution preset (supports replace-on-reapply). */
   distributionPresetId?: string;
   distributionPresetRole?: "jack-field";
+  /** 1-based EJF panel index on stacked master jack fields. */
+  distributionPresetPanelIndex?: number;
 }
 
 /** A front + rear pair whose summed depth exceeds the rack's internal depth at overlapping U positions. */
@@ -847,6 +849,9 @@ export interface RackCrossLink {
   distributionPresetRole?: "eth-trunk" | "fiber-trunk";
 }
 
+/** Config-driven datacom layout (see docs/distribution-plan-roadmap.md). */
+export type { DistributionPlan } from "./distributionPlan";
+
 export interface RackElevationPage {
   id: string;
   label: string;
@@ -860,6 +865,23 @@ export interface RackElevationPage {
   showTrunkCallouts?: boolean;
   /** Last rack-fill-order preset summary (procurement BOM). */
   fillOrderSummary?: FillOrderSummary;
+  /** Site-local distribution + numbering + length model for trackIT sync. */
+  distributionPlan?: import("./distributionPlan").DistributionPlan;
+  /** When true, grid layout runs the bottom row right-to-left (12→7 in a 2×6 site). */
+  rackLayoutReverseOrder?: boolean;
+  /** @deprecated Use rackLayoutReverseOrder — kept for older saved files. */
+  rackLayoutSerpentine?: boolean;
+  /** Saved pan/zoom presets for quick rack-canvas navigation. */
+  viewports?: RackElevationViewportPreset[];
+}
+
+/** Named saved view of a rack elevation canvas (overview, row, rack, or custom pan/zoom). */
+export interface RackElevationViewportPreset {
+  id: string;
+  label: string;
+  fit: "all" | "top-row" | "bottom-row" | "rack" | "custom";
+  rackId?: string;
+  viewport?: { x: number; y: number; zoom: number };
 }
 
 export type TowerDraftTowerType = "self_support" | "guyed" | "monopole";
@@ -916,6 +938,13 @@ export interface TowerDraftPolyline {
   /** Optional source/target device node ids for generated feedlines. */
   feedlineFromNodeId?: string;
   feedlineToNodeId?: string;
+  /** Human-readable destination (rack device label or equip. bldg). */
+  feedlineToLabel?: string;
+  feedType?: TowerDeviceFeedType;
+  /** hop = short run to another tower device; structure = down to rack / building. */
+  feedlineKind?: "hop" | "structure";
+  /** Estimated run length in ft (path + slack + entry). */
+  feedlineEstFt?: number;
 }
 
 /** Structured vertical tower elevation / section draft (ft-AGL axis). */

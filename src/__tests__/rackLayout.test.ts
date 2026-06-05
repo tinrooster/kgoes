@@ -1,50 +1,45 @@
 import { describe, expect, it } from "vitest";
-import { layoutRackPositions, nextRackPosition, sortRacksForLayout } from "../rackLayout";
+import {
+  RACK_LAYOUT_H_SPACING,
+  RACK_LAYOUT_ORIGIN,
+  flipBottomRackRowPositions,
+  layoutRackPositions,
+} from "../rackLayout";
 
-function mockRacks(n: number) {
-  return Array.from({ length: n }, (_, i) => ({
-    id: `r${i}`,
-    position: { x: i * 10, y: 0 },
+function mockRacks(count: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `r${i + 1}`,
     heightU: 42,
+    position: { x: 0, y: 0 },
   }));
 }
 
-describe("layoutRackPositions", () => {
-  it("lays out a single horizontal row", () => {
-    const racks = mockRacks(4);
-    const pos = layoutRackPositions(racks, { mode: "row" });
-    expect(pos.get("r0")).toEqual({ x: 40, y: 96 });
-    expect(pos.get("r3")!.x).toBeGreaterThan(pos.get("r0")!.x);
-    expect(pos.get("r3")!.y).toBe(96);
-  });
-
-  it("lays out 12 racks in 2 rows of 6", () => {
+describe("layoutRackPositions serpentine", () => {
+  it("places bottom row right-to-left when serpentineRows is true", () => {
     const racks = mockRacks(12);
-    const pos = layoutRackPositions(racks, { mode: "grid", columns: 6, maxHeightU: 42 });
-    expect(pos.get("r0")).toEqual({ x: 40, y: 96 });
-    expect(pos.get("r5")!.y).toBe(96);
-    expect(pos.get("r5")!.x).toBeGreaterThan(pos.get("r0")!.x);
-    expect(pos.get("r6")!.y).toBeGreaterThan(96);
-    expect(pos.get("r6")!.x).toBe(40);
-    expect(pos.get("r11")!.y).toBe(pos.get("r6")!.y);
+    const pos = layoutRackPositions(racks, { mode: "grid", columns: 6, serpentineRows: true });
+
+    expect(pos.get("r1")!.x).toBe(RACK_LAYOUT_ORIGIN.x);
+    expect(pos.get("r6")!.x).toBe(RACK_LAYOUT_ORIGIN.x + 5 * RACK_LAYOUT_H_SPACING);
+    expect(pos.get("r7")!.x).toBe(RACK_LAYOUT_ORIGIN.x + 5 * RACK_LAYOUT_H_SPACING);
+    expect(pos.get("r12")!.x).toBe(RACK_LAYOUT_ORIGIN.x);
+    expect(pos.get("r7")!.y).toBeGreaterThan(pos.get("r1")!.y);
   });
 });
 
-describe("nextRackPosition", () => {
-  it("places the 7th rack on a second row when using 6 columns", () => {
-    const racks = mockRacks(6);
-    const next = nextRackPosition(racks, { columns: 6, maxHeightU: 42 });
-    expect(next.y).toBeGreaterThan(96);
-    expect(next.x).toBe(40);
-  });
-});
+describe("flipBottomRackRowPositions", () => {
+  it("mirrors x positions on the bottom row only", () => {
+    const racks = mockRacks(12);
+    const laidOut = layoutRackPositions(racks, { mode: "grid", columns: 6 });
+    const positioned = racks.map((r) => ({
+      ...r,
+      position: laidOut.get(r.id)!,
+    }));
 
-describe("sortRacksForLayout", () => {
-  it("sorts by x then y", () => {
-    const racks = [
-      { id: "b", position: { x: 100, y: 0 }, heightU: 42 },
-      { id: "a", position: { x: 0, y: 0 }, heightU: 42 },
-    ];
-    expect(sortRacksForLayout(racks).map((r) => r.id)).toEqual(["a", "b"]);
+    const flipped = flipBottomRackRowPositions(positioned);
+    expect(flipped.get("r7")!.x).toBe(laidOut.get("r12")!.x);
+    expect(flipped.get("r12")!.x).toBe(laidOut.get("r7")!.x);
+    expect(flipped.has("r1")).toBe(false);
+    expect(flipped.has("r6")).toBe(false);
   });
 });

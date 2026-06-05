@@ -27,10 +27,10 @@ import { isTowerDraftEligibleDeviceType } from "../towerDraftUtils";
 import { resolveCatalogTowerHeightFtAgl } from "../towerDraftDisplayHeight";
 import {
   TOWER_FEED_TYPE_OPTIONS,
-  towerFeedTypeShortLabel,
 } from "../towerDraftFeedType";
 import type { TowerDeviceFeedType } from "../types";
 import { deviceSiteTone } from "../towerDraftSitePlanData";
+import { resolveFeedlineDisplay } from "../towerDraftFeedlines";
 import { TiButton, TiIcon } from "./ti/TiBase";
 
 const FACE_ORDER: (TowerFace | "auto")[] = ["auto", "N", "S", "E", "W"];
@@ -109,6 +109,7 @@ export default function TowerDeviceMountEditor({
   const trackItTowerContext = useSchematicStore((s) => s.trackItTowerContext);
   const updateTowerDraftPlacement = useSchematicStore((s) => s.updateTowerDraftPlacement);
   const patchDeviceData = useSchematicStore((s) => s.patchDeviceData);
+  const addToast = useSchematicStore((s) => s.addToast);
 
   const placement = page.placements.find((p) => p.id === placementId);
   if (!placement) return null;
@@ -125,8 +126,10 @@ export default function TowerDeviceMountEditor({
   const lateral = mountLateralFromOffsetX(placement.offsetX);
   const bandLabel = data?.ports?.find((p) => p.rf?.band)?.rf?.band ?? "";
 
-  const feedEstFt = Math.round(placement.mountHeightFtAgl * 1.1 + 15);
-  const feedMedium = towerFeedTypeShortLabel(rf.feedType, data?.deviceType);
+  const feedline = resolveFeedlineDisplay(page, placement, data);
+  const feedEstFt = feedline.estFt;
+  const feedMedium = feedline.medium;
+  const feedDestination = feedline.destinationLabel;
 
   // rfLink card: match azimuth from context catalog where possible (within ±12°)
   const rfLinkCard = useMemo(() => {
@@ -571,6 +574,18 @@ export default function TowerDeviceMountEditor({
             >
               {feedMedium}
             </span>
+            <TiButton
+              size="sm"
+              variant="ghost"
+              icon="copy"
+              style={{ marginLeft: "auto" }}
+              onClick={() => {
+                void navigator.clipboard.writeText(String(feedEstFt));
+                addToast("Copied feedline length to clipboard", "info");
+              }}
+            >
+              Copy
+            </TiButton>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 9, fontSize: 12 }}>
             <TiIcon name="pin" size={13} color="var(--ti-accent)" />
@@ -579,10 +594,12 @@ export default function TowerDeviceMountEditor({
             </span>
             <span style={{ flex: 1, height: 1, borderTop: "1.5px dotted var(--ti-faint)" }} />
             <TiIcon name="rack" size={13} color="var(--ti-muted)" />
-            <span style={{ color: "var(--ti-ink-2)" }}>Equip. bldg</span>
+            <span style={{ color: "var(--ti-ink-2)" }}>{feedDestination}</span>
           </div>
           <div style={{ fontSize: 10.5, color: "var(--ti-faint)", marginTop: 7, lineHeight: 1.4 }}>
-            Vertical run + entry + 10% slack. Refine with measured length in trackIT.
+            {feedline.hasSuggestedPath
+              ? "From suggested profile path (10% slack + entry). Refine with measured length in trackIT."
+              : "Vertical run + entry + 10% slack. Use Suggest feedlines on Profile or refine in trackIT."}
           </div>
         </div>
       </div>

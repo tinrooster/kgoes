@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  feedTypeFromSignal,
   isTowerCameraDeviceType,
   resolveDefaultTowerFeedType,
+  resolveFeedTypeForDevice,
   towerFeedTypeShortLabel,
 } from "../towerDraftFeedType";
 
@@ -15,5 +17,11 @@ describe("towerDraftFeedType", () => {
     expect(towerFeedTypeShortLabel("coax")).toBe("COAX");
     expect(towerFeedTypeShortLabel("network_poe")).toBe("PoE");
     expect(isTowerCameraDeviceType("rf-camera-mount")).toBe(true);
+  });
+
+  it("maps edge signals to feed types", () => {
+    expect(feedTypeFromSignal("fiber")).toBe("network");
+    expect(feedTypeFromSignal("coax")).toBe("coax");
+    expect(resolveFeedTypeForDevice(undefined, "eth")).toBe("network");
   });
 });

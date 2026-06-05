@@ -49,6 +49,7 @@ import {
 import TrackItModeBadge from "./TrackItModeBadge";
 import DrawingProjectDropdown from "./DrawingProjectDropdown";
 import { isDrawingCanvasActive, resolveActiveDrawingPage } from "../drawingPageUtils";
+import { inferGridColumns, rackLayoutReverseOrder } from "../rackLayout";
 import { useAppBuildInfo } from "../buildVersion";
 import DeviceLibraryAdminPanel from "./DeviceLibraryAdminPanel";
 import { useUiChromeStore } from "../uiChromeStore";
@@ -180,6 +181,7 @@ export default function MenuBar() {
     addRackPage,
     addTowerDraftPage,
     addPrintSheetPage,
+    layoutRacksOnPage,
   } = useSchematicStore();
 
   const printView = useSchematicStore((s) => s.printView);
@@ -719,6 +721,70 @@ export default function MenuBar() {
 
   const rackPageCount = pages.filter((p) => p.type === "rack-elevation").length;
   const towerDraftCount = pages.filter((p) => p.type === "tower-draft").length;
+  const activeRackPage = pages.find(
+    (p): p is import("../types").RackElevationPage =>
+      p.id === activePage && p.type === "rack-elevation",
+  );
+
+  const layoutMenuItems: MenuEntry[] = activeRackPage
+    ? [
+        {
+          type: "item",
+          label: "1 row",
+          title: "Single horizontal row, aligned U tops",
+          onClick: () => layoutRacksOnPage(activeRackPage.id, { mode: "row" }),
+        },
+        {
+          type: "item",
+          label: "2×6 grid",
+          disabled: activeRackPage.racks.length < 2,
+          title: "Two or more rows, 6 racks per row (e.g. Sutro 12-rack site)",
+          onClick: () =>
+            layoutRacksOnPage(activeRackPage.id, {
+              mode: "grid",
+              columns: 6,
+              serpentineRows: rackLayoutReverseOrder(activeRackPage),
+            }),
+        },
+        ...(activeRackPage.racks.length > 6 && activeRackPage.racks.length % 6 !== 0
+          ? [{
+              type: "item" as const,
+              label: `Grid (${Math.ceil(activeRackPage.racks.length / Math.min(6, Math.ceil(activeRackPage.racks.length / 2)))} rows)`,
+              onClick: () =>
+                layoutRacksOnPage(activeRackPage.id, {
+                  mode: "grid",
+                  columns: Math.min(6, Math.ceil(activeRackPage.racks.length / 2)),
+                  serpentineRows: rackLayoutReverseOrder(activeRackPage),
+                }),
+            }]
+          : []),
+        ...(activeRackPage.racks.length >= 2
+          ? [
+              { type: "separator" as const },
+              {
+                type: "item" as const,
+                label: "Re-apply current grid",
+                title: "Re-layout racks using inferred column count and reverse-order setting",
+                onClick: () => {
+                  const columns = inferGridColumns(activeRackPage.racks);
+                  layoutRacksOnPage(activeRackPage.id, {
+                    mode: columns >= activeRackPage.racks.length ? "row" : "grid",
+                    columns,
+                    serpentineRows: rackLayoutReverseOrder(activeRackPage),
+                  });
+                },
+              },
+            ]
+          : []),
+      ]
+    : [
+        {
+          type: "item",
+          label: "Open a rack elevation page",
+          disabled: true,
+          onClick: () => {},
+        },
+      ];
 
   const pagesMenuItems: MenuEntry[] = [
     {
@@ -882,6 +948,7 @@ export default function MenuBar() {
       { type: "item", label: "Add Triangle", onClick: () => addAnnotation("triangle") },
     ],
     Pages: pagesMenuItems,
+    Layout: layoutMenuItems,
     View: [
       {
         type: "item",
