@@ -7,7 +7,6 @@ import {
   cloneForUserLibrary,
   cloneTemplateDeep,
   LIBRARY_EDIT_PLACEMENT,
-  submitTemplateToCommunity,
   templateHasTag,
   templateKey,
   withSearchTerm,
@@ -20,7 +19,6 @@ import {
   type LibraryBackupEntry,
 } from "../libraryTemplateBackup";
 import { useUiChromeStore } from "../uiChromeStore";
-import LoginDialog from "./LoginDialog";
 import DeviceLibraryAgentTab from "./DeviceLibraryAgentTab";
 
 type SortKey = "label" | "manufacturer" | "deviceType" | "source";
@@ -62,7 +60,6 @@ export default function DeviceLibraryAdminPanel() {
   const [sortAsc, setSortAsc] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkTag, setBulkTag] = useState("kgo-es-deviceadd");
-  const [showLogin, setShowLogin] = useState(false);
   const [editingTagsKey, setEditingTagsKey] = useState<string | null>(null);
   const [editingTagsValue, setEditingTagsValue] = useState("");
   const [expandedIdKey, setExpandedIdKey] = useState<string | null>(null);
@@ -194,22 +191,6 @@ export default function DeviceLibraryAdminPanel() {
     }
     addToast(`Tagged ${selectedTemplates.length} template(s)`, "success");
   }, [bulkTag, selectedTemplates, upsertLibraryTemplate, addToast]);
-
-  const bulkSubmit = useCallback(async () => {
-    for (const t of selectedTemplates) {
-      try {
-        const result = await submitTemplateToCommunity(t);
-        if (result === "login_required") {
-          setShowLogin(true);
-          return;
-        }
-      } catch (e) {
-        addToast(e instanceof Error ? e.message : "Submission failed", "error");
-        return;
-      }
-    }
-    addToast("Opened community submissions", "success");
-  }, [selectedTemplates, addToast]);
 
   const handleDelete = useCallback(
     (template: DeviceTemplate) => {
@@ -379,14 +360,6 @@ export default function DeviceLibraryAdminPanel() {
                         >
                           Add tag
                         </button>
-                        <button
-                          type="button"
-                          disabled={selected.size === 0}
-                          onClick={() => void bulkSubmit()}
-                          className="rounded border border-blue-500/40 bg-blue-500/15 text-blue-700 dark:text-blue-200 px-2 py-1 hover:bg-blue-500/25 disabled:opacity-40 cursor-pointer"
-                        >
-                          Submit selected
-                        </button>
                       </>
                     )}
                   </div>
@@ -547,18 +520,6 @@ export default function DeviceLibraryAdminPanel() {
                                     addToast(`Cloned ${template.label}`, "success");
                                   },
                                 },
-                                {
-                                  label: "Submit to community",
-                                  onClick: () =>
-                                    void submitTemplateToCommunity(template)
-                                      .then((r) => {
-                                        if (r === "login_required") setShowLogin(true);
-                                        else addToast("Opened submission", "success");
-                                      })
-                                      .catch((e) =>
-                                        addToast(e instanceof Error ? e.message : "Failed", "error"),
-                                      ),
-                                },
                                 isHidden
                                   ? {
                                       label: "Restore",
@@ -616,7 +577,6 @@ export default function DeviceLibraryAdminPanel() {
           )}
         </div>
       </div>
-      <LoginDialog open={showLogin} onClose={() => setShowLogin(false)} />
     </>
   );
 }

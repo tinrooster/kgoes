@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouse
 import { useSyncDrawerStore } from "../sidebarStore";
 import { useReactFlow } from "@xyflow/react";
 import {
+  KGO_ES_DEFAULT_PROJECT_LABEL,
   KGO_ES_DRAWING_TAB_LABEL,
   KGO_ES_ISSUES_URL,
   KGO_ES_NAME,
@@ -16,7 +17,6 @@ import { exportImage } from "../exportUtils";
 import { exportDxf } from "../dxfExport";
 import { exportPdf } from "../pdfExport";
 import { exportTemplatesToFile, readTemplateFile } from "../templateExport";
-import { loadSchematicTemplate } from "../templateApi";
 import { getPaperSize } from "../printConfig";
 import type { SchematicFile, SchematicNode, AnnotationData } from "../types";
 import ReportsDialog, { type ReportsTab } from "./ReportsDialog";
@@ -24,16 +24,11 @@ import TitleBlockDialog from "./TitleBlockDialog";
 import AboutDialog from "./AboutDialog";
 import PreferencesDialog from "./PreferencesDialog";
 import RoomDistancesDialog from "./RoomDistancesDialog";
-import UserMenuButton from "./UserMenuButton";
 import UndoHistoryControls from "./UndoHistoryControls";
-import SchematicBrowser from "./SchematicBrowser";
-import LoginDialog from "./LoginDialog";
-import { checkSession, saveSchematicToCloud, updateSchematicInCloud } from "../templateApi";
 import ViewOptionsPanel from "./ViewOptionsPanel";
 import ShowInfoPanel from "./ShowInfoPanel";
 import CsvImportWizard from "./CsvImportWizard";
 import SignalColorPanel from "./SignalColorPanel";
-import { useSidebarStore } from "../sidebarStore";
 import { useTheme } from "../hooks/useTheme";
 import { isTrackItDrawingLinked, saveToTrackItParent } from "../trackitIntegration";
 import { computeTrackItSyncStatus } from "../trackitSyncStatus";
@@ -48,6 +43,7 @@ import {
 } from "../towerSiteCadInsert";
 import TrackItModeBadge from "./TrackItModeBadge";
 import DrawingProjectDropdown from "./DrawingProjectDropdown";
+import ToolbarSidebarMenu from "./ToolbarSidebarMenu";
 import { isDrawingCanvasActive, resolveActiveDrawingPage } from "../drawingPageUtils";
 import { inferGridColumns, rackLayoutReverseOrder } from "../rackLayout";
 import { useAppBuildInfo } from "../buildVersion";
@@ -237,26 +233,12 @@ export default function MenuBar() {
   const [showPreferences, setShowPreferences] = useState(false);
   const [showRoomDistances, setShowRoomDistances] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
-  const [showSchematicBrowser, setShowSchematicBrowser] = useState(false);
-  const [showCloudLogin, setShowCloudLogin] = useState(false);
-  const [cloudSaving, setCloudSaving] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-
-  // Check login state on mount
-  useEffect(() => {
-    checkSession().then((u) => setIsLoggedIn(!!u));
-  }, []);
 
   const isOnline = useSchematicStore((s) => s.isOnline);
   const trackItLink = useSchematicStore((s) => s.trackItLink);
   const helpMenuActive = openMenu === "Help" || showAboutDialog;
   const { version: appVersion, commit: appCommit } = useAppBuildInfo(helpMenuActive);
 
-  const panelsVisible = useSidebarStore((s) => s.panelsVisible);
-  const setPanelVisible = useSidebarStore((s) => s.setPanelVisible);
-  const expandRightPanel = useSidebarStore((s) => s.expandRightPanel);
-
-  // Keep nameValue in sync when schematicName changes externally
   useEffect(() => {
     if (!editingName) setNameValue(schematicName);
   }, [schematicName, editingName]);
@@ -336,7 +318,10 @@ export default function MenuBar() {
   }, []);
 
   const trackItLinked = isTrackItDrawingLinked();
-  const projectChipLabel = trackItLink?.dwgNumber?.trim() || "GenericENGTruck";
+  const projectChipLabel =
+    trackItLink?.drawingName?.trim() ||
+    trackItLink?.dwgNumber?.trim() ||
+    KGO_ES_DEFAULT_PROJECT_LABEL;
   const activeDrawingPage = resolveActiveDrawingPage(activePage, pages);
   const projectChipDisplay =
     activeDrawingPage?.label ?? projectChipLabel;
@@ -360,21 +345,6 @@ export default function MenuBar() {
       return;
     }
 
-    // Cloud-backed schematic: update cloud (local file handle still used if present)
-    if (store.cloudSchematicId && store.isOnline) {
-      checkSession().then((session) => {
-        if (!session) return;
-        const data = store.exportToJSON();
-        updateSchematicInCloud(store.cloudSchematicId!, data)
-          .then((result) => {
-            store.setCloudSavedAt(result.updated_at);
-          })
-          .catch((e: unknown) => {
-            store.addToast(e instanceof Error ? e.message : "Cloud save failed", "error");
-          });
-      });
-    }
-
     // Has a local file handle: silently overwrite
     if (store.fileHandle) {
       try {
@@ -387,10 +357,7 @@ export default function MenuBar() {
       }
     }
 
-    // If cloud-backed but no local handle, cloud save is enough
-    if (store.cloudSchematicId) return;
-
-    // No handle, no cloud — first save. Use File System Access API if available.
+    // No handle — first save. Use File System Access API if available.
     if ("showSaveFilePicker" in window) {
       const handle = await pickFileHandle();
       if (!handle) return;
@@ -561,38 +528,6 @@ export default function MenuBar() {
     [],
   );
 
-  const handleCloudSave = useCallback(async () => {
-    const store = useSchematicStore.getState();
-
-    if (!navigator.onLine) {
-      store.addToast("You're offline. Use File → Save to save a copy to your computer.", "info");
-      return;
-    }
-
-    const session = await checkSession();
-    if (!session) {
-      setShowCloudLogin(true);
-      return;
-    }
-    setCloudSaving(true);
-    try {
-      const data = exportToJSON();
-      if (store.cloudSchematicId) {
-        const result = await updateSchematicInCloud(store.cloudSchematicId, data);
-        store.setCloudSavedAt(result.updated_at);
-      } else {
-        const result = await saveSchematicToCloud(data);
-        store.setCloudSchematicId(result.id);
-        store.setCloudSavedAt(result.updated_at);
-      }
-      setIsLoggedIn(true);
-    } catch (e) {
-      useSchematicStore.getState().addToast(e instanceof Error ? e.message : "Failed to save to cloud", "error");
-    } finally {
-      setCloudSaving(false);
-    }
-  }, [exportToJSON]);
-
   // Listen for keyboard shortcut events from App.tsx
   useEffect(() => {
     const onSave = () => { handleSave(); };
@@ -704,18 +639,9 @@ export default function MenuBar() {
     state.saveToLocalStorage();
   }, [reactFlowInstance]);
 
-  const handleNew = useCallback(async () => {
-    if (isLoggedIn && isOnline) {
-      try {
-        const tpl = await loadSchematicTemplate();
-        if (tpl) {
-          newSchematic(tpl as SchematicFile);
-          return;
-        }
-      } catch { /* fall through to blank */ }
-    }
+  const handleNew = useCallback(() => {
     newSchematic();
-  }, [isLoggedIn, isOnline, newSchematic]);
+  }, [newSchematic]);
 
   const closeMenu = () => setOpenMenu(null);
 
@@ -854,9 +780,6 @@ export default function MenuBar() {
           ]
         : []),
       { type: "separator" },
-      { type: "item", label: cloudSaving ? "Saving..." : isOnline ? "Save to Cloud" : "Save to Cloud (Offline)", disabled: cloudSaving || !isOnline, onClick: handleCloudSave },
-      { type: "item", label: "My Schematics...", disabled: !isLoggedIn, title: isLoggedIn ? undefined : "Must be logged in", onClick: () => setShowSchematicBrowser(true) },
-      { type: "separator" },
       { type: "item", label: "Save Device Archive", onClick: handleSaveArchive },
       { type: "item", label: "Import Device Archive...", onClick: handleOpenArchive },
       { type: "item", label: "Import Cable Schedule...", onClick: () => setShowCsvImport(true) },
@@ -990,49 +913,6 @@ export default function MenuBar() {
         onClick: () => useSchematicStore.getState().toggleDebugEdges(),
       },
     ],
-    Toolbar: [
-      { type: "caption", label: "Sidebar" },
-      {
-        type: "item",
-        label: "Devices",
-        checked: panelsVisible.devices,
-        onClick: () => setPanelVisible("devices", !panelsVisible.devices),
-      },
-      {
-        type: "item",
-        label: "View options",
-        checked: panelsVisible.viewOptions,
-        onClick: () => setPanelVisible("viewOptions", !panelsVisible.viewOptions),
-      },
-      {
-        type: "item",
-        label: "trackIT numbers",
-        checked: panelsVisible.trackItNumbers,
-        onClick: () => setPanelVisible("trackItNumbers", !panelsVisible.trackItNumbers),
-      },
-      {
-        type: "item",
-        label: "Show info",
-        checked: panelsVisible.showInfo,
-        onClick: () => setPanelVisible("showInfo", !panelsVisible.showInfo),
-      },
-      {
-        type: "item",
-        label: "Colors",
-        checked: panelsVisible.colors,
-        onClick: () => setPanelVisible("colors", !panelsVisible.colors),
-      },
-      {
-        type: "item",
-        label: "CAD tools",
-        checked: panelsVisible.cadTools,
-        onClick: () => {
-          const next = !panelsVisible.cadTools;
-          setPanelVisible("cadTools", next);
-          if (next) expandRightPanel("cadTools");
-        },
-      },
-    ],
     Export: [
       { type: "item", label: "Export as PNG", onClick: doExportPng },
       { type: "item", label: "Export as SVG", onClick: doExportSvg },
@@ -1097,6 +977,11 @@ export default function MenuBar() {
   };
 
   const menuNames = Object.keys(menus);
+  const navMenuNames = [
+    ...menuNames.slice(0, menuNames.indexOf("Export")),
+    "Toolbar",
+    ...menuNames.slice(menuNames.indexOf("Export")),
+  ];
 
   const closeMobileMenu = () => {
     setMobileMenuOpen(false);
@@ -1214,7 +1099,7 @@ export default function MenuBar() {
             fileName={schematicName}
           />
           {/* Menu nav */}
-          {menuNames.map((name) => (
+          {navMenuNames.map((name) => (
             <div key={name} className="relative">
               <button
                 style={{
@@ -1233,7 +1118,11 @@ export default function MenuBar() {
                 {name}
               </button>
               {openMenu === name && (
-                <MenuDropdown items={menus[name]} onClose={closeMenu} />
+                name === "Toolbar" ? (
+                  <ToolbarSidebarMenu />
+                ) : (
+                  <MenuDropdown items={menus[name]} onClose={closeMenu} />
+                )
               )}
             </div>
           ))}
@@ -1345,8 +1234,6 @@ export default function MenuBar() {
           >
             {isDark ? "☀" : "☾"}
           </button>
-          <div style={{ width: 1, height: 20, background: "var(--ti-divider)", margin: "0 4px" }} />
-          <UserMenuButton />
         </div>
       </div>
 
@@ -1436,11 +1323,6 @@ export default function MenuBar() {
               ))}
             </div>
           </div>
-
-          {/* Footer: user section */}
-          <div className="border-t border-[var(--color-border)] px-4 py-3 shrink-0">
-            <UserMenuButton />
-          </div>
         </div>
       )}
 
@@ -1500,10 +1382,6 @@ export default function MenuBar() {
       {showCsvImport && (
         <CsvImportWizard onClose={() => setShowCsvImport(false)} />
       )}
-      {showSchematicBrowser && (
-        <SchematicBrowser onClose={() => setShowSchematicBrowser(false)} />
-      )}
-      <LoginDialog open={showCloudLogin} onClose={() => setShowCloudLogin(false)} />
       <DeviceLibraryAdminPanel />
     </div>
   );

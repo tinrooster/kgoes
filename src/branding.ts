@@ -11,6 +11,12 @@ export const KGO_ES_UPSTREAM_REPO_URL = "https://github.com/duremovich/EasySchem
 /** Primary tab label for the signal-flow canvas (store id remains `"schematic"`). */
 export const KGO_ES_DRAWING_TAB_LABEL = "Drawing";
 
+/** Default name for a blank drawing file (center title + new document). */
+export const KGO_ES_DEFAULT_DRAWING_NAME = "Untitled Drawing";
+
+/** Project chip label when no trackIT drawing is linked. */
+export const KGO_ES_DEFAULT_PROJECT_LABEL = "Untitled project";
+
 /** Plain-language fork credit (About dialog, etc.). */
 export const KGO_ES_FORK_CREDIT =
   `${KGO_ES_NAME} is forked from EasySchematic by ${KGO_ES_UPSTREAM_AUTHOR} (AGPL-3.0).`;

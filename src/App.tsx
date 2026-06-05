@@ -44,7 +44,6 @@ import DeviceSwapDialog from "./components/DeviceSwapDialog";
 import MobileGate from "./components/MobileGate";
 import ToastContainer from "./components/ToastContainer";
 import AppDialogHost from "./components/AppDialogHost";
-import PendingSubmissionBanner from "./components/PendingSubmissionBanner";
 import BetaBanner from "./components/BetaBanner";
 import PortContextMenu from "./components/PortContextMenu";
 import RoutingDebugOverlay from "./components/RoutingDebugOverlay";
@@ -1869,6 +1868,7 @@ export default function App() {
   const undo = useSchematicStore((s) => s.undo);
   const redo = useSchematicStore((s) => s.redo);
   const panelsVisible = useSidebarStore((s) => s.panelsVisible);
+  const rightPanelOrder = useSidebarStore((s) => s.rightPanelOrder);
   const syncDrawerOpen = useSyncDrawerStore((s) => s.open);
   const setSyncDrawerOpen = useSyncDrawerStore((s) => s.setOpen);
   const [viewportEditorOpen, setViewportEditorOpen] = useState(false);
@@ -1945,7 +1945,6 @@ export default function App() {
       </div>
       <BetaBanner />
       <DemoBanner />
-      <PendingSubmissionBanner />
       {printView && isSchematicActive && <PrintViewBar />}
       {isSchematicActive && <PrintTitleBlock />}
       <PageTabs />
@@ -1969,11 +1968,16 @@ export default function App() {
               <KgoCommandBar />
             </div>
             <div data-print-hide className="hidden md:flex shrink-0">
-              {panelsVisible.viewOptions && <ViewOptionsPanel />}
-              {panelsVisible.showInfo && <ShowInfoPanel />}
-              {panelsVisible.trackItNumbers && <TrackItNumberingPanel />}
-              {panelsVisible.colors && <SignalColorPanel />}
-              {panelsVisible.cadTools && <CadToolsPanel />}
+              {rightPanelOrder.map((panelId) => {
+                if (panelId === "viewOptions" && panelsVisible.viewOptions) return <ViewOptionsPanel key={panelId} />;
+                if (panelId === "showInfo" && panelsVisible.showInfo) return <ShowInfoPanel key={panelId} />;
+                if (panelId === "trackItNumbers" && panelsVisible.trackItNumbers) {
+                  return <TrackItNumberingPanel key={panelId} />;
+                }
+                if (panelId === "colors" && panelsVisible.colors) return <SignalColorPanel key={panelId} />;
+                if (panelId === "cadTools" && panelsVisible.cadTools) return <CadToolsPanel key={panelId} />;
+                return null;
+              })}
             </div>
             <KgoRightPanel />
           </div>

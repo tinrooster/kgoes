@@ -13,7 +13,6 @@ import ImportDevicesDialog from "./ImportDevicesDialog";
 import DeviceLibraryTemplateContextMenu, {
   type LibraryTemplateMenuState,
 } from "./DeviceLibraryTemplateContextMenu";
-import LoginDialog from "./LoginDialog";
 import { templateKey } from "../deviceTemplateActions";
 import { mergeDeviceLibraryTemplates, bundledTemplateKeys, isPureUserTemplate } from "../deviceLibraryMerge";
 import { useUiChromeStore } from "../uiChromeStore";
@@ -1107,7 +1106,6 @@ export default function DeviceLibrary() {
   const openDeviceAdmin = useUiChromeStore((s) => s.openDeviceAdmin);
   const hiddenLibraryTemplateIds = useSchematicStore((s) => s.hiddenLibraryTemplateIds);
   const [templateMenu, setTemplateMenu] = useState<LibraryTemplateMenuState | null>(null);
-  const [showLoginDialog, setShowLoginDialog] = useState(false);
   const leftExpanded = useSidebarStore((s) => s.leftExpanded);
   const setLeftExpanded = useSidebarStore((s) => s.setLeftExpanded);
   const libraryBrowseMode = useSidebarStore((s) => s.libraryBrowseMode);
@@ -1774,9 +1772,7 @@ export default function DeviceLibrary() {
         onClose={() => setTemplateMenu(null)}
         groups={customTemplateGroups}
         onOpenAdmin={(template) => openAdminPanel(template)}
-        onLoginRequired={() => setShowLoginDialog(true)}
       />
-      <LoginDialog open={showLoginDialog} onClose={() => setShowLoginDialog(false)} />
     </div>
   );
 }

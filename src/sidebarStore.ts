@@ -16,6 +16,25 @@ export type LibraryBrowseMode = "full" | "userTemplatesOnly";
 
 export type RightPanelId = "viewOptions" | "trackIt" | "showInfo" | "colors" | "cadTools";
 
+/** Right dock panels (excluding inspector) — order controls render sequence. */
+export type RightDockPanelId = "viewOptions" | "trackItNumbers" | "showInfo" | "colors" | "cadTools";
+
+export const RIGHT_DOCK_PANEL_LABELS: Record<RightDockPanelId, string> = {
+  viewOptions: "View options",
+  trackItNumbers: "trackIT numbers",
+  showInfo: "Show info",
+  colors: "Colors",
+  cadTools: "CAD tools",
+};
+
+export const DEFAULT_RIGHT_PANEL_ORDER: RightDockPanelId[] = [
+  "viewOptions",
+  "trackItNumbers",
+  "showInfo",
+  "colors",
+  "cadTools",
+];
+
 export interface SidebarPanelVisibility {
   devices: boolean;
   viewOptions: boolean;
@@ -37,6 +56,7 @@ export interface SidebarPrefs {
   libraryBrowseMode: LibraryBrowseMode;
   panelsVisible: SidebarPanelVisibility;
   rightInspectorOpen: boolean;
+  rightPanelOrder: RightDockPanelId[];
 }
 
 function trackItSessionDefaults(): Partial<SidebarPrefs> {
@@ -92,6 +112,7 @@ function loadSidebarPrefs(): SidebarPrefs {
     libraryBrowseMode: loadLibraryBrowseMode(),
     panelsVisible: { ...DEFAULT_PANELS_VISIBLE },
     rightInspectorOpen: true,
+    rightPanelOrder: [...DEFAULT_RIGHT_PANEL_ORDER],
     ...trackItSessionDefaults(),
   };
   try {
@@ -106,10 +127,21 @@ function loadSidebarPrefs(): SidebarPrefs {
         ...DEFAULT_PANELS_VISIBLE,
         ...(parsed.panelsVisible ?? {}),
       },
+      rightPanelOrder: normalizeRightPanelOrder(parsed.rightPanelOrder),
     };
   } catch {
     return defaults;
   }
+}
+
+function normalizeRightPanelOrder(raw: unknown): RightDockPanelId[] {
+  if (!Array.isArray(raw)) return [...DEFAULT_RIGHT_PANEL_ORDER];
+  const valid = raw.filter(
+    (id): id is RightDockPanelId =>
+      typeof id === "string" && (DEFAULT_RIGHT_PANEL_ORDER as readonly string[]).includes(id),
+  );
+  const missing = DEFAULT_RIGHT_PANEL_ORDER.filter((id) => !valid.includes(id));
+  return valid.length > 0 ? [...valid, ...missing] : [...DEFAULT_RIGHT_PANEL_ORDER];
 }
 
 function persistSidebar(prefs: SidebarPrefs): void {
@@ -134,6 +166,7 @@ interface SidebarState extends SidebarPrefs {
   setLibraryBrowseMode: (mode: LibraryBrowseMode) => void;
   setPanelVisible: (panel: keyof SidebarPanelVisibility, visible: boolean) => void;
   setPanelsVisible: (next: Partial<SidebarPanelVisibility>) => void;
+  moveRightPanel: (sourceId: RightDockPanelId, targetId: RightDockPanelId) => void;
   /** Only one wide right panel at a time */
   expandRightPanel: (panel: RightPanelId) => void;
   setRightInspectorOpen: (v: boolean) => void;
@@ -198,6 +231,17 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
     const panelsVisible = { ...get().panelsVisible, ...partial };
     set({ panelsVisible });
     persistSidebar({ ...get(), panelsVisible });
+  },
+
+  moveRightPanel: (sourceId, targetId) => {
+    const order = [...get().rightPanelOrder];
+    const from = order.indexOf(sourceId);
+    const to = order.indexOf(targetId);
+    if (from < 0 || to < 0 || from === to) return;
+    order.splice(from, 1);
+    order.splice(to, 0, sourceId);
+    set({ rightPanelOrder: order });
+    persistSidebar({ ...get(), rightPanelOrder: order });
   },
 
   expandRightPanel: (panel) => {

@@ -1682,7 +1682,7 @@ function resolveActiveReservedBlock(
 export const useSchematicStore = create<SchematicState>((set, get) => ({
   nodes: [],
   edges: [],
-  schematicName: "Untitled Schematic",
+  schematicName: "Untitled Drawing",
   trackItNumbering: null,
   trackItLocations: null,
   activeTrackItReservationId: null,
@@ -6388,7 +6388,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         edges: data.edges,
         facePlateDefinitionLayouts,
         deviceDefinitionRackMetadata,
-        schematicName: data.name ?? "Untitled Schematic",
+        schematicName: data.name ?? "Untitled Drawing",
         ownedGear: data.ownedGear ?? [],
         signalColors: data.signalColors,
         signalLineStyles: data.signalLineStyles,
@@ -7137,7 +7137,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       // Load template as a new unsaved file
       get().importFromJSON(templateData);
       set({
-        schematicName: "Untitled Schematic",
+        schematicName: "Untitled Drawing",
         isDemo: false,
         cloudSchematicId: null,
         cloudSavedAt: null,
@@ -7151,7 +7151,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       set({
         nodes: [],
         edges: [],
-        schematicName: "Untitled Schematic",
+        schematicName: "Untitled Drawing",
         isDemo: false,
         ownedGear: [],
         cloudSchematicId: null,
