@@ -77,3 +77,6 @@ start-dev.sh
 email-signature.html
 
 .vercel
+
+# Graphify knowledge graph (generated locally)
+graphify-out/
