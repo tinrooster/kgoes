@@ -1111,6 +1111,14 @@ export default function DeviceLibrary() {
   const leftExpanded = useSidebarStore((s) => s.leftExpanded);
   const setLeftExpanded = useSidebarStore((s) => s.setLeftExpanded);
   const libraryBrowseMode = useSidebarStore((s) => s.libraryBrowseMode);
+  const devicesDockSide =
+    useSidebarStore((s) => s.panelLayouts.devices?.edge) === "right" ? "right" : "left";
+  const expandChevron = devicesDockSide === "left" ? "chevR" : "chevL";
+  const collapseChevron = devicesDockSide === "left" ? "chevL" : "chevR";
+  const dockBorderStyle =
+    devicesDockSide === "left"
+      ? { borderRight: "1px solid var(--ti-border)" }
+      : { borderLeft: "1px solid var(--ti-border)" };
   const collapsed = !leftExpanded;
   const workspaceDrag = useWorkspacePanelDragHandle();
   const [leftTab, setLeftTab] = useState<"devices" | "layers">("devices");
@@ -1334,12 +1342,12 @@ export default function DeviceLibrary() {
     return (
       <div style={{
         width: 44, flexShrink: 0,
-        borderRight: "1px solid var(--ti-border)",
+        ...dockBorderStyle,
         background: "var(--color-bg)",
         display: "flex", flexDirection: "column", alignItems: "center",
         height: "100%", minHeight: 0, maxHeight: "100%", paddingTop: 10, gap: 8,
       }}>
-        <TiIconButton icon="chevR" variant="ghost" size="sm" onClick={() => setLeftExpanded(true)} title="Expand library" />
+        <TiIconButton icon={expandChevron} variant="ghost" size="sm" onClick={() => setLeftExpanded(true)} title="Expand library" />
         {workspaceDrag ? (
           <WorkspacePanelDragHandle panelId="devices" onStartDrag={workspaceDrag.startDrag} />
         ) : null}
@@ -1355,7 +1363,7 @@ export default function DeviceLibrary() {
       style={{
         width: collapsed ? 44 : 264,
         flexShrink: 0,
-        borderRight: "1px solid var(--ti-border)",
+        ...dockBorderStyle,
         background: "var(--color-bg)",
         display: "flex", flexDirection: "column",
         height: "100%", minHeight: 0, maxHeight: "100%", overflow: "hidden",
@@ -1365,7 +1373,7 @@ export default function DeviceLibrary() {
       {/* Header — Devices | Layers seg tab + collapse */}
       {collapsed ? (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 10, gap: 8 }}>
-          <TiIconButton icon="chevR" variant="ghost" size="sm" onClick={() => setLeftExpanded(true)} title="Expand library" />
+          <TiIconButton icon={expandChevron} variant="ghost" size="sm" onClick={() => setLeftExpanded(true)} title="Expand library" />
           <div style={{ writingMode: "vertical-rl", fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ti-muted)", marginTop: 8 }}>Devices</div>
         </div>
       ) : (
@@ -1389,7 +1397,7 @@ export default function DeviceLibrary() {
           {workspaceDrag ? (
             <WorkspacePanelDragHandle panelId="devices" onStartDrag={workspaceDrag.startDrag} />
           ) : null}
-          <TiIconButton icon="chevL" variant="ghost" size="sm" onClick={() => setLeftExpanded(false)} title="Collapse library" />
+          <TiIconButton icon={collapseChevron} variant="ghost" size="sm" onClick={() => setLeftExpanded(false)} title="Collapse library" />
         </div>
       )}
 
