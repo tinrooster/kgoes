@@ -43,11 +43,16 @@ describe("normalizePanelLayouts", () => {
 });
 
 describe("resolveInspectorPlacement", () => {
-  it("pins collapsed inspector to the right rail", () => {
-    expect(resolveInspectorPlacement("float", false)).toBe("right");
+  it("keeps collapsed inspector on the left dock", () => {
+    expect(resolveInspectorPlacement("left", false)).toBe("left");
   });
 
-  it("honors float when expanded", () => {
-    expect(resolveInspectorPlacement("float", true)).toBe("float");
+  it("keeps collapsed inspector floating in place", () => {
+    expect(resolveInspectorPlacement("float", false)).toBe("float");
+  });
+
+  it("uses right dock by default", () => {
+    expect(resolveInspectorPlacement("right", true)).toBe("right");
+    expect(resolveInspectorPlacement("right", false)).toBe("right");
   });
 });
