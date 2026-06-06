@@ -42,6 +42,17 @@ export const SNAP_EDGE_PX = 52;
 
 const ALL_PANEL_IDS = Object.keys(DEFAULT_PANEL_LAYOUTS) as WorkspacePanelId[];
 
+function sanitizeLayout(id: WorkspacePanelId, layout: WorkspacePanelLayout): WorkspacePanelLayout {
+  if (id === "inspector" && layout.edge === "float") {
+    const offScreen = layout.floatX < 0 || layout.floatY < 0 || layout.floatX > 1600 || layout.floatY > 900;
+    if (offScreen) return { ...DEFAULT_PANEL_LAYOUTS.inspector };
+  }
+  if (id === "inspector" && (layout.edge === "top" || layout.edge === "bottom")) {
+    return { ...layout, edge: "right" };
+  }
+  return layout;
+}
+
 export function normalizePanelLayouts(
   raw: Partial<Record<WorkspacePanelId, Partial<WorkspacePanelLayout>>> | undefined,
 ): Record<WorkspacePanelId, WorkspacePanelLayout> {
@@ -58,13 +69,24 @@ export function normalizePanelLayouts(
       item.edge === "float"
         ? item.edge
         : out[id].edge;
-    out[id] = {
+    out[id] = sanitizeLayout(id, {
       edge,
       floatX: typeof item.floatX === "number" && Number.isFinite(item.floatX) ? item.floatX : out[id].floatX,
       floatY: typeof item.floatY === "number" && Number.isFinite(item.floatY) ? item.floatY : out[id].floatY,
-    };
+    });
   }
   return out;
+}
+
+/** Inspector is always on the right rail when collapsed; when open follows dock edge. */
+export function resolveInspectorPlacement(
+  edge: PanelDockEdge,
+  open: boolean,
+): "right" | "left" | "float" {
+  if (!open) return "right";
+  if (edge === "left") return "left";
+  if (edge === "float") return "float";
+  return "right";
 }
 
 /** Pick dock edge when pointer is near workspace boundary; otherwise float. */

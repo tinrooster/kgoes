@@ -10,6 +10,7 @@ import KgoCanvasToolbar from "./KgoCanvasToolbar";
 import { useSidebarStore } from "../sidebarStore";
 import { useWorkspacePanelDrag } from "../hooks/useWorkspacePanelDrag";
 import type { PanelDockEdge, WorkspacePanelId } from "../workspacePanelLayout";
+import { resolveInspectorPlacement } from "../workspacePanelLayout";
 import { WorkspaceDragContext, WorkspaceFloatContext } from "../workspacePanelContext";
 
 function SnapGuides({ edge }: { edge: PanelDockEdge | null }) {
@@ -61,7 +62,6 @@ function WorkspacePanelFrame({
 function panelVisible(
   id: WorkspacePanelId,
   panelsVisible: ReturnType<typeof useSidebarStore.getState>["panelsVisible"],
-  inspectorOpen: boolean,
 ): boolean {
   if (id === "devices") return panelsVisible.devices;
   if (id === "viewOptions") return panelsVisible.viewOptions;
@@ -69,8 +69,6 @@ function panelVisible(
   if (id === "showInfo") return panelsVisible.showInfo;
   if (id === "colors") return panelsVisible.colors;
   if (id === "cadTools") return panelsVisible.cadTools;
-  // Inspector is always mounted; KgoRightPanel renders the rail when collapsed.
-  if (id === "inspector") return true;
   if (id === "canvasToolbar") return true;
   return false;
 }
@@ -119,50 +117,47 @@ export default function SchematicWorkspaceLayout({
   const snapPreview = useSidebarStore((s) => s.snapPreview);
   const rightInspectorOpen = useSidebarStore((s) => s.rightInspectorOpen);
 
+  const inspectorPlacement = resolveInspectorPlacement(
+    panelLayouts.inspector?.edge ?? "right",
+    rightInspectorOpen,
+  );
+
   const dockedLeft = useMemo(() => {
     const ids: WorkspacePanelId[] = [];
-    const candidates: WorkspacePanelId[] = ["devices", ...rightPanelOrder, "inspector"];
+    const candidates: WorkspacePanelId[] = ["devices", ...rightPanelOrder];
     for (const id of candidates) {
-      if (!panelVisible(id, panelsVisible, rightInspectorOpen)) continue;
-      if (id === "inspector") {
-        if (rightInspectorOpen && panelLayouts.inspector.edge === "left") ids.push(id);
-        continue;
-      }
-      if (panelLayouts[id].edge === "left") ids.push(id);
+      if (!panelVisible(id, panelsVisible)) continue;
+      if (panelLayouts[id]?.edge === "left") ids.push(id);
     }
+    if (inspectorPlacement === "left") ids.push("inspector");
     return ids;
-  }, [panelLayouts, panelsVisible, rightInspectorOpen, rightPanelOrder]);
+  }, [inspectorPlacement, panelLayouts, panelsVisible, rightPanelOrder]);
 
   const dockedRight = useMemo(() => {
     const ids: WorkspacePanelId[] = [];
-    if (panelVisible("devices", panelsVisible, rightInspectorOpen) && panelLayouts.devices.edge === "right") {
+    if (panelVisible("devices", panelsVisible) && panelLayouts.devices?.edge === "right") {
       ids.push("devices");
     }
     for (const id of rightPanelOrder) {
-      if (!panelVisible(id, panelsVisible, rightInspectorOpen)) continue;
-      if (panelLayouts[id].edge === "right") ids.push(id);
+      if (!panelVisible(id, panelsVisible)) continue;
+      if (panelLayouts[id]?.edge === "right") ids.push(id);
     }
-    // Collapsed inspector always stays on the far-right rail (legacy behavior).
-    if (
-      !rightInspectorOpen ||
-      panelLayouts.inspector.edge === "right"
-    ) {
-      ids.push("inspector");
-    }
+    if (inspectorPlacement === "right") ids.push("inspector");
     return ids;
-  }, [panelLayouts, panelsVisible, rightInspectorOpen, rightPanelOrder]);
+  }, [inspectorPlacement, panelLayouts, panelsVisible, rightPanelOrder]);
+
   const dockedTop: WorkspacePanelId[] = [];
   const dockedBottom: WorkspacePanelId[] = [];
-  if (panelLayouts.canvasToolbar.edge === "top") dockedTop.push("canvasToolbar");
-  if (panelLayouts.canvasToolbar.edge === "bottom") dockedBottom.push("canvasToolbar");
+  if (panelLayouts.canvasToolbar?.edge === "top") dockedTop.push("canvasToolbar");
+  if (panelLayouts.canvasToolbar?.edge === "bottom") dockedBottom.push("canvasToolbar");
 
   const floatingIds = (Object.keys(panelLayouts) as WorkspacePanelId[]).filter((id) => {
-    if (!panelVisible(id, panelsVisible, rightInspectorOpen)) return false;
-    if (id === "inspector") {
-      return rightInspectorOpen && panelLayouts.inspector.edge === "float";
-    }
-    return panelLayouts[id].edge === "float";
+    if (id === "inspector") return inspectorPlacement === "float";
+    if (!panelVisible(id, panelsVisible)) return false;
+    return panelLayouts[id]?.edge === "float";
   });
+
+  const showRightDock = dockedRight.length > 0;
 
   return (
     <WorkspaceDragContext.Provider value={dragCtx}>
@@ -210,8 +205,8 @@ export default function SchematicWorkspaceLayout({
             )}
           </div>
 
-          {dockedRight.length > 0 && (
-            <div data-print-hide className="hidden md:flex min-h-0 max-h-full shrink-0 flex-col overflow-hidden self-stretch">
+          {showRightDock && (
+            <div data-print-hide className="flex min-h-0 max-h-full shrink-0 flex-col overflow-hidden self-stretch">
               {dockedRight.map((id) => (
                 <WorkspacePanelFrame key={id} id={id} floating={false} layout={panelLayouts[id]}>
                   {renderPanel(id)}

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { normalizePanelLayouts, resolveSnapEdge } from "../workspacePanelLayout";
+import {
+  normalizePanelLayouts,
+  resolveInspectorPlacement,
+  resolveSnapEdge,
+} from "../workspacePanelLayout";
 
 describe("resolveSnapEdge", () => {
   const rect = { left: 0, top: 0, right: 1000, bottom: 800, width: 1000, height: 800 } as DOMRect;
@@ -28,5 +32,22 @@ describe("normalizePanelLayouts", () => {
     });
     expect(layouts.devices.edge).toBe("float");
     expect(layouts.inspector.edge).toBe("right");
+  });
+
+  it("resets off-screen floated inspector to the right dock", () => {
+    const layouts = normalizePanelLayouts({
+      inspector: { edge: "float", floatX: 4000, floatY: 2000 },
+    });
+    expect(layouts.inspector.edge).toBe("right");
+  });
+});
+
+describe("resolveInspectorPlacement", () => {
+  it("pins collapsed inspector to the right rail", () => {
+    expect(resolveInspectorPlacement("float", false)).toBe("right");
+  });
+
+  it("honors float when expanded", () => {
+    expect(resolveInspectorPlacement("float", true)).toBe("float");
   });
 });
