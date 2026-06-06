@@ -1,4 +1,7 @@
 /** KGO fork branding (formerly EasySchematic). */
+/** PWA / OS title bar — match trackIT (`vite.config.ts` theme_color). */
+export const KGO_ES_PWA_THEME_COLOR = "#1e3a5f";
+
 export const KGO_ES_NAME = "KGO-ES";
 export const KGO_ES_SHORT = "ES";
 export const KGO_ES_LEGACY_NAME = "EasySchematic";
