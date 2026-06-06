@@ -1,8 +1,43 @@
 import type { DeviceTemplate } from "./types";
 import fallbackData from "./deviceLibrary.fallback.json";
 
-const API_URL =
-  import.meta.env?.VITE_TEMPLATE_API_URL ?? "https://api.easyschematic.live";
+const UPSTREAM_API_DEFAULT = "https://api.easyschematic.live";
+
+function readEnvFlag(value: unknown): boolean | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+  if (["1", "true", "yes", "on", "enabled"].includes(normalized)) return true;
+  if (["0", "false", "no", "off", "disabled"].includes(normalized)) return false;
+  return null;
+}
+
+/** KGO-ES fork: upstream EasySchematic cloud API is opt-in (bundled library is default). */
+export function isKgoEsUpstreamApiEnabled(): boolean {
+  const explicit = readEnvFlag(import.meta.env?.VITE_KGO_ES_UPSTREAM_API);
+  if (explicit != null) return explicit;
+  const templateUrl = import.meta.env?.VITE_TEMPLATE_API_URL;
+  if (typeof templateUrl === "string" && templateUrl.trim()) {
+    const normalized = templateUrl.trim().toLowerCase();
+    if (["off", "disabled", "none", "false", "0"].includes(normalized)) return false;
+    return true;
+  }
+  return false;
+}
+
+function resolveUpstreamApiUrl(): string | null {
+  if (!isKgoEsUpstreamApiEnabled()) return null;
+  const templateUrl = import.meta.env?.VITE_TEMPLATE_API_URL;
+  if (typeof templateUrl === "string" && templateUrl.trim()) {
+    const normalized = templateUrl.trim();
+    if (!["off", "disabled", "none", "false", "0"].includes(normalized.toLowerCase())) {
+      return normalized.replace(/\/$/, "");
+    }
+  }
+  return UPSTREAM_API_DEFAULT;
+}
+
+const API_URL = resolveUpstreamApiUrl();
 
 let cached: DeviceTemplate[] | null = null;
 
@@ -45,6 +80,7 @@ export function getCardsByFamily(family: string, extra: DeviceTemplate[] = []): 
 // ==================== AUTH & DRAFTS ====================
 
 export async function checkSession(): Promise<{ id: string; email: string; name: string | null } | null> {
+  if (!API_URL) return null;
   try {
     const res = await fetch(`${API_URL}/auth/me`, { credentials: "include" });
     if (!res.ok) return null;
