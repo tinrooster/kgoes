@@ -663,7 +663,7 @@ export default function MenuBar() {
         {
           type: "item",
           label: "2×6 grid",
-          disabled: activeRackPage.racks.length < 2,
+          disabled: (activeRackPage.racks?.length ?? 0) < 2,
           title: "Two or more rows, 6 racks per row (e.g. Sutro 12-rack site)",
           onClick: () =>
             layoutRacksOnPage(activeRackPage.id, {
@@ -672,19 +672,19 @@ export default function MenuBar() {
               serpentineRows: rackLayoutReverseOrder(activeRackPage),
             }),
         },
-        ...(activeRackPage.racks.length > 6 && activeRackPage.racks.length % 6 !== 0
+        ...((activeRackPage.racks?.length ?? 0) > 6 && (activeRackPage.racks?.length ?? 0) % 6 !== 0
           ? [{
               type: "item" as const,
-              label: `Grid (${Math.ceil(activeRackPage.racks.length / Math.min(6, Math.ceil(activeRackPage.racks.length / 2)))} rows)`,
+              label: `Grid (${Math.ceil((activeRackPage.racks?.length ?? 0) / Math.min(6, Math.ceil((activeRackPage.racks?.length ?? 0) / 2)))} rows)`,
               onClick: () =>
                 layoutRacksOnPage(activeRackPage.id, {
                   mode: "grid",
-                  columns: Math.min(6, Math.ceil(activeRackPage.racks.length / 2)),
+                  columns: Math.min(6, Math.ceil((activeRackPage.racks?.length ?? 0) / 2)),
                   serpentineRows: rackLayoutReverseOrder(activeRackPage),
                 }),
             }]
           : []),
-        ...(activeRackPage.racks.length >= 2
+        ...((activeRackPage.racks?.length ?? 0) >= 2
           ? [
               { type: "separator" as const },
               {
@@ -692,9 +692,10 @@ export default function MenuBar() {
                 label: "Re-apply current grid",
                 title: "Re-layout racks using inferred column count and reverse-order setting",
                 onClick: () => {
-                  const columns = inferGridColumns(activeRackPage.racks);
+                  const racks = activeRackPage.racks ?? [];
+                  const columns = inferGridColumns(racks);
                   layoutRacksOnPage(activeRackPage.id, {
-                    mode: columns >= activeRackPage.racks.length ? "row" : "grid",
+                    mode: columns >= racks.length ? "row" : "grid",
                     columns,
                     serpentineRows: rackLayoutReverseOrder(activeRackPage),
                   });

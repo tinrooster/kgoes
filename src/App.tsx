@@ -1827,33 +1827,6 @@ function PrintTitleBlock() {
   );
 }
 
-function DemoBanner() {
-  const isDemo = useSchematicStore((s) => s.isDemo);
-  const [dismissed, setDismissed] = useState(
-    () => localStorage.getItem("easyschematic-demo-dismissed") === "1",
-  );
-
-  if (!isDemo || dismissed) return null;
-
-  return (
-    <div className="bg-slate-700 text-slate-200 text-sm px-4 py-2 flex items-center justify-between gap-4" data-print-hide>
-      <span>
-        You&apos;re viewing a demo schematic. Start fresh with{" "}
-        <strong>File &gt; New</strong>, or explore to see what {KGO_ES_NAME} can do.
-      </span>
-      <button
-        className="text-slate-400 hover:text-white shrink-0"
-        onClick={() => {
-          setDismissed(true);
-          localStorage.setItem("easyschematic-demo-dismissed", "1");
-        }}
-      >
-        ✕
-      </button>
-    </div>
-  );
-}
-
 export default function App() {
   useUnsavedCloseGuard();
   const schematicName = useSchematicStore((s) => s.schematicName);
@@ -1944,7 +1917,6 @@ export default function App() {
         <MenuBar />
       </div>
       <BetaBanner />
-      <DemoBanner />
       {printView && isSchematicActive && <PrintViewBar />}
       {isSchematicActive && <PrintTitleBlock />}
       <PageTabs />

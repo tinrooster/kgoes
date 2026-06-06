@@ -2,10 +2,14 @@ import type {
   ConnectionEdge,
   DrawingPage,
   DrawingViewportPreset,
+  PrintSheetPage,
+  RackElevationPage,
   RoomData,
   SchematicNode,
   SchematicPage,
+  TowerDraftPage,
 } from "./types";
+import { defaultRackElevationViewports } from "./rackElevationViewportUtils";
 import { computeSchematicContentBounds, type ContentBounds } from "./viewNavUtils";
 
 export const LEGACY_SCHEMATIC_PAGE_ID = "schematic";
@@ -135,6 +139,53 @@ export function ensureDrawingPageGraphs(
 
 export function defaultDrawingViewports(): DrawingViewportPreset[] {
   return [{ id: "overview", label: "Overview", fit: "all" }];
+}
+
+/** Ensure every page type has required arrays (older saves / partial trackIT JSON). */
+export function normalizeSchematicPages(pages: SchematicPage[]): SchematicPage[] {
+  return pages.map((page) => {
+    if (page.type === "drawing") {
+      const dp = page as DrawingPage;
+      return {
+        ...dp,
+        viewports:
+          Array.isArray(dp.viewports) && dp.viewports.length > 0
+            ? dp.viewports
+            : defaultDrawingViewports(),
+        nodes: dp.nodes ?? [],
+        edges: dp.edges ?? [],
+      };
+    }
+    if (page.type === "print-sheet") {
+      const ps = page as PrintSheetPage;
+      return { ...ps, viewports: Array.isArray(ps.viewports) ? ps.viewports : [] };
+    }
+    if (page.type === "rack-elevation") {
+      const rp = page as RackElevationPage;
+      return {
+        ...rp,
+        racks: rp.racks ?? [],
+        placements: rp.placements ?? [],
+        accessories: rp.accessories ?? [],
+        crossLinks: rp.crossLinks ?? [],
+        viewports: rp.viewports ?? defaultRackElevationViewports(),
+      };
+    }
+    if (page.type === "tower-draft") {
+      const td = page as TowerDraftPage;
+      return {
+        ...td,
+        placements: td.placements ?? [],
+        polylines: (td.polylines ?? []).map((pl) => ({
+          ...pl,
+          points: pl.points ?? [],
+        })),
+        guideBandsFt: td.guideBandsFt ?? [],
+        towerHeightFtAgl: td.towerHeightFtAgl ?? 200,
+      };
+    }
+    return page;
+  });
 }
 
 export function createDrawingPage(

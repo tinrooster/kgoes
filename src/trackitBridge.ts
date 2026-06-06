@@ -309,7 +309,6 @@ export function startTrackItBridge(): void {
             store.setTrackItLink(link);
             const drawingName = link.drawingName?.trim();
             if (drawingName) store.setSchematicName(drawingName);
-            useSchematicStore.setState({ isDemo: false });
             return;
           }
           beginBlankTrackItDrawing(link);
@@ -340,7 +339,6 @@ export function startTrackItBridge(): void {
         store.setSchematicName(activeLinkName);
       }
       useSchematicStore.setState({
-        isDemo: false,
         trackItUnsavedChanges: false,
         trackItLastPushedAt: new Date().toISOString(),
       });
@@ -476,5 +474,4 @@ export function startTrackItBridge(): void {
   window.addEventListener("message", onMessage);
 
   window.setTimeout(() => notifyReady(), 300);
-  window.setTimeout(() => notifyReady(), 1200);
 }

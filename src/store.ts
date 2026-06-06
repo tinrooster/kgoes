@@ -91,6 +91,7 @@ import { CURRENT_SCHEMA_VERSION, migrateSchematic } from "./migrations";
 import {
   activeDrawingPageId,
   createDrawingPage,
+  normalizeSchematicPages,
   ensureDrawingPageGraphs,
   isDrawingCanvasActive,
   LEGACY_SCHEMATIC_PAGE_ID,
@@ -673,9 +674,6 @@ interface SchematicState {
   resizeGuides: import("./snapUtils").GuideLine[];
   setResizeGuides: (guides: import("./snapUtils").GuideLine[]) => void;
 
-  // Demo state — true when the demo schematic was auto-loaded for first-time visitors
-  isDemo: boolean;
-
   // Drag state — edges freeze during drag and recalculate on drop
   isDragging: boolean;
   isRouting: boolean;
@@ -1131,7 +1129,7 @@ function reconcileShelfPlacementsForPages(
   pages: SchematicPage[],
   deviceDataMap: Map<string, DeviceData>,
 ): SchematicPage[] {
-  return pages.map((page) => {
+  return normalizeSchematicPages(pages).map((page) => {
     if (page.type !== "rack-elevation") return page;
 
     let accessories = [...page.accessories];
@@ -1249,13 +1247,13 @@ function syncRackCounters(pages: SchematicPage[]) {
     const dm = page.id.match(/^drawing-(\d+)$/);
     if (dm) drawingPageIdCounter = Math.max(drawingPageIdCounter, Number(dm[1]));
     if (page.type === "drawing") {
-      for (const vp of page.viewports) {
+      for (const vp of page.viewports ?? []) {
         const dvm = vp.id.match(/^drawvp-(\d+)$/);
         if (dvm) drawingViewportIdCounter = Math.max(drawingViewportIdCounter, Number(dvm[1]));
       }
     }
     if (page.type === "print-sheet") {
-      for (const vp of page.viewports) {
+      for (const vp of page.viewports ?? []) {
         const vm = vp.id.match(/^viewport-(\d+)$/);
         if (vm) viewportIdCounter = Math.max(viewportIdCounter, Number(vm[1]));
         const sm = page.id.match(/^printsheet-(\d+)$/);
@@ -1264,22 +1262,22 @@ function syncRackCounters(pages: SchematicPage[]) {
       continue;
     }
     if (page.type === "tower-draft") {
-      for (const pl of page.placements) {
+      for (const pl of page.placements ?? []) {
         const tdp = pl.id.match(/^tdp-(\d+)$/);
         if (tdp) towerDraftPlacementIdCounter = Math.max(towerDraftPlacementIdCounter, Number(tdp[1]));
       }
-      for (const pl of page.polylines) {
+      for (const pl of page.polylines ?? []) {
         const tdpl = pl.id.match(/^tdpl-(\d+)$/);
         if (tdpl) towerDraftPolylineIdCounter = Math.max(towerDraftPolylineIdCounter, Number(tdpl[1]));
       }
       continue;
     }
     if (page.type !== "rack-elevation") continue;
-    for (const rack of page.racks) {
+    for (const rack of page.racks ?? []) {
       const rm = rack.id.match(/^rack-(\d+)$/);
       if (rm) rackIdCounter = Math.max(rackIdCounter, Number(rm[1]));
     }
-    for (const p of page.placements) {
+    for (const p of page.placements ?? []) {
       const pm2 = p.id.match(/^rp-(\d+)$/);
       if (pm2) placementIdCounter = Math.max(placementIdCounter, Number(pm2[1]));
     }
@@ -1731,7 +1729,6 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   debugShowGrid: true,
   routingParamVersion: 0,
   resizeGuides: [],
-  isDemo: false,
   isDragging: false,
   isRouting: false,
   overlapNodeId: null,
@@ -6461,9 +6458,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         trackItLink: data.trackItLink ?? null,
         siteLicensed: data.siteLicensed ?? null,
         siteNetwork: data.siteNetwork ?? null,
-        isDemo: false,
         // Restore cloud identity from autosave (not part of SchematicFile)
-        cloudSchematicId: parsed.cloudSchematicId ?? null,
         cloudSavedAt: parsed.cloudSavedAt ?? null,
         loadSeq: get().loadSeq + 1,
       });
@@ -6917,7 +6912,6 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       facePlateDefinitionLayouts,
       deviceDefinitionRackMetadata,
       schematicName: data.name ?? "Imported Schematic",
-      isDemo: false,
       ownedGear: data.ownedGear ?? [],
       signalColors: data.signalColors,
       signalLineStyles: data.signalLineStyles,
@@ -7138,7 +7132,6 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       get().importFromJSON(templateData);
       set({
         schematicName: "Untitled Drawing",
-        isDemo: false,
         cloudSchematicId: null,
         cloudSavedAt: null,
         fileHandle: null,
@@ -7152,7 +7145,6 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         nodes: [],
         edges: [],
         schematicName: "Untitled Drawing",
-        isDemo: false,
         ownedGear: [],
         cloudSchematicId: null,
         cloudSavedAt: null,
