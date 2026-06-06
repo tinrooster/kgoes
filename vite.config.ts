@@ -38,6 +38,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: 'auto',
       workbox: {
         // Force a freshly-installed SW to activate and claim all open tabs
         // immediately, instead of waiting for every client to close. Without
@@ -62,6 +63,7 @@ export default defineConfig({
         theme_color: '#0f172a',
         background_color: '#0f172a',
         display: 'standalone',
+        display_override: ['window-controls-overlay', 'standalone'],
         scope: '/',
         start_url: '/',
         icons: [

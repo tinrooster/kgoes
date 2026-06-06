@@ -38,6 +38,7 @@ import MobileGate from "./components/MobileGate";
 import ToastContainer from "./components/ToastContainer";
 import AppDialogHost from "./components/AppDialogHost";
 import BetaBanner from "./components/BetaBanner";
+import PwaInstallBanner from "./components/PwaInstallBanner";
 import PortContextMenu from "./components/PortContextMenu";
 import RoutingDebugOverlay from "./components/RoutingDebugOverlay";
 import RoutingTuningPanel from "./components/RoutingTuningPanel";
@@ -1908,6 +1909,7 @@ export default function App() {
         <MenuBar />
       </div>
       <BetaBanner />
+      <PwaInstallBanner />
       {printView && isSchematicActive && <PrintViewBar />}
       {isSchematicActive && <PrintTitleBlock />}
       <PageTabs />

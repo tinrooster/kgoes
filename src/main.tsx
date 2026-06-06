@@ -8,6 +8,10 @@ import { refreshDevBuildHash } from "./buildVersion";
 import { startTrackItBridge } from "./trackitBridge";
 import { setSchematicUndoStateListener } from "./schematicUndo";
 import { notifyTrackItParentUndoState } from "./trackitIntegration";
+import { applyPwaStandaloneShell, initPwaInstallCapture } from "./pwaInstall";
+
+initPwaInstallCapture();
+applyPwaStandaloneShell();
 
 startTrackItBridge();
 setSchematicUndoStateListener(() => notifyTrackItParentUndoState());
