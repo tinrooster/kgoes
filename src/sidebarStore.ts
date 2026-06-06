@@ -6,6 +6,15 @@ import {
   type WorkspacePanelId,
   type WorkspacePanelLayout,
 } from "./workspacePanelLayout";
+import {
+  deleteWorkspacePreset,
+  listWorkspacePresets,
+  loadWorkspacePreset,
+  normalizeWorkspaceSnapshot,
+  saveWorkspacePreset,
+  type WorkspaceLayoutSnapshot,
+  type WorkspacePreset,
+} from "./workspacePresets";
 
 /** Avoid importing trackitIntegration (circular with sidebar store). */
 function isTrackItPopupOpener(): boolean {
@@ -180,6 +189,12 @@ interface SidebarState extends SidebarPrefs {
   setPanelLayout: (id: WorkspacePanelId, layout: Partial<WorkspacePanelLayout>) => void;
   dockPanelToDefault: (id: WorkspacePanelId) => void;
   resetPanelLayouts: () => void;
+  getWorkspaceSnapshot: () => WorkspaceLayoutSnapshot;
+  applyWorkspaceSnapshot: (layout: WorkspaceLayoutSnapshot) => void;
+  saveNamedWorkspace: (name: string) => WorkspacePreset;
+  loadNamedWorkspace: (name: string) => boolean;
+  listNamedWorkspaces: () => WorkspacePreset[];
+  deleteNamedWorkspace: (name: string) => boolean;
   setLeftExpanded: (v: boolean) => void;
   setRightViewOptionsExpanded: (v: boolean) => void;
   setRightTrackItExpanded: (v: boolean) => void;
@@ -226,6 +241,42 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
     set({ panelLayouts });
     persistSidebar({ ...get(), panelLayouts });
   },
+
+  getWorkspaceSnapshot: () => {
+    const s = get();
+    return {
+      panelsVisible: { ...s.panelsVisible },
+      rightPanelOrder: [...s.rightPanelOrder],
+      panelLayouts: { ...s.panelLayouts },
+      rightInspectorOpen: s.rightInspectorOpen,
+      leftExpanded: s.leftExpanded,
+      rightViewOptionsExpanded: s.rightViewOptionsExpanded,
+      rightTrackItExpanded: s.rightTrackItExpanded,
+      rightShowInfoExpanded: s.rightShowInfoExpanded,
+      rightColorsExpanded: s.rightColorsExpanded,
+      rightCadToolsExpanded: s.rightCadToolsExpanded,
+      toolPaletteIconOnly: s.toolPaletteIconOnly,
+    };
+  },
+
+  applyWorkspaceSnapshot: (layout) => {
+    const next = normalizeWorkspaceSnapshot(layout);
+    set(next);
+    persistSidebar({ ...get(), ...next });
+  },
+
+  saveNamedWorkspace: (name) => saveWorkspacePreset(name, get().getWorkspaceSnapshot()),
+
+  loadNamedWorkspace: (name) => {
+    const layout = loadWorkspacePreset(name);
+    if (!layout) return false;
+    get().applyWorkspaceSnapshot(layout);
+    return true;
+  },
+
+  listNamedWorkspaces: () => listWorkspacePresets(),
+
+  deleteNamedWorkspace: (name) => deleteWorkspacePreset(name),
 
   setLeftExpanded: (leftExpanded) => {
     set({ leftExpanded });

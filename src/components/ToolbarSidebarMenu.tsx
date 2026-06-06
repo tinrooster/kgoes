@@ -9,6 +9,7 @@ import {
   type RightPanelId,
   RIGHT_DOCK_PANEL_LABELS,
 } from "../sidebarStore";
+import WorkspacePresetsSection from "./WorkspacePresetsSection";
 
 const RIGHT_DOCK_EXPAND: Record<RightDockPanelId, RightPanelId> = {
   viewOptions: "viewOptions",
@@ -118,6 +119,8 @@ export default function ToolbarSidebarMenu() {
           </div>
         );
       })}
+      <div className="h-px bg-[var(--color-border)] my-1" />
+      <WorkspacePresetsSection compact />
       <div className="h-px bg-[var(--color-border)] my-1" />
       <button
         type="button"
