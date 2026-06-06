@@ -1337,7 +1337,7 @@ export default function DeviceLibrary() {
         borderRight: "1px solid var(--ti-border)",
         background: "var(--color-bg)",
         display: "flex", flexDirection: "column", alignItems: "center",
-        height: "100%", paddingTop: 10, gap: 8,
+        height: "100%", minHeight: 0, maxHeight: "100%", paddingTop: 10, gap: 8,
       }}>
         <TiIconButton icon="chevR" variant="ghost" size="sm" onClick={() => setLeftExpanded(true)} title="Expand library" />
         {workspaceDrag ? (
@@ -1358,7 +1358,7 @@ export default function DeviceLibrary() {
         borderRight: "1px solid var(--ti-border)",
         background: "var(--color-bg)",
         display: "flex", flexDirection: "column",
-        height: "100%", overflow: "hidden",
+        height: "100%", minHeight: 0, maxHeight: "100%", overflow: "hidden",
         transition: "width 150ms",
       }}
     >
@@ -1478,7 +1478,7 @@ export default function DeviceLibrary() {
 
       {/* Filters */}
       {libraryActiveTab === "devices" && (
-      <div className="px-2 pb-2 border-b border-[var(--color-border)]">
+      <div className="shrink-0 px-2 pb-2 border-b border-[var(--color-border)]">
         <div className="flex gap-1.5">
           <div className={`flex-1 min-w-0 flex items-center rounded border transition-colors ${
               filterPanel === "category"
@@ -1612,7 +1612,7 @@ export default function DeviceLibrary() {
       {libraryActiveTab === "owned" ? (
         <OwnedGearTab query={query} />
       ) : (
-      <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 8 }}>
         {browseUserLibraryOnly && (
           <CustomTemplatesSection
             customTemplates={filteredCustom}

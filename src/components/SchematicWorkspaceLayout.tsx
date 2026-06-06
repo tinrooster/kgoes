@@ -34,7 +34,11 @@ function WorkspacePanelFrame({
 }) {
   if (!floating) {
     return (
-      <div data-workspace-panel={id} data-workspace-docked="true" className="h-full shrink-0">
+      <div
+        data-workspace-panel={id}
+        data-workspace-docked="true"
+        className="flex h-full min-h-0 max-h-full shrink-0 flex-col overflow-hidden"
+      >
         {children}
       </div>
     );
@@ -45,7 +49,7 @@ function WorkspacePanelFrame({
       <div
         data-workspace-panel={id}
         data-workspace-floating="true"
-        className="absolute z-[55] flex flex-col rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl overflow-hidden"
+        className="absolute z-[55] flex max-h-[calc(100%-16px)] flex-col rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl overflow-hidden"
         style={{ left: layout.floatX, top: layout.floatY }}
       >
         {children}
@@ -154,7 +158,7 @@ export default function SchematicWorkspaceLayout({
         <SnapGuides edge={snapPreview} />
         <div className="flex flex-1 overflow-hidden min-h-0">
           {dockedLeft.length > 0 && (
-            <div data-print-hide data-mobile-hide className="hidden md:flex shrink-0 h-full">
+            <div data-print-hide data-mobile-hide className="hidden md:flex min-h-0 max-h-full shrink-0 flex-col overflow-hidden self-stretch">
               {dockedLeft.map((id) => (
                 <WorkspacePanelFrame key={id} id={id} floating={false} layout={panelLayouts[id]}>
                   {renderPanel(id)}
@@ -195,7 +199,7 @@ export default function SchematicWorkspaceLayout({
           </div>
 
           {dockedRight.length > 0 && (
-            <div data-print-hide className="hidden md:flex shrink-0 h-full">
+            <div data-print-hide className="hidden md:flex min-h-0 max-h-full shrink-0 flex-col overflow-hidden self-stretch">
               {dockedRight.map((id) => (
                 <WorkspacePanelFrame key={id} id={id} floating={false} layout={panelLayouts[id]}>
                   {renderPanel(id)}
