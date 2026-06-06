@@ -64,6 +64,8 @@ const ICONS: Record<string, string> = {
   zoomIn:    "M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z M21 21l-4.3-4.3 M11 8v6 M8 11h6",
   zoomOut:   "M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z M21 21l-4.3-4.3 M8 11h6",
   maximize:  "M15 3h6v6 M9 21H3v-6 M21 3l-7 7 M3 21l7-7",
+  sun:       "M12 4v2 M12 18v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M4 12H2 M22 12h-2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4 M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z",
+  moon:      "M21 14.5A8.5 8.5 0 0 1 9.5 3 7 7 0 1 0 21 14.5Z",
 };
 
 export type TiIconName = keyof typeof ICONS;

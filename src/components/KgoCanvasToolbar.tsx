@@ -33,6 +33,7 @@ function Chip({
     <button
       type="button"
       title={title}
+      disabled={disabled}
       onClick={onClick}
       aria-label={label}
       style={{
@@ -52,7 +53,8 @@ function Chip({
         fontSize: 12, fontWeight: 500,
         color: active ? "var(--ti-accent-ink)" : "var(--ti-ink-2)",
         fontFamily: "var(--ti-font-sans)",
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.65 : 1,
         transition: "background 100ms, border-color 100ms, color 100ms",
       }}
     >
@@ -147,6 +149,7 @@ function KgoCanvasToolbar() {
   const canvasInteractive = useSchematicStore((s) => s.canvasInteractive);
   const toggleCanvasInteractive = useSchematicStore((s) => s.toggleCanvasInteractive);
   const autoRoute = useSchematicStore((s) => s.autoRoute);
+  const isRouting = useSchematicStore((s) => s.isRouting);
   const toggleAutoRoute = useSchematicStore((s) => s.toggleAutoRoute);
 
   const unnumberedCount = useSchematicStore((s) => {
@@ -276,7 +279,13 @@ function KgoCanvasToolbar() {
           compact={compactQuickActions}
           active={autoRoute}
           onClick={toggleAutoRoute}
-          title={autoRoute ? "Auto-route on — click to disable" : "Auto-route off — click to enable"}
+          title={
+            isRouting
+              ? "Routing connections…"
+              : autoRoute
+                ? "Auto-route on — click to disable"
+                : "Auto-route off — click to enable"
+          }
         />
         <Chip
           icon="eye"

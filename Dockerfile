@@ -6,11 +6,29 @@ RUN npm ci --legacy-peer-deps
 COPY . .
 RUN npm run build
 
-# Production stage
-FROM nginx:bookworm
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+# Production stage — Alpine nginx stack matches trackIT Studioshare runtime.
+FROM alpine:3.22 AS runtime
+
+RUN apk update \
+  && apk add --no-cache nginx socat \
+  && apk add --no-cache --upgrade libcrypto3 libssl3 libxml2 \
+  && rm -rf /var/cache/apk/* \
+  && mkdir -p /tmp/nginx/client_body /tmp/nginx/proxy /tmp/nginx/fastcgi \
+       /tmp/nginx/uwsgi /tmp/nginx/scgi /run/nginx /usr/share/nginx/html \
+  && chown -R nginx:nginx /tmp/nginx /run/nginx /usr/share/nginx/html \
+  && chmod -R g+rwX /tmp/nginx /run/nginx /usr/share/nginx/html
+
+COPY docker/nginx.main.conf /etc/nginx/nginx.conf
+COPY docker/nginx.conf /etc/nginx/http.d/default.conf
+COPY docker/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 COPY --from=builder /app/dist /usr/share/nginx/html
-EXPOSE 80
-RUN useradd -U -u 1000 appuser && chown -R 1000:1000 /usr/share/nginx/html
-USER 1000
-CMD ["nginx", "-g", "daemon off;"]
+
+RUN chown -R nginx:nginx /usr/share/nginx/html
+
+ENV PORT=8080
+EXPOSE 8080
+
+USER nginx
+
+ENTRYPOINT ["/docker-entrypoint.sh"]

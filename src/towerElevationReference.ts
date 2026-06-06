@@ -9,8 +9,8 @@ import {
 /** Default content scale for full-bleed reference profile (2.5× px/ft). */
 export const REFERENCE_ELEVATION_CONTENT_SCALE = 2.5;
 
-/** Sutro elevation PNG natural width ÷ height (260×1080). */
-export const SUTRO_ELEVATION_IMAGE_ASPECT = 260 / 1080;
+/** Sutro elevation PNG natural width ÷ height (245×1024). */
+export const SUTRO_ELEVATION_IMAGE_ASPECT = 245 / 1024;
 
 /** Space right of tower axis for designation / azimuth labels on profile. */
 export const PROFILE_LABEL_RAIL_W = 420;
@@ -49,18 +49,66 @@ export function enrichTowerElevationReference(
   };
 }
 
+export function isAbsoluteHttpUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url.trim());
+}
+
+/** Pathname for relative or absolute mountaintop asset URLs (for deduping hosts). */
+export function mountaintopAssetPathname(url: string): string | null {
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("/")) return trimmed.split("?")[0] ?? trimmed;
+  try {
+    return new URL(trimmed).pathname;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefer absolute trackIT asset URLs over relative `/assets/…` paths stored on the page.
+ * KGO-ES is hosted separately; relative paths resolve on the ES origin and 404 unless
+ * the asset is also published under kgoes/public. When page + context refer to the same
+ * mountaintop file, prefer context (trackIT origin) over a stale absolute page URL on ES.
+ */
+export function pickElevationReferenceUrl(
+  pageUrl?: string | null,
+  ctxUrl?: string | null,
+): string | undefined {
+  const page = pageUrl?.trim() || undefined;
+  const ctx = ctxUrl?.trim() || undefined;
+  const pagePath = page ? mountaintopAssetPathname(page) : null;
+  const ctxPath = ctx ? mountaintopAssetPathname(ctx) : null;
+  const sameMountaintopAsset =
+    !!pagePath &&
+    !!ctxPath &&
+    pagePath === ctxPath &&
+    pagePath.includes("/assets/mountaintops/");
+
+  if (sameMountaintopAsset) {
+    if (ctx && isAbsoluteHttpUrl(ctx)) return ctx;
+    if (page && isAbsoluteHttpUrl(page)) return page;
+    return ctx ?? page;
+  }
+
+  if (page && isAbsoluteHttpUrl(page)) return page;
+  if (ctx && isAbsoluteHttpUrl(ctx)) return ctx;
+  if (page?.startsWith("/assets/") && ctx && isAbsoluteHttpUrl(ctx)) return ctx;
+  return page ?? ctx;
+}
+
 /** Merge page + trackIT context refs; context fills gaps on stale page payloads. */
 export function mergeTowerElevationReference(
   pageRef?: TowerElevationReferenceImage | null,
   ctxRef?: TowerElevationReferenceImage | null,
 ): TowerElevationReferenceImage | null {
-  const url = pageRef?.url?.trim() || ctxRef?.url?.trim();
+  const url = pickElevationReferenceUrl(pageRef?.url, ctxRef?.url);
   if (!url) return null;
   const merged: TowerElevationReferenceImage = {
     ...ctxRef,
     ...pageRef,
-    url: pageRef?.url?.trim() || ctxRef!.url,
-    detailUrl: pageRef?.detailUrl ?? ctxRef?.detailUrl,
+    url,
+    detailUrl: pickElevationReferenceUrl(pageRef?.detailUrl, ctxRef?.detailUrl),
     label: pageRef?.label ?? ctxRef?.label,
     imageAspectRatio: pageRef?.imageAspectRatio ?? ctxRef?.imageAspectRatio,
     fullBleed: pageRef?.fullBleed ?? ctxRef?.fullBleed,

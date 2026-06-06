@@ -6619,43 +6619,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     if (trackItTowerContext) {
       const ctxRef = trackItTowerContext.elevationReferenceImage;
       if (trackItTowerContext.towerHeightFt || ctxRef?.url) {
-        const pages = get().pages;
-        let pagesChanged = false;
-        const nextPages = pages.map((p) => {
-          if (p.type !== "tower-draft") return p;
-          const td = p as TowerDraftPage;
-          let next = td;
-          const catalogH = resolveCatalogTowerHeightFtAgl(td, trackItTowerContext);
-          if (catalogH > 0 && Math.abs(td.towerHeightFtAgl - catalogH) > 1) {
-            next = { ...next, towerHeightFtAgl: catalogH };
-            pagesChanged = true;
-          }
-          if (ctxRef?.url) {
-            const mergedRef = {
-              ...ctxRef,
-              ...td.elevationReferenceImage,
-              url: td.elevationReferenceImage?.url?.trim() || ctxRef.url,
-              imageAspectRatio:
-                td.elevationReferenceImage?.imageAspectRatio ?? ctxRef.imageAspectRatio,
-              fullBleed: td.elevationReferenceImage?.fullBleed ?? ctxRef.fullBleed,
-              contentScale: td.elevationReferenceImage?.contentScale ?? ctxRef.contentScale,
-              opacity: td.elevationReferenceImage?.opacity ?? ctxRef.opacity,
-              blendMode: td.elevationReferenceImage?.blendMode ?? ctxRef.blendMode,
-            };
-            const prevJson = JSON.stringify(td.elevationReferenceImage ?? null);
-            const nextJson = JSON.stringify(mergedRef);
-            if (prevJson !== nextJson) {
-              next = {
-                ...next,
-                elevationReferenceImage: mergedRef,
-                polylines: td.elevationReferenceImage?.url ? td.polylines : [],
-              };
-              pagesChanged = true;
-            }
-          }
-          return next;
-        });
-        if (pagesChanged) patch.pages = nextPages;
+        const nextPages = normalizeTowerDraftPages(get().pages, trackItTowerContext);
+        if (nextPages !== get().pages) patch.pages = nextPages;
       }
     }
     set(patch);

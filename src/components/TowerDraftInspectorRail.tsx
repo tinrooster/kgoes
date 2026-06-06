@@ -1,6 +1,7 @@
 import { useSchematicStore } from "../store";
 import type { DeviceData, TowerDraftPage } from "../types";
 import { formatHeightFtAgl, type MeasurementSystem } from "../measurementUnits";
+import { resolveCatalogTowerHeightFtAgl } from "../towerDraftDisplayHeight";
 import { resolveDeviceLabel } from "../displayName";
 import { TiIconButton } from "./ti/TiBase";
 import TowerDraftPlacementInspector from "./TowerDraftPlacementInspector";
@@ -31,6 +32,7 @@ function TowerDraftSummary({
   const useShortNames = useSchematicStore((s) => s.useShortNames);
   const trackItTowerContext = useSchematicStore((s) => s.trackItTowerContext);
   const siteLabel = trackItTowerContext?.siteName?.trim() || "Tower site";
+  const displayHeightFtAgl = resolveCatalogTowerHeightFtAgl(page, trackItTowerContext);
 
   const sorted = [...page.placements].sort((a, b) => b.mountHeightFtAgl - a.mountHeightFtAgl);
 
@@ -41,7 +43,7 @@ function TowerDraftSummary({
           {siteLabel}
         </div>
         <div style={{ fontSize: 11, color: "var(--ti-muted)", marginTop: 4, lineHeight: 1.45 }}>
-          {formatHeightFtAgl(page.towerHeightFtAgl, measurementSystem)} AGL ·{" "}
+          {formatHeightFtAgl(displayHeightFtAgl, measurementSystem)} ·{" "}
           {(page.towerType ?? "guyed").replace("_", " ")} · {page.placements.length} device
           {page.placements.length === 1 ? "" : "s"}
         </div>

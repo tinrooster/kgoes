@@ -31,6 +31,7 @@ import CsvImportWizard from "./CsvImportWizard";
 import SignalColorPanel from "./SignalColorPanel";
 import { useTheme } from "../hooks/useTheme";
 import { isTrackItDrawingLinked, saveToTrackItParent } from "../trackitIntegration";
+import { isCloudPortalEnabled } from "../deployMode";
 import { computeTrackItSyncStatus } from "../trackitSyncStatus";
 import { insertTowerElevation, insertTowerSitePlan } from "../towerSiteInsert";
 import {
@@ -188,6 +189,7 @@ export default function MenuBar() {
   const trackItLastPushedAt = useSchematicStore((s) => s.trackItLastPushedAt);
   const trackItUnsavedChanges = useSchematicStore((s) => s.trackItUnsavedChanges);
   const isDrawingLinked = isTrackItDrawingLinked();
+  const cloudPortal = isCloudPortalEnabled();
   const unnumberedCount = edges.filter((e) => !e.data?.directAttach && !e.data?.cableId && e.data?.signalType).length;
   const syncStatus = computeTrackItSyncStatus({
     isLinked: isDrawingLinked,
@@ -798,17 +800,21 @@ export default function MenuBar() {
       { type: "item", label: "Select All", shortcut: "Ctrl+A", onClick: () => useSchematicStore.getState().selectAll() },
     ],
     Devices: [
-      {
-        type: "item",
-        label: "Device library admin…",
-        onClick: () => useUiChromeStore.getState().openDeviceAdmin({ tab: "manage" }),
-      },
-      {
-        type: "item",
-        label: "Add devices (agent)…",
-        onClick: () => useUiChromeStore.getState().openDeviceAdmin({ tab: "agent" }),
-      },
-      { type: "separator" },
+      ...(cloudPortal
+        ? [
+            {
+              type: "item" as const,
+              label: "Device library admin…",
+              onClick: () => useUiChromeStore.getState().openDeviceAdmin({ tab: "manage" }),
+            },
+            {
+              type: "item" as const,
+              label: "Add devices (agent)…",
+              onClick: () => useUiChromeStore.getState().openDeviceAdmin({ tab: "agent" }),
+            },
+            { type: "separator" as const },
+          ]
+        : []),
       {
         type: "item",
         label: "Save device archive",
@@ -1127,6 +1133,12 @@ export default function MenuBar() {
               )}
             </div>
           ))}
+          {onDrawingCanvas && (
+            <>
+              <div style={{ width: 1, height: 22, background: "var(--ti-divider)", margin: "0 2px" }} />
+              <AlignmentMenu variant="menubar" />
+            </>
+          )}
         </div>
 
         {/* Center: trackIT link status badge + document title */}
@@ -1223,17 +1235,19 @@ export default function MenuBar() {
           <UndoHistoryControls variant="desktop" />
           <div style={{ width: 1, height: 20, background: "var(--ti-divider)", margin: "0 4px" }} />
           <button
+            type="button"
             onClick={toggleTheme}
             title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
             style={{
               width: 30, height: 30, display: "grid", placeItems: "center",
               border: 0, background: "transparent", borderRadius: 7,
-              fontSize: 15, cursor: "pointer", color: "var(--ti-ink-2)",
+              cursor: "pointer", color: "var(--ti-ink-2)",
               transition: "background 100ms",
             }}
             className="hover:bg-[var(--ti-surface-2,#f0eeea)]"
           >
-            {isDark ? "☀" : "☾"}
+            <TiIcon name={isDark ? "sun" : "moon"} size={16} color="var(--ti-ink-2)" />
           </button>
         </div>
       </div>

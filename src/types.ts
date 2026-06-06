@@ -923,7 +923,7 @@ export interface TowerElevationReferenceImage {
   fullBleed?: boolean;
   blendMode?: "normal" | "lighten" | "screen" | "multiply";
   contentScale?: number;
-  /** Natural width ÷ height of reference art (e.g. Sutro PNG 260÷1080). */
+  /** Natural width ÷ height of reference art (e.g. Sutro PNG 245÷1024). */
   imageAspectRatio?: number;
 }
 
