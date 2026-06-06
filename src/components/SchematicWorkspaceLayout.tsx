@@ -69,7 +69,8 @@ function panelVisible(
   if (id === "showInfo") return panelsVisible.showInfo;
   if (id === "colors") return panelsVisible.colors;
   if (id === "cadTools") return panelsVisible.cadTools;
-  if (id === "inspector") return inspectorOpen;
+  // Inspector is always mounted; KgoRightPanel renders the rail when collapsed.
+  if (id === "inspector") return true;
   if (id === "canvasToolbar") return true;
   return false;
 }
@@ -123,6 +124,10 @@ export default function SchematicWorkspaceLayout({
     const candidates: WorkspacePanelId[] = ["devices", ...rightPanelOrder, "inspector"];
     for (const id of candidates) {
       if (!panelVisible(id, panelsVisible, rightInspectorOpen)) continue;
+      if (id === "inspector") {
+        if (rightInspectorOpen && panelLayouts.inspector.edge === "left") ids.push(id);
+        continue;
+      }
       if (panelLayouts[id].edge === "left") ids.push(id);
     }
     return ids;
@@ -137,7 +142,11 @@ export default function SchematicWorkspaceLayout({
       if (!panelVisible(id, panelsVisible, rightInspectorOpen)) continue;
       if (panelLayouts[id].edge === "right") ids.push(id);
     }
-    if (panelVisible("inspector", panelsVisible, rightInspectorOpen) && panelLayouts.inspector.edge === "right") {
+    // Collapsed inspector always stays on the far-right rail (legacy behavior).
+    if (
+      !rightInspectorOpen ||
+      panelLayouts.inspector.edge === "right"
+    ) {
       ids.push("inspector");
     }
     return ids;
@@ -149,6 +158,9 @@ export default function SchematicWorkspaceLayout({
 
   const floatingIds = (Object.keys(panelLayouts) as WorkspacePanelId[]).filter((id) => {
     if (!panelVisible(id, panelsVisible, rightInspectorOpen)) return false;
+    if (id === "inspector") {
+      return rightInspectorOpen && panelLayouts.inspector.edge === "float";
+    }
     return panelLayouts[id].edge === "float";
   });
 
