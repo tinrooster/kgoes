@@ -78,11 +78,8 @@ export function normalizePanelLayouts(
   return out;
 }
 
-/** Inspector collapsed rail stays on the same dock edge it was placed on. */
-export function resolveInspectorPlacement(
-  edge: PanelDockEdge,
-  open: boolean,
-): "right" | "left" | "float" {
+/** Inspector rail/panel stays on the dock edge it was placed on (open or collapsed). */
+export function resolveInspectorPlacement(edge: PanelDockEdge): "right" | "left" | "float" {
   if (edge === "left") return "left";
   if (edge === "float") return "float";
   return "right";

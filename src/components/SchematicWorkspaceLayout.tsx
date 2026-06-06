@@ -117,10 +117,7 @@ export default function SchematicWorkspaceLayout({
   const snapPreview = useSidebarStore((s) => s.snapPreview);
   const rightInspectorOpen = useSidebarStore((s) => s.rightInspectorOpen);
 
-  const inspectorPlacement = resolveInspectorPlacement(
-    panelLayouts.inspector?.edge ?? "right",
-    rightInspectorOpen,
-  );
+  const inspectorPlacement = resolveInspectorPlacement(panelLayouts.inspector?.edge ?? "right");
 
   const dockedLeft = useMemo(() => {
     const ids: WorkspacePanelId[] = [];
