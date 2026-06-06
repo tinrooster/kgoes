@@ -43,6 +43,7 @@ import {
   insertCadScaleBar,
 } from "../towerSiteCadInsert";
 import TrackItModeBadge from "./TrackItModeBadge";
+import AlignmentMenu from "./AlignmentMenu";
 import DrawingProjectDropdown from "./DrawingProjectDropdown";
 import ToolbarSidebarMenu from "./ToolbarSidebarMenu";
 import { isDrawingCanvasActive, resolveActiveDrawingPage } from "../drawingPageUtils";

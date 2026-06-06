@@ -281,7 +281,7 @@ function makeFeedlinePolyline(
 export function suggestTowerDraftFeedlinesForPage(
   opts: SuggestTowerFeedlinesOpts,
 ): SuggestTowerFeedlinesResult {
-  const { page, nodes, edges, pages, context, useShortNames = false } = opts;
+  const { page, nodes, edges, pages, useShortNames = false } = opts;
   const pxPerFt = opts.pxPerFt ?? TOWER_DRAFT_PX_PER_FT;
   const towerHeightFt = page.towerHeightFtAgl;
   const centerX = towerDraftTowerCenterX();

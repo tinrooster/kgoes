@@ -1,7 +1,6 @@
 import { create } from "zustand";
-import { layoutRackPositions, inferGridColumns, rackLayoutReverseOrder } from "./rackLayout";
+import { layoutRackPositions, rackLayoutReverseOrder } from "./rackLayout";
 import { defaultRackElevationViewports } from "./rackElevationViewportUtils";
-import { getDevicesInRoom } from "./rackLink";
 import {
   applyRackFillOrderPreset,
   applyTowerDatacomHubPreset,
@@ -151,7 +150,7 @@ import {
   formatSuggestFeedlinesToast,
   suggestTowerDraftFeedlinesForPage,
 } from "./towerDraftFeedlines";
-import { resolveCatalogTowerHeightFtAgl } from "./towerDraftDisplayHeight";
+import { normalizeTowerDraftPages } from "./towerDraftPageNormalize";
 import {
   blockSlotNumbers,
   formatCableNumber,

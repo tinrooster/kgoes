@@ -1748,7 +1748,6 @@ function SchematicCanvas() {
         size={1}
         color={printView ? (isDark ? "#4b5563" : "#c1c7d2") : (isDark ? "#374151" : "#d4d4d4")}
       />
-      <AutoRouteChip />
       <AutoRouteConfirmDialog />
       <RoutingDebugOverlay />
     </ReactFlow>

@@ -19,13 +19,14 @@ import { useDrawingViewportActions } from "../hooks/useDrawingViewportActions";
 import AlignmentMenu from "./AlignmentMenu";
 
 function Chip({
-  label, icon, active, badge, compact, onClick, title,
+  label, icon, active, badge, compact, disabled = false, onClick, title,
 }: {
   label: string;
   icon?: string;
   active?: boolean;
   badge?: number;
   compact?: boolean;
+  disabled?: boolean;
   onClick?: () => void;
   title?: string;
 }) {

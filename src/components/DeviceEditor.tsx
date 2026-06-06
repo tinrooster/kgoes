@@ -148,7 +148,6 @@ function newPortDraft(direction: PortDirection): PortDraft {
 const MIME = "application/easyschematic-port";
 
 export default function DeviceEditor() {
-  const cloudPortal = isCloudPortalEnabled();
   const editingNodeId = useSchematicStore((s) => s.editingNodeId);
   const nodes = useSchematicStore((s) => s.nodes);
   const syncDeviceFromTemplate = useSchematicStore((s) => s.syncDeviceFromTemplate);

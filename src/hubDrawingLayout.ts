@@ -2,7 +2,7 @@
  * Schematic drawing layout + optional fanout wiring for tower datacom hub jack fields.
  */
 
-import { rackDesignationFromLabel, resolveRackDesignation } from "./rackDesignation";
+import { resolveRackDesignation } from "./rackDesignation";
 import type { DistributionPlan } from "./distributionPlan";
 import { resolveMasterPanelForDestRack } from "./distributionPlan";
 import type { JackFieldPlacementPlan } from "./rackDistributionPresets";
@@ -31,7 +31,7 @@ export function estimateHubJackFieldNodeHeight(portCount: number): number {
 }
 
 function rackSortKey(rack: RackData, designationPrefix: string): string {
-  return rack.designation ?? rackDesignationFromLabel(rack.label, designationPrefix);
+  return resolveRackDesignation(rack, designationPrefix);
 }
 
 /**

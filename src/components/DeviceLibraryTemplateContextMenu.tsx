@@ -9,7 +9,6 @@ import {
   LIBRARY_EDIT_PLACEMENT,
   templateKey,
 } from "../deviceTemplateActions";
-import { isCloudPortalEnabled } from "../deployMode";
 
 export interface LibraryTemplateMenuState {
   template: DeviceTemplate;
@@ -31,7 +30,6 @@ export default function DeviceLibraryTemplateContextMenu({
   groups,
   onOpenAdmin,
 }: Props) {
-  const cloudPortal = isCloudPortalEnabled();
   const { ref: menuRef, pos: menuPos } = useContextMenuPosition(
     menu?.screenX ?? 0,
     menu?.screenY ?? 0,

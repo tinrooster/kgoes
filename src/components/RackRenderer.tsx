@@ -355,7 +355,6 @@ function DeviceBlock({
     if (!compactFacePlate || layoutPorts.length === 0) return PX_PER_MM;
     const cols = layoutPorts.length > 6 ? 6 : layoutPorts.length;
     const rows = Math.ceil(layoutPorts.length / cols);
-    const bandTop = y + 11;
     const bandH = Math.max(8, h - 11);
     const cellW = w / (cols + 0.5);
     const cellH = bandH / (rows + 0.5);

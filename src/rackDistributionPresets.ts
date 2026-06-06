@@ -418,7 +418,6 @@ export function applyTowerDatacomHubPreset(
 
     for (const rack of racks) {
       const isMaster = rack.id === masterId;
-      const designation = resolveRackDesignation(rack, designationPrefix);
 
       if (isMaster && stackPanels && plan) {
         const panelCount = plan.jackFields.panelCount ?? 1;
@@ -426,7 +425,7 @@ export function applyTowerDatacomHubPreset(
         const blankUAfter = plan.jackFields.blankUAfterPanel ?? 0;
         let placed = 0;
         let stackOffsetU = 0;
-        const placeBlankSpacer = (uPosition: number, panelIndex: number): boolean => {
+        const placeBlankSpacer = (uPosition: number, _panelIndex: number): boolean => {
           if (blankUAfter <= 0) return false;
           if (uPosition + blankUAfter - 1 > rack.heightU) return false;
           if (

@@ -147,7 +147,6 @@ export function resolveHubMatrixPair(
 }
 
 function serviceTypeFromEdge(edge: ConnectionEdge): ServiceType {
-  const raw = edge.data?.serviceType;
   const tagged = edge.data?.matrixServiceType as string | undefined;
   if (tagged) return normalizeServiceType(tagged);
   return normalizeServiceType(edge.data?.signalType as string | undefined);

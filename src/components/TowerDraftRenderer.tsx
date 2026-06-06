@@ -940,9 +940,9 @@ export default function TowerDraftRenderer({
             .filter((pl) => !pl.feedlineFromNodeId || isProfile)
             .map((pl) => {
             const selected = pl.id === selectedPolylineId;
-            const linkedPlacement =
-              pl.feedlineFromNodeId &&
-              page.placements.find((p) => p.deviceNodeId === pl.feedlineFromNodeId);
+            const linkedPlacement = pl.feedlineFromNodeId
+              ? page.placements.find((p) => p.deviceNodeId === pl.feedlineFromNodeId)
+              : undefined;
             const linkedSelected =
               linkedPlacement != null && linkedPlacement.id === selectedPlacementId;
             const feedlineActive = selected || linkedSelected;

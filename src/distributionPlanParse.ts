@@ -130,11 +130,11 @@ export function parseDistributionPlanJson(raw: unknown): ParseDistributionPlanRe
     fanout,
     lengthModel: {
       kind: "hub-serpentine",
-      baseFt: lm.baseFt,
-      incrementFt: lm.incrementFt,
-      crossoverAfterRack: lm.crossoverAfterRack,
-      crossoverExtraFt: lm.crossoverExtraFt,
-      trayLocation: lm.trayLocation,
+      baseFt: lm.baseFt as number,
+      incrementFt: lm.incrementFt as number,
+      crossoverAfterRack: lm.crossoverAfterRack as number,
+      crossoverExtraFt: lm.crossoverExtraFt as number,
+      trayLocation: lm.trayLocation as "ceiling" | "floor",
     },
     cablePool: {
       start: pool.start,
