@@ -23,6 +23,15 @@ export type LibraryBrowseMode = "full" | "userTemplatesOnly";
 
 export type RightPanelId = "viewOptions" | "trackIt" | "showInfo" | "colors" | "cadTools";
 
+/** Maps expandRightPanel id → workspace layout id */
+export const RIGHT_PANEL_WORKSPACE_ID: Record<RightPanelId, WorkspacePanelId> = {
+  viewOptions: "viewOptions",
+  trackIt: "trackItNumbers",
+  showInfo: "showInfo",
+  colors: "colors",
+  cadTools: "cadTools",
+};
+
 /** Right dock panels (excluding inspector) — order controls render sequence. */
 export type RightDockPanelId = "viewOptions" | "trackItNumbers" | "showInfo" | "colors" | "cadTools";
 
@@ -288,12 +297,18 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
   },
 
   expandRightPanel: (panel) => {
+    const workspaceId = RIGHT_PANEL_WORKSPACE_ID[panel];
+    const panelLayouts = {
+      ...get().panelLayouts,
+      [workspaceId]: { ...get().panelLayouts[workspaceId], edge: "right" as const },
+    };
     const next = {
       rightViewOptionsExpanded: panel === "viewOptions",
       rightTrackItExpanded: panel === "trackIt",
       rightShowInfoExpanded: panel === "showInfo",
       rightColorsExpanded: panel === "colors",
       rightCadToolsExpanded: panel === "cadTools",
+      panelLayouts,
     };
     set(next);
     persistSidebar({ ...get(), ...next });

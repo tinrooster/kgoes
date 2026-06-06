@@ -165,7 +165,7 @@ export default function SchematicWorkspaceLayout({
         <SnapGuides edge={snapPreview} />
         <div className="flex flex-1 overflow-hidden min-h-0">
           {dockedLeft.length > 0 && (
-            <div data-print-hide data-mobile-hide className="hidden md:flex min-h-0 max-h-full shrink-0 flex-col overflow-hidden self-stretch">
+            <div data-print-hide data-mobile-hide className="hidden md:flex min-h-0 max-h-full shrink-0 flex-row overflow-hidden self-stretch">
               {dockedLeft.map((id) => (
                 <WorkspacePanelFrame key={id} id={id} floating={false} layout={panelLayouts[id]}>
                   {renderPanel(id)}
@@ -206,7 +206,7 @@ export default function SchematicWorkspaceLayout({
           </div>
 
           {showRightDock && (
-            <div data-print-hide className="flex min-h-0 max-h-full shrink-0 flex-col overflow-hidden self-stretch">
+            <div data-print-hide className="flex min-h-0 max-h-full shrink-0 flex-row overflow-hidden self-stretch">
               {dockedRight.map((id) => (
                 <WorkspacePanelFrame key={id} id={id} floating={false} layout={panelLayouts[id]}>
                   {renderPanel(id)}

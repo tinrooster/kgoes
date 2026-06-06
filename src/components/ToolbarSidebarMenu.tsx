@@ -6,8 +6,17 @@ import { useState, type DragEvent } from "react";
 import {
   useSidebarStore,
   type RightDockPanelId,
+  type RightPanelId,
   RIGHT_DOCK_PANEL_LABELS,
 } from "../sidebarStore";
+
+const RIGHT_DOCK_EXPAND: Record<RightDockPanelId, RightPanelId> = {
+  viewOptions: "viewOptions",
+  trackItNumbers: "trackIt",
+  showInfo: "showInfo",
+  colors: "colors",
+  cadTools: "cadTools",
+};
 
 const VISIBILITY_KEY: Record<RightDockPanelId, keyof ReturnType<typeof useSidebarStore.getState>["panelsVisible"]> = {
   viewOptions: "viewOptions",
@@ -33,6 +42,7 @@ function GripIcon() {
 export default function ToolbarSidebarMenu() {
   const panelsVisible = useSidebarStore((s) => s.panelsVisible);
   const setPanelVisible = useSidebarStore((s) => s.setPanelVisible);
+  const setPanelLayout = useSidebarStore((s) => s.setPanelLayout);
   const expandRightPanel = useSidebarStore((s) => s.expandRightPanel);
   const order = useSidebarStore((s) => s.rightPanelOrder);
   const moveRightPanel = useSidebarStore((s) => s.moveRightPanel);
@@ -95,7 +105,10 @@ export default function ToolbarSidebarMenu() {
               onClick={() => {
                 const next = !checked;
                 setPanelVisible(visKey, next);
-                if (next && id === "cadTools") expandRightPanel("cadTools");
+                if (next) {
+                  setPanelLayout(id, { edge: "right" });
+                  expandRightPanel(RIGHT_DOCK_EXPAND[id]);
+                }
               }}
               className="flex items-center flex-1 min-w-0 px-1 py-1.5 text-xs rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer text-left gap-2"
             >
