@@ -420,6 +420,7 @@ function KgoRightPanel() {
     >
       <SidebarPanelHeader
         title={label}
+        workspacePanelId="inspector"
         onCollapse={() => setRightOpen(false)}
         collapseTitle="Collapse inspector"
         trailing={

@@ -162,6 +162,7 @@ export default function ViewOptionsPanel({ mobile, onClose }: { mobile?: boolean
 
       <SidebarPanelHeader
         title="View options"
+        workspacePanelId="viewOptions"
         onCollapse={() => (mobile ? onClose?.() : setRightExpanded(false))}
         closeMode={!!mobile}
       />

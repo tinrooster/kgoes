@@ -21,20 +21,13 @@ import { nodeTypes, edgeTypes } from "./nodeTypes";
 import SnapGuides from "./components/SnapGuides";
 import PageBoundaryOverlay from "./components/PageBoundaryOverlay";
 import PrintViewBar from "./components/PrintViewBar";
-import DeviceLibrary from "./components/DeviceLibrary";
+import SchematicWorkspaceLayout from "./components/SchematicWorkspaceLayout";
 import DeviceEditor from "./components/DeviceEditor";
-import SignalColorPanel from "./components/SignalColorPanel";
-import TrackItNumberingPanel from "./components/TrackItNumberingPanel";
-import ShowInfoPanel from "./components/ShowInfoPanel";
-import ViewOptionsPanel from "./components/ViewOptionsPanel";
-import CadToolsPanel from "./components/CadToolsPanel";
-import KgoCanvasToolbar from "./components/KgoCanvasToolbar";
 import ViewportEditorDialog from "./components/ViewportEditorDialog";
 import { DRAWING_VIEWPORT_EDITOR_EVENT } from "./drawingViewportEvents";
-import KgoRightPanel from "./components/KgoRightPanel";
 import KgoCommandBar from "./components/KgoCommandBar";
 import KgoSyncDrawer from "./components/KgoSyncDrawer";
-import { useSidebarStore, useSyncDrawerStore } from "./sidebarStore";
+import { useSyncDrawerStore } from "./sidebarStore";
 import { KGO_ES_NAME, kgoEsDocumentTitle } from "./branding";
 import { isDrawingCanvasActive } from "./drawingPageUtils";
 import MenuBar from "./components/MenuBar";
@@ -1840,8 +1833,6 @@ export default function App() {
   const isSchematicActive = isDrawingCanvasActive(activePage, pages);
   const undo = useSchematicStore((s) => s.undo);
   const redo = useSchematicStore((s) => s.redo);
-  const panelsVisible = useSidebarStore((s) => s.panelsVisible);
-  const rightPanelOrder = useSidebarStore((s) => s.rightPanelOrder);
   const syncDrawerOpen = useSyncDrawerStore((s) => s.open);
   const setSyncDrawerOpen = useSyncDrawerStore((s) => s.setOpen);
   const [viewportEditorOpen, setViewportEditorOpen] = useState(false);
@@ -1921,39 +1912,16 @@ export default function App() {
       {isSchematicActive && <PrintTitleBlock />}
       <PageTabs />
       {isSchematicActive ? (
-        <div className="flex flex-1 flex-col overflow-hidden min-h-0">
-          <div className="flex flex-1 overflow-hidden min-h-0">
-            {panelsVisible.devices && (
-              <div data-print-hide data-mobile-hide>
-                <DeviceLibrary />
-              </div>
-            )}
-            <div className="flex flex-col flex-1 min-w-0 min-h-0">
-              <div className="relative flex-1 min-h-0">
-                <SchematicCanvas />
-                <KgoCanvasToolbar />
-                <ViewportEditorDialog
-                  open={viewportEditorOpen}
-                  onClose={() => setViewportEditorOpen(false)}
-                />
-              </div>
-              <KgoCommandBar />
-            </div>
-            <div data-print-hide className="hidden md:flex shrink-0">
-              {rightPanelOrder.map((panelId) => {
-                if (panelId === "viewOptions" && panelsVisible.viewOptions) return <ViewOptionsPanel key={panelId} />;
-                if (panelId === "showInfo" && panelsVisible.showInfo) return <ShowInfoPanel key={panelId} />;
-                if (panelId === "trackItNumbers" && panelsVisible.trackItNumbers) {
-                  return <TrackItNumberingPanel key={panelId} />;
-                }
-                if (panelId === "colors" && panelsVisible.colors) return <SignalColorPanel key={panelId} />;
-                if (panelId === "cadTools" && panelsVisible.cadTools) return <CadToolsPanel key={panelId} />;
-                return null;
-              })}
-            </div>
-            <KgoRightPanel />
-          </div>
-        </div>
+        <SchematicWorkspaceLayout
+          canvas={<SchematicCanvas />}
+          viewportEditor={
+            <ViewportEditorDialog
+              open={viewportEditorOpen}
+              onClose={() => setViewportEditorOpen(false)}
+            />
+          }
+          commandBar={<KgoCommandBar />}
+        />
       ) : activePgType === "print-sheet" ? (
         <PrintSheetPage />
       ) : activePgType === "tower-draft" ? (

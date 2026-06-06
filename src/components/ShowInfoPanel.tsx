@@ -88,6 +88,7 @@ export default function ShowInfoPanel({ mobile, onClose }: { mobile?: boolean; o
     <SidebarPanelShell widthClass="w-48" mobile={mobile}>
       <SidebarPanelHeader
         title="Show info"
+        workspacePanelId="showInfo"
         onCollapse={() => (mobile ? onClose?.() : setRightExpanded(false))}
         closeMode={!!mobile}
       />

@@ -6,6 +6,8 @@ import { SIGNAL_LABELS, SIGNAL_COLORS, type SignalType } from "../types";
 import type { DeviceTemplate, CustomTemplateGroup, OwnedGearFile, OwnedGearItem, SchematicNode, DeviceData } from "../types";
 import { useSchematicStore, CATEGORY_ORDER_DEFAULT } from "../store";
 import { useSidebarStore } from "../sidebarStore";
+import WorkspacePanelDragHandle from "./WorkspacePanelDragHandle";
+import { useWorkspacePanelDragHandle } from "../workspacePanelContext";
 import { scoreTemplate } from "../templateSearch";
 import { inventoryKeyFromDeviceData, inventoryKeyFromTemplate } from "../inventoryKey";
 import DeviceCreatorPicker from "./DeviceCreatorPicker";
@@ -1110,6 +1112,7 @@ export default function DeviceLibrary() {
   const setLeftExpanded = useSidebarStore((s) => s.setLeftExpanded);
   const libraryBrowseMode = useSidebarStore((s) => s.libraryBrowseMode);
   const collapsed = !leftExpanded;
+  const workspaceDrag = useWorkspacePanelDragHandle();
   const [leftTab, setLeftTab] = useState<"devices" | "layers">("devices");
   const [sourceFilter, setSourceFilter] = useState<"all" | "trackit" | "local">("all");
   const [templates, setTemplates] = useState(getBundledTemplates);
@@ -1337,6 +1340,9 @@ export default function DeviceLibrary() {
         height: "100%", paddingTop: 10, gap: 8,
       }}>
         <TiIconButton icon="chevR" variant="ghost" size="sm" onClick={() => setLeftExpanded(true)} title="Expand library" />
+        {workspaceDrag ? (
+          <WorkspacePanelDragHandle panelId="devices" onStartDrag={workspaceDrag.startDrag} />
+        ) : null}
         <div style={{ writingMode: "vertical-rl", fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ti-muted)", marginTop: 8 }}>
           {showOwnedGearPane ? "Library" : "Devices"}
         </div>
@@ -1380,6 +1386,9 @@ export default function DeviceLibrary() {
               onClick={() => openDeviceAdmin({ tab: "manage" })}
             />
           )}
+          {workspaceDrag ? (
+            <WorkspacePanelDragHandle panelId="devices" onStartDrag={workspaceDrag.startDrag} />
+          ) : null}
           <TiIconButton icon="chevL" variant="ghost" size="sm" onClick={() => setLeftExpanded(false)} title="Collapse library" />
         </div>
       )}

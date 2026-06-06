@@ -1,4 +1,11 @@
 import { create } from "zustand";
+import {
+  DEFAULT_PANEL_LAYOUTS,
+  normalizePanelLayouts,
+  type PanelDockEdge,
+  type WorkspacePanelId,
+  type WorkspacePanelLayout,
+} from "./workspacePanelLayout";
 
 /** Avoid importing trackitIntegration (circular with sidebar store). */
 function isTrackItPopupOpener(): boolean {
@@ -57,6 +64,7 @@ export interface SidebarPrefs {
   panelsVisible: SidebarPanelVisibility;
   rightInspectorOpen: boolean;
   rightPanelOrder: RightDockPanelId[];
+  panelLayouts: Record<WorkspacePanelId, WorkspacePanelLayout>;
 }
 
 function trackItSessionDefaults(): Partial<SidebarPrefs> {
@@ -113,6 +121,7 @@ function loadSidebarPrefs(): SidebarPrefs {
     panelsVisible: { ...DEFAULT_PANELS_VISIBLE },
     rightInspectorOpen: true,
     rightPanelOrder: [...DEFAULT_RIGHT_PANEL_ORDER],
+    panelLayouts: { ...DEFAULT_PANEL_LAYOUTS },
     ...trackItSessionDefaults(),
   };
   try {
@@ -128,6 +137,7 @@ function loadSidebarPrefs(): SidebarPrefs {
         ...(parsed.panelsVisible ?? {}),
       },
       rightPanelOrder: normalizeRightPanelOrder(parsed.rightPanelOrder),
+      panelLayouts: normalizePanelLayouts(parsed.panelLayouts),
     };
   } catch {
     return defaults;
@@ -155,6 +165,12 @@ function persistSidebar(prefs: SidebarPrefs): void {
 }
 
 interface SidebarState extends SidebarPrefs {
+  /** Transient snap guide while dragging a panel (not persisted). */
+  snapPreview: PanelDockEdge | null;
+  setSnapPreview: (edge: PanelDockEdge | null) => void;
+  setPanelLayout: (id: WorkspacePanelId, layout: Partial<WorkspacePanelLayout>) => void;
+  dockPanelToDefault: (id: WorkspacePanelId) => void;
+  resetPanelLayouts: () => void;
   setLeftExpanded: (v: boolean) => void;
   setRightViewOptionsExpanded: (v: boolean) => void;
   setRightTrackItExpanded: (v: boolean) => void;
@@ -174,6 +190,33 @@ interface SidebarState extends SidebarPrefs {
 
 export const useSidebarStore = create<SidebarState>((set, get) => ({
   ...loadSidebarPrefs(),
+  snapPreview: null,
+
+  setSnapPreview: (snapPreview) => set({ snapPreview }),
+
+  setPanelLayout: (id, partial) => {
+    const panelLayouts = {
+      ...get().panelLayouts,
+      [id]: { ...get().panelLayouts[id], ...partial },
+    };
+    set({ panelLayouts });
+    persistSidebar({ ...get(), panelLayouts });
+  },
+
+  dockPanelToDefault: (id) => {
+    const panelLayouts = {
+      ...get().panelLayouts,
+      [id]: { ...DEFAULT_PANEL_LAYOUTS[id] },
+    };
+    set({ panelLayouts });
+    persistSidebar({ ...get(), panelLayouts });
+  },
+
+  resetPanelLayouts: () => {
+    const panelLayouts = { ...DEFAULT_PANEL_LAYOUTS };
+    set({ panelLayouts });
+    persistSidebar({ ...get(), panelLayouts });
+  },
 
   setLeftExpanded: (leftExpanded) => {
     set({ leftExpanded });

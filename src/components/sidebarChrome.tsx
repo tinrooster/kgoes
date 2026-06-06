@@ -1,4 +1,7 @@
 import type { ReactNode } from "react";
+import type { WorkspacePanelId } from "../workspacePanelLayout";
+import WorkspacePanelDragHandle from "./WorkspacePanelDragHandle";
+import { useWorkspacePanelDragHandle, useWorkspacePanelFloating } from "../workspacePanelContext";
 
 /** Shared expand / collapse chevron for schematic sidebars. */
 export function SidebarRailChevron({ direction }: { direction: "expand" | "collapse" | "close" }) {
@@ -72,6 +75,8 @@ export type SidebarPanelHeaderProps = {
   closeMode?: boolean;
   leading?: ReactNode;
   trailing?: ReactNode;
+  /** Enables workspace drag-to-dock / float repositioning */
+  workspacePanelId?: WorkspacePanelId;
 };
 
 /** Expanded panel title bar — shared height, type, and collapse control. */
@@ -82,9 +87,14 @@ export function SidebarPanelHeader({
   closeMode = false,
   leading,
   trailing,
+  workspacePanelId,
 }: SidebarPanelHeaderProps) {
+  const drag = useWorkspacePanelDragHandle();
   return (
     <div className={PANEL_HEADER_CLASS}>
+      {workspacePanelId && drag ? (
+        <WorkspacePanelDragHandle panelId={workspacePanelId} onStartDrag={drag.startDrag} />
+      ) : null}
       {leading}
       <h2 className={PANEL_TITLE_CLASS}>{title}</h2>
       {trailing}
@@ -112,11 +122,14 @@ export function SidebarPanelShell({
   children: ReactNode;
   className?: string;
 }) {
+  const floating = useWorkspacePanelFloating();
   return (
     <div
       className={`${mobile ? "w-full" : widthClass} bg-[var(--color-surface)] ${
-        mobile ? "" : "border-l"
-      } border-[var(--color-border)] flex flex-col h-full overflow-hidden shrink-0 ${className}`}
+        mobile || floating ? "" : "border-l"
+      } border-[var(--color-border)] flex flex-col ${
+        floating ? "max-h-[min(72vh,560px)] h-auto" : "h-full"
+      } overflow-hidden shrink-0 ${floating ? "shadow-none" : ""} ${className}`}
       data-print-hide
     >
       {children}

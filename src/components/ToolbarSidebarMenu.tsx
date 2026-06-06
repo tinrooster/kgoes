@@ -1,5 +1,5 @@
 /**
- * Toolbar → Sidebar menu: toggle panels without closing, drag to reorder right dock.
+ * Toolbar → Sidebar menu: toggle panels, reorder right dock, workspace dock/reset hints.
  */
 
 import { useState, type DragEvent } from "react";
@@ -36,6 +36,7 @@ export default function ToolbarSidebarMenu() {
   const expandRightPanel = useSidebarStore((s) => s.expandRightPanel);
   const order = useSidebarStore((s) => s.rightPanelOrder);
   const moveRightPanel = useSidebarStore((s) => s.moveRightPanel);
+  const resetPanelLayouts = useSidebarStore((s) => s.resetPanelLayouts);
   const [dragId, setDragId] = useState<RightDockPanelId | null>(null);
 
   const onDragStart = (e: DragEvent, id: RightDockPanelId) => {
@@ -67,7 +68,7 @@ export default function ToolbarSidebarMenu() {
         Right dock
       </div>
       <div className="px-2 pb-1 text-[10px] text-[var(--color-text-muted)] leading-snug">
-        Toggle · drag grip to reorder
+        Toggle · menu grip reorders dock · panel grip repositions on workspace
       </div>
       {order.map((id) => {
         const visKey = VISIBILITY_KEY[id];
@@ -105,9 +106,13 @@ export default function ToolbarSidebarMenu() {
         );
       })}
       <div className="h-px bg-[var(--color-border)] my-1" />
-      <div className="px-2 pb-1 text-[10px] text-[var(--color-text-muted)]">
-        Inspector (selection) stays on the far right
-      </div>
+      <button
+        type="button"
+        onClick={() => resetPanelLayouts()}
+        className="flex items-center w-full px-2 py-1.5 text-xs rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer text-left text-[var(--color-text-muted)]"
+      >
+        Reset workspace panel positions
+      </button>
     </div>
   );
 }
