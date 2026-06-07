@@ -930,7 +930,7 @@ interface SchematicState {
   removeTowerDraftPage: (pageId: string) => void;
   updateTowerDraftPage: (
     pageId: string,
-    patch: Partial<Pick<TowerDraftPage, "label" | "towerHeightFtAgl" | "towerType" | "guideBandsFt" | "labelLayers">>,
+    patch: Partial<Pick<TowerDraftPage, "label" | "towerHeightFtAgl" | "towerType" | "guideBandsFt" | "labelLayers" | "elevationReferenceVariant">>,
   ) => void;
   addTowerDraftPlacement: (pageId: string, placement: Omit<TowerDraftPlacement, "id">) => string;
   updateTowerDraftPlacement: (pageId: string, placementId: string, patch: Partial<TowerDraftPlacement>) => void;

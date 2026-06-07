@@ -1253,13 +1253,6 @@ export default function TowerDraftRenderer({
             const label = data ? resolveDeviceLabel(data, { useShortNames }).text : pl.deviceNodeId;
             const topY = ftAglToY(layoutHeightFt, layoutHeightFt, pxPerFt);
             const y = Math.max(topY, ftAglToY(pl.mountHeightFtAgl, layoutHeightFt, pxPerFt));
-            const callout = isProfile ? profileCallouts[pl.id] : undefined;
-            const labelRailX = callout?.labelX ?? profileLabelXForMount(x, centerX, contentW);
-            const ly = isProfile
-              ? (callout?.labelY ?? y)
-              : isAllFaces
-                ? (facesLabelY[pl.id] ?? y)
-                : y;
             const plFace = resolvePlacementTowerFace(pl, data, trackItTowerContext);
             const colCenter = placementCenterX(
               pl,
@@ -1269,6 +1262,13 @@ export default function TowerDraftRenderer({
               isProfile ? centerX : undefined,
             );
             const x = colCenter + (pl.offsetX ?? 0);
+            const callout = isProfile ? profileCallouts[pl.id] : undefined;
+            const labelRailX = callout?.labelX ?? profileLabelXForMount(x, centerX, contentW);
+            const ly = isProfile
+              ? (callout?.labelY ?? y)
+              : isAllFaces
+                ? (facesLabelY[pl.id] ?? y)
+                : y;
             const glyphFace =
               elevationView === "all-faces" ? plFace : viewFace;
             const selected = pl.id === selectedPlacementId;

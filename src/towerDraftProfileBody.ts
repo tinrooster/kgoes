@@ -1,6 +1,4 @@
 import type { TowerDraftPage, TrackItTowerSiteContext } from "./types";
-import type { TowerElevationView } from "./towerDraftFaces";
-import { ftAglToY } from "./towerDraftUtils";
 import { towerHalfWidthAtY } from "./towerDraftElevationLayout";
 
 export type TowerProfileVisual =
