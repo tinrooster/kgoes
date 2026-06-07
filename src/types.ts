@@ -1193,6 +1193,15 @@ export type TrackItTowerSiteContext = {
     drawingType?: string;
   }[];
   elevationReferenceImage?: TowerElevationReferenceImage;
+  /** Cap face-column layout height (ft AGL) from importable tower pack. */
+  faceLayoutHeightFtAgl?: number;
+  towerType?: "self_support" | "guyed" | "monopole";
+  profileVisual?:
+    | "reference_image"
+    | "generated_guyed"
+    | "generated_self_support"
+    | "generated_monopole";
+  towerElevationPackId?: string;
   elevationViewport?: {
     tallTowerMode: boolean;
     tallTowerThresholdFt?: number;

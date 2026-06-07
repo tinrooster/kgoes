@@ -37,9 +37,9 @@ describe("normalizeTowerDraftPage", () => {
     );
   });
 
-  it("upgrades Sutro height without trackIT context", () => {
+  it("keeps relative ref on page when context is absent", () => {
     const next = normalizeTowerDraftPage(sutroPage, null);
-    expect(next.towerHeightFtAgl).toBe(977);
+    expect(next.towerHeightFtAgl).toBe(150);
     expect(next.elevationReferenceImage?.url).toContain("sutro-elevation-ref.png");
   });
 });

@@ -89,6 +89,12 @@ import {
   resolveTowerDraftGuideBands,
 } from "../towerDraftGuideBands";
 import TowerDraftMinimap from "./TowerDraftMinimap";
+import {
+  guyedMastProfileElements,
+  resolveProfileVisual,
+  selfSupportProfileElements,
+  shouldRenderGeneratedProfileBody,
+} from "../towerDraftProfileBody";
 
 interface TowerDraftRendererProps {
   page: TowerDraftPage;
@@ -157,15 +163,27 @@ export default function TowerDraftRenderer({
   const PLACEMENT_DRAG_THRESHOLD_PX = 5;
 
   const viewFace = activeViewFace(elevationView);
-  const towerType = page.towerType ?? "self_support";
+  const towerType = page.towerType ?? trackItTowerContext?.towerType ?? "self_support";
   const isProfile = elevationView === "profile";
+  const [referenceImageFailed, setReferenceImageFailed] = useState(false);
   const isAllFaces = elevationView === "all-faces";
   const isSectionElevation = isTowerSectionElevationView(elevationView);
   const elevationRef = useMemo(
     () => resolveTowerElevationReference(page, trackItTowerContext),
     [page, trackItTowerContext],
   );
-  const profileReferenceUnderlay = isProfile && !!elevationRef;
+  const profileVisual = useMemo(
+    () => resolveProfileVisual(page, trackItTowerContext, !!elevationRef?.url),
+    [page, trackItTowerContext, elevationRef?.url],
+  );
+  const profileReferenceUnderlay =
+    isProfile &&
+    !!elevationRef?.url &&
+    profileVisual === "reference_image" &&
+    !referenceImageFailed;
+  useEffect(() => {
+    setReferenceImageFailed(false);
+  }, [elevationRef?.url, page.id]);
   const catalogHeightFt = useMemo(
     () => resolveCatalogTowerHeightFtAgl(page, trackItTowerContext),
     [page, trackItTowerContext],
@@ -518,6 +536,7 @@ export default function TowerDraftRenderer({
           height={layout.height}
           preserveAspectRatio={layout.preserveAspectRatio}
           opacity={layout.opacity}
+          onError={() => setReferenceImageFailed(true)}
         />
         {elevationRef.label ? (
           <text
@@ -535,7 +554,9 @@ export default function TowerDraftRenderer({
   }, [profileReferenceUnderlay, elevationRef, layoutHeightFt, centerX, gridRulerX, contentW, pxPerFt]);
 
   const towerBody = useMemo(() => {
-    if (profileReferenceUnderlay) return null;
+    const showGeneratedProfile =
+      isProfile && shouldRenderGeneratedProfileBody(profileVisual, referenceImageFailed);
+    if (profileReferenceUnderlay && !showGeneratedProfile) return null;
 
     const topY = ftAglToY(layoutHeightFt, layoutHeightFt, pxPerFt);
     const baseHalfW = 18;
@@ -620,6 +641,30 @@ export default function TowerDraftRenderer({
       return renderFaceColumn(centerX, singleFace, 0);
     }
 
+    if (isProfile && (profileVisual === "generated_guyed" || towerType === "guyed") && showGeneratedProfile) {
+      const guyed = guyedMastProfileElements({
+        centerX,
+        topY,
+        groundY,
+        layoutHeightFt,
+        pxPerFt,
+        towerType,
+        visual: profileVisual,
+      });
+      return (
+        <g aria-label="Guyed mast profile">
+          <path
+            d={guyed.mast}
+            fill="color-mix(in oklab, var(--ti-ink) 6%, var(--ti-surface))"
+            stroke="var(--ti-ink-2)"
+            strokeWidth={1.4}
+          />
+          <path d={guyed.guys} stroke="color-mix(in oklab, var(--ti-ink) 38%, transparent)" strokeWidth={1.1} fill="none" />
+          <path d={guyed.anchors} stroke="var(--ti-ink-2)" strokeWidth={2} fill="none" />
+        </g>
+      );
+    }
+
     if (towerType === "monopole") {
       return (
         <g>
@@ -632,6 +677,30 @@ export default function TowerDraftRenderer({
             stroke="none"
           />
           <line x1={centerX} y1={topY} x2={centerX} y2={groundY} stroke="var(--ti-ink-2)" strokeWidth={3} />
+        </g>
+      );
+    }
+
+    if (isProfile && showGeneratedProfile) {
+      const selfSupport = selfSupportProfileElements({
+        centerX,
+        topY,
+        groundY,
+        layoutHeightFt,
+        pxPerFt,
+        towerType,
+        visual: profileVisual,
+      });
+      return (
+        <g aria-label="Self-support profile">
+          <path
+            d={selfSupport.body}
+            fill="color-mix(in oklab, var(--ti-ink) 5%, var(--ti-surface))"
+            stroke="var(--ti-ink-2)"
+            strokeWidth={1.6}
+          />
+          <path d={selfSupport.struts} stroke="color-mix(in oklab, var(--ti-ink) 28%, transparent)" strokeWidth={0.9} fill="none" />
+          <path d={selfSupport.braces} stroke="color-mix(in oklab, var(--ti-ink) 32%, transparent)" strokeWidth={1} fill="none" />
         </g>
       );
     }
@@ -673,6 +742,10 @@ export default function TowerDraftRenderer({
     elevationView,
     isAllFaces,
     profileReferenceUnderlay,
+    profileVisual,
+    referenceImageFailed,
+    isProfile,
+    guideBandHeightFt,
     pxPerFt,
   ]);
 

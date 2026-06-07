@@ -12,6 +12,9 @@ export function normalizeTowerDraftPage(
   if (catalogH > 0 && Math.abs(page.towerHeightFtAgl - catalogH) > 1) {
     next = { ...next, towerHeightFtAgl: catalogH };
   }
+  if (context?.towerType && next.towerType !== context.towerType) {
+    next = { ...next, towerType: context.towerType };
+  }
 
   const mergedRef = mergeTowerElevationReference(next.elevationReferenceImage, context?.elevationReferenceImage);
   if (mergedRef) {

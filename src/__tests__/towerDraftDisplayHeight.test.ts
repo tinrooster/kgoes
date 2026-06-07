@@ -2,16 +2,22 @@ import { describe, expect, it } from "vitest";
 import {
   resolveCatalogTowerHeightFtAgl,
   resolveTowerDraftLayoutHeightFt,
-  SUTRO_CATALOG_TOP_FT_AGL,
-  SUTRO_FACE_LAYOUT_HEIGHT_FT_AGL,
 } from "../towerDraftDisplayHeight";
-import type { TowerDraftPage } from "../types";
+import type { TowerDraftPage, TrackItTowerSiteContext } from "../types";
 import { guideBandsForDisplay, isStructuralGuideBand, resolveTowerDraftGuideBands } from "../towerDraftGuideBands";
 
+const tallContext: TrackItTowerSiteContext = {
+  siteCode: "SUTRO",
+  siteName: "Sutro Tower",
+  towerHeightFt: 977,
+  faceLayoutHeightFtAgl: 800,
+  antennaLevels: [],
+};
+
 describe("towerDraftLayoutHeight", () => {
-  const sutroPage: TowerDraftPage = {
+  const tallPage: TowerDraftPage = {
     id: "td-1",
-    label: "Sutro",
+    label: "Tall tower",
     type: "tower-draft",
     towerHeightFtAgl: 977,
     guideBandsFt: [],
@@ -20,27 +26,19 @@ describe("towerDraftLayoutHeight", () => {
     elevationReferenceImage: { url: "/assets/mountaintops/sutro/sutro-elevation-ref.png" },
   };
 
-  it("profile uses full catalog height", () => {
-    expect(resolveTowerDraftLayoutHeightFt(sutroPage, null, "profile")).toBe(977);
+  it("profile uses full catalog height from context", () => {
+    expect(resolveTowerDraftLayoutHeightFt(tallPage, tallContext, "profile")).toBe(977);
   });
 
-  it("sanitizes polluted Sutro page height (AMSL mistaken for AGL)", () => {
-    const polluted = { ...sutroPage, towerHeightFtAgl: 1811 };
-    expect(resolveCatalogTowerHeightFtAgl(polluted, null)).toBe(SUTRO_CATALOG_TOP_FT_AGL);
-    expect(resolveTowerDraftLayoutHeightFt(polluted, null, "profile")).toBe(SUTRO_CATALOG_TOP_FT_AGL);
+  it("prefers context tower height over generic 150 ft page height", () => {
+    const starter = { ...tallPage, towerHeightFtAgl: 150 };
+    expect(resolveCatalogTowerHeightFtAgl(starter, tallContext)).toBe(977);
+    expect(resolveTowerDraftLayoutHeightFt(starter, tallContext, "profile")).toBe(977);
   });
 
-  it("ignores generic 150 ft page height for Sutro profile", () => {
-    const starter = { ...sutroPage, towerHeightFtAgl: 150 };
-    expect(resolveCatalogTowerHeightFtAgl(starter, null)).toBe(977);
-    expect(resolveTowerDraftLayoutHeightFt(starter, null, "profile")).toBe(977);
-  });
-
-  it("face views cap Sutro at 800 ft", () => {
-    expect(resolveTowerDraftLayoutHeightFt(sutroPage, null, "all-faces")).toBe(
-      SUTRO_FACE_LAYOUT_HEIGHT_FT_AGL,
-    );
-    expect(resolveTowerDraftLayoutHeightFt(sutroPage, null, "N")).toBe(SUTRO_FACE_LAYOUT_HEIGHT_FT_AGL);
+  it("face views cap at faceLayoutHeightFtAgl from pack context", () => {
+    expect(resolveTowerDraftLayoutHeightFt(tallPage, tallContext, "all-faces")).toBe(800);
+    expect(resolveTowerDraftLayoutHeightFt(tallPage, tallContext, "N")).toBe(800);
   });
 });
 
