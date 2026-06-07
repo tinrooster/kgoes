@@ -1,5 +1,6 @@
 import type { SchematicPage, TowerDraftPage, TrackItTowerSiteContext } from "./types";
 import { resolveCatalogTowerHeightFtAgl } from "./towerDraftDisplayHeight";
+import { guideBandsStaleVsContext } from "./towerDraftGuideBands";
 import { mergeTowerElevationReference } from "./towerElevationReference";
 
 /** Upgrade stale tower-draft pages (150 ft starter, relative Sutro assets) on load / context. */
@@ -14,6 +15,11 @@ export function normalizeTowerDraftPage(
   }
   if (context?.towerType && next.towerType !== context.towerType) {
     next = { ...next, towerType: context.towerType };
+  }
+
+  const ctxBands = context?.elevationViewport?.guideBandsFt;
+  if (ctxBands?.length && guideBandsStaleVsContext(next.guideBandsFt, ctxBands)) {
+    next = { ...next, guideBandsFt: ctxBands };
   }
 
   const mergedRef = mergeTowerElevationReference(next.elevationReferenceImage, context?.elevationReferenceImage);

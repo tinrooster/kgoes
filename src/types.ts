@@ -916,15 +916,20 @@ export type TowerDraftLineStyle = "solid" | "dashed" | "dotted";
 /** Photographic / line-art elevation underlay (trackIT mountaintop reference art). */
 export interface TowerElevationReferenceImage {
   url: string;
+  /** Line-art / permit blueprint alternate (`detailUrl` toggle in profile view). */
   detailUrl?: string;
   label?: string;
   opacity?: number;
+  /** Optional opacity when blueprint (`detailUrl`) is active. */
+  detailOpacity?: number;
   align?: "center" | "left";
   fullBleed?: boolean;
   blendMode?: "normal" | "lighten" | "screen" | "multiply";
   contentScale?: number;
   /** Natural width ÷ height of reference art (e.g. Sutro PNG 245÷1024). */
   imageAspectRatio?: number;
+  /** Natural width ÷ height of blueprint art when different from primary. */
+  detailImageAspectRatio?: number;
 }
 
 /** User-drawn polyline segment (tower leg, guy wire, callout line). */
@@ -959,7 +964,15 @@ export interface TowerDraftPage {
   polylines: TowerDraftPolyline[];
   /** Profile underlay — preferred over generated lattice polylines. */
   elevationReferenceImage?: TowerElevationReferenceImage;
-  labelLayers?: { designation?: boolean; azimuth?: boolean; band?: boolean };
+  /** Profile toolbar: silhouette (`primary`) vs blueprint (`detailUrl`). */
+  elevationReferenceVariant?: "primary" | "blueprint";
+  labelLayers?: {
+    designation?: boolean;
+    azimuth?: boolean;
+    band?: boolean;
+    /** Accent marker behind device glyphs (defaults on for blueprint profile). */
+    deviceHighlight?: boolean;
+  };
 }
 
 export interface PrintViewport {
@@ -1164,6 +1177,8 @@ export type TrackItTowerSiteContext = {
   siteCode: string;
   siteName: string;
   towerHeightFt: number;
+  /** Site reference elevation AMSL — used to detect catalog tower height mistaken for site elevation. */
+  siteElevationFtAmsl?: number;
   measurementSystem?: MeasurementSystem;
   accessNotes?: string;
   towerCompany?: string;

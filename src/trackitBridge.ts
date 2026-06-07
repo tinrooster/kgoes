@@ -295,12 +295,16 @@ export function startTrackItBridge(): void {
       if (!file) return;
       const nodes = file.nodes ?? [];
       const edges = file.edges ?? [];
+      const pages = file.pages ?? [];
       const store = useSchematicStore.getState();
       const link = file.trackItLink ?? store.trackItLink;
 
-      if (nodes.length === 0 && edges.length === 0) {
+      if (nodes.length === 0 && edges.length === 0 && pages.length === 0) {
         if (link?.drawingId) {
-          const hasCanvasContent = store.nodes.length > 0 || store.edges.length > 0;
+          const hasCanvasContent =
+            store.nodes.length > 0 ||
+            store.edges.length > 0 ||
+            (store.pages?.length ?? 0) > 0;
           const hasLocalAutosave = hasTrackItDrawingAutosave(link.drawingId);
           if (hasCanvasContent || hasLocalAutosave) {
             if (!hasCanvasContent && hasLocalAutosave) {
@@ -316,8 +320,9 @@ export function startTrackItBridge(): void {
         return;
       }
 
-      const currentContent = store.nodes.length + store.edges.length;
-      const incomingContent = nodes.length + edges.length;
+      const currentContent =
+        store.nodes.length + store.edges.length + (store.pages?.length ?? 0);
+      const incomingContent = nodes.length + edges.length + pages.length;
       if (
         link?.drawingId &&
         store.trackItLink?.drawingId === link.drawingId &&
@@ -329,7 +334,7 @@ export function startTrackItBridge(): void {
         return;
       }
 
-      store.importFromJSON({ ...file, nodes, edges, trackItLink: link ?? undefined });
+      store.importFromJSON({ ...file, nodes, edges, pages, trackItLink: link ?? undefined });
       if (link?.drawingId) {
         store.setTrackItLink(link);
       }

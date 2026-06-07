@@ -36,6 +36,22 @@ describe("towerDraftLayoutHeight", () => {
     expect(resolveTowerDraftLayoutHeightFt(starter, tallContext, "profile")).toBe(977);
   });
 
+  it("rejects stale page height mistaken for site AMSL when context is missing", () => {
+    const stale = { ...tallPage, towerHeightFtAgl: 1811 };
+    expect(resolveCatalogTowerHeightFtAgl(stale, null)).toBe(977);
+    expect(resolveTowerDraftLayoutHeightFt(stale, null, "profile")).toBe(977);
+  });
+
+  it("rejects page height near site elevation AMSL from trackIT context", () => {
+    const stale = { ...tallPage, towerHeightFtAgl: 1700 };
+    const ctx: TrackItTowerSiteContext = {
+      ...tallContext,
+      towerHeightFt: 1700,
+      siteElevationFtAmsl: 1811,
+    };
+    expect(resolveCatalogTowerHeightFtAgl(stale, ctx)).toBe(977);
+  });
+
   it("face views cap at faceLayoutHeightFtAgl from pack context", () => {
     expect(resolveTowerDraftLayoutHeightFt(tallPage, tallContext, "all-faces")).toBe(800);
     expect(resolveTowerDraftLayoutHeightFt(tallPage, tallContext, "N")).toBe(800);

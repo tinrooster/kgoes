@@ -18,6 +18,10 @@ import {
   type TowerMainView,
 } from "../towerDraftFaces";
 import { TOWER_ELEVATION_DISPLAY_SYSTEM } from "../towerElevationDisplay";
+import {
+  hasBlueprintElevationAsset,
+  type TowerElevationReferenceVariant,
+} from "../towerElevationReference";
 
 export default function TowerDraftPageView() {
   const activePage = useSchematicStore((s) => s.activePage);
@@ -52,15 +56,57 @@ export default function TowerDraftPageView() {
   const [inspOpen, setInspOpen] = useState(true);
   const [contextMenu, setContextMenu] = useState<TowerDraftContextMenuState | null>(null);
 
+  const page = pages.find((p) => p.id === activePage);
+  const pageId = page?.type === "tower-draft" ? page.id : null;
+
+  const [referenceVariant, setReferenceVariant] = useState<TowerElevationReferenceVariant>("primary");
+
+  useEffect(() => {
+    if (!pageId || page?.type !== "tower-draft") return;
+    const fromPage = page.elevationReferenceVariant;
+    if (fromPage === "blueprint" || fromPage === "primary") {
+      setReferenceVariant(fromPage);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(`tower-draft-ref-variant:${pageId}`);
+      setReferenceVariant(raw === "blueprint" ? "blueprint" : "primary");
+    } catch {
+      setReferenceVariant("primary");
+    }
+  }, [pageId, page?.type === "tower-draft" ? page.elevationReferenceVariant : null]);
+
+  const persistReferenceVariant = (variant: TowerElevationReferenceVariant) => {
+    setReferenceVariant(variant);
+    if (page?.type === "tower-draft") {
+      updateTowerDraftPage(page.id, { elevationReferenceVariant: variant });
+    }
+    if (!pageId) return;
+    try {
+      localStorage.setItem(`tower-draft-ref-variant:${pageId}`, variant);
+    } catch {
+      /* ignore */
+    }
+  };
+
   const elevationView: TowerElevationView = useMemo(
     () => towerElevationViewFrom(mainView, faceFilter),
     [mainView, faceFilter],
   );
 
-  const page = pages.find((p) => p.id === activePage);
-  const pageId = page?.type === "tower-draft" ? page.id : null;
-
   const labelLayers = page?.type === "tower-draft" ? (page.labelLayers ?? {}) : {};
+
+  const hasBlueprintReference = useMemo(() => {
+    if (page?.type !== "tower-draft") return false;
+    return hasBlueprintElevationAsset(page.elevationReferenceImage, trackItTowerContext);
+  }, [page, trackItTowerContext]);
+
+  const hasProfileReference = useMemo(() => {
+    if (page?.type !== "tower-draft") return false;
+    const pageUrl = page.elevationReferenceImage?.url?.trim();
+    const ctxUrl = trackItTowerContext?.elevationReferenceImage?.url?.trim();
+    return !!(pageUrl || ctxUrl);
+  }, [page, trackItTowerContext]);
 
   const selectedPlacement =
     page?.type === "tower-draft" && selectedPlacementId
@@ -216,6 +262,7 @@ export default function TowerDraftPageView() {
             setDrawLatched(false);
           }}
           embeddedInChrome
+          referenceVariant={referenceVariant}
         />
       )}
     </div>
@@ -287,6 +334,10 @@ export default function TowerDraftPageView() {
           onMainViewChange={setMainView}
           onFaceFilterChange={setFaceFilter}
           measurementSystem={measurementSystem}
+          referenceVariant={referenceVariant}
+          onReferenceVariantChange={persistReferenceVariant}
+          hasBlueprintReference={hasBlueprintReference}
+          hasProfileReference={hasProfileReference}
         />
 
         <div

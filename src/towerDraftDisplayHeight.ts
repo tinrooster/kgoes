@@ -1,5 +1,7 @@
 import type { TowerDraftPage, TrackItTowerSiteContext } from "./types";
 import type { TowerElevationView } from "./towerDraftFaces";
+import { inferAuthoritativeTowerHeightFtAgl } from "./towerDraftHeightSanitize";
+import { pickElevationReferenceUrl } from "./towerElevationReference";
 
 const DEFAULT_TOWER_HEIGHT_FT_AGL = 150;
 
@@ -8,26 +10,24 @@ export function isGenericTowerDraftHeight(towerHeightFtAgl: number | undefined):
   return towerHeightFtAgl == null || towerHeightFtAgl <= DEFAULT_TOWER_HEIGHT_FT_AGL;
 }
 
-function sanitizeTowerHeightFtAgl(raw: number | undefined): number {
-  if (raw == null || !Number.isFinite(raw) || raw <= 0) return 0;
-  return raw;
-}
-
 /** Authoritative catalog height AGL (context + page), never site AMSL mistaken for AGL. */
 export function resolveCatalogTowerHeightFtAgl(
   page: TowerDraftPage,
   context?: TrackItTowerSiteContext | null,
 ): number {
-  for (const raw of [context?.towerHeightFt, page.towerHeightFtAgl]) {
-    const ft = sanitizeTowerHeightFtAgl(raw);
-    if (ft > 0) {
-      if (isGenericTowerDraftHeight(ft) && context?.towerHeightFt && context.towerHeightFt > ft) {
-        continue;
-      }
-      return ft;
-    }
-  }
-  return context?.towerHeightFt ?? DEFAULT_TOWER_HEIGHT_FT_AGL;
+  const referenceUrl = pickElevationReferenceUrl(
+    page.elevationReferenceImage?.url,
+    context?.elevationReferenceImage?.url,
+  );
+  const resolved = inferAuthoritativeTowerHeightFtAgl({
+    contextTowerHeightFt: context?.towerHeightFt,
+    pageTowerHeightFtAgl: page.towerHeightFtAgl,
+    siteCode: context?.siteCode,
+    siteElevationFtAmsl: context?.siteElevationFtAmsl,
+    referenceUrl,
+  });
+  if (resolved > 0) return resolved;
+  return DEFAULT_TOWER_HEIGHT_FT_AGL;
 }
 
 function resolveFaceLayoutCapFt(

@@ -9,12 +9,32 @@ interface TowerDraftGlyphProps {
   deviceType?: string;
   selected?: boolean;
   hovered?: boolean;
+  /** High-contrast marker mode for busy reference underlays. */
+  prominent?: boolean;
   azimuthDeg?: number;
   dishDiameterM?: number;
   elevationView?: TowerElevationView;
   viewFace?: TowerFace;
   placementFace?: TowerFace;
   mountFlip?: boolean;
+}
+
+/** Halo + accent dot at the placement anchor (mount point). */
+export function TowerDraftPlacementMarker({
+  selected,
+  hovered,
+}: {
+  selected?: boolean;
+  hovered?: boolean;
+}) {
+  const accent = selected ? "#2563eb" : hovered ? "#0ea5e9" : "var(--ti-accent, #0d9488)";
+  return (
+    <g pointerEvents="none">
+      <circle cx={0} cy={0} r={17} fill="white" opacity={0.9} />
+      <circle cx={0} cy={0} r={17} fill="none" stroke={accent} strokeWidth={2.25} opacity={0.95} />
+      <circle cx={0} cy={0} r={6.5} fill={accent} stroke="white" strokeWidth={2} />
+    </g>
+  );
 }
 
 function dishScale(dishDiameterM?: number): number {
@@ -168,6 +188,7 @@ export function TowerDraftPlacementGlyph({
   deviceType,
   selected,
   hovered,
+  prominent,
   azimuthDeg,
   dishDiameterM,
   elevationView = "profile",
@@ -176,11 +197,21 @@ export function TowerDraftPlacementGlyph({
   mountFlip,
 }: TowerDraftGlyphProps) {
   const stroke = selected
-    ? "#3b82f6"
-    : hovered
-      ? "var(--color-text-muted)"
-      : "var(--color-text)";
-  const fill = selected ? "var(--color-surface)" : "var(--color-bg)";
+    ? "#2563eb"
+    : prominent
+      ? hovered
+        ? "#0c4a6e"
+        : "#0f766e"
+      : hovered
+        ? "var(--color-text-muted)"
+        : "var(--color-text)";
+  const fill = prominent
+    ? selected
+      ? "#eff6ff"
+      : "#f0fdfa"
+    : selected
+      ? "var(--color-surface)"
+      : "var(--color-bg)";
   const rotationDeg = aimableGlyphRotationDeg(
     deviceType,
     azimuthDeg,

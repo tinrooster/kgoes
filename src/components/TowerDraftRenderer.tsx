@@ -2,7 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { DEVICE_TEMPLATES } from "../deviceLibraryRuntime";
 import { useSchematicStore } from "../store";
 import type { DeviceData, TowerDraftPage } from "../types";
-import { TowerDraftPlacementGlyph, dishDiameterMFromData } from "../towerDraftGlyphs";
+import {
+  TowerDraftPlacementGlyph,
+  TowerDraftPlacementMarker,
+  dishDiameterMFromData,
+} from "../towerDraftGlyphs";
+import {
+  LIGHT_ART_LABEL,
+  SvgTextWithPill,
+  TowerDraftLabelCard,
+  type TowerDraftLabelLine,
+} from "../towerDraftLabelCard";
 import {
   ftAglToY,
   suggestPlacementOffsetX,
@@ -24,6 +34,9 @@ import { useCanvasPanZoom } from "../useCanvasPanZoom";
 import ViewNavBar from "./ViewNavBar";
 import type { ContentBounds } from "../viewNavUtils";
 import {
+  profileCalloutLeaderPoints,
+  profileLabelXForMount,
+  resolveProfilePlacementCallouts,
   stackLabelY,
   TOWER_DRAFT_FACE_COMPASS_CHIP_H,
   TOWER_DRAFT_FACE_COMPASS_GAP_PX,
@@ -55,6 +68,8 @@ import {
 import { formatDistanceFromFt, formatHeightFtAgl } from "../measurementUnits";
 import {
   formatGuideBandElevationLabel,
+  formatGuideBandLabelSuffix,
+  formatGuideBandRulerHeightLabel,
   TOWER_ELEVATION_DISPLAY_SYSTEM,
 } from "../towerElevationDisplay";
 import { resolveDeviceLabel } from "../displayName";
@@ -64,9 +79,11 @@ import type { TowerDraftContextMenuState } from "./TowerDraftContextMenu";
 import { snapOffsetXToMountLateral } from "../towerDraftMountLateral";
 import {
   profileCenterXForReference,
+  mountaintopAssetPathname,
+  resolveProfileElevationReference,
   resolveProfilePxPerFt,
-  resolveTowerElevationReference,
   towerElevationReferenceLayout,
+  type TowerElevationReferenceVariant,
 } from "../towerElevationReference";
 import { feedlineStrokeDash } from "../towerDraftFeedType";
 import {
@@ -86,6 +103,8 @@ import {
   guideBandLineStyle,
   guideBandsForDisplay,
   isStructuralGuideBand,
+  PROFILE_GUIDE_BAND_LABEL_OFFSET_Y,
+  profileGuideBandLevelSuffixStyle,
   resolveTowerDraftGuideBands,
 } from "../towerDraftGuideBands";
 import TowerDraftMinimap from "./TowerDraftMinimap";
@@ -113,6 +132,8 @@ interface TowerDraftRendererProps {
   onExitDrawMode?: () => void;
   /** When true, fills the design canvas card instead of owning the full page column. */
   embeddedInChrome?: boolean;
+  /** Silhouette (`primary`) vs permit blueprint (`detailUrl`). */
+  referenceVariant?: TowerElevationReferenceVariant;
 }
 
 export default function TowerDraftRenderer({
@@ -131,6 +152,7 @@ export default function TowerDraftRenderer({
   onDrawLineFinished,
   onExitDrawMode,
   embeddedInChrome = false,
+  referenceVariant = "primary",
 }: TowerDraftRendererProps) {
   const nodes = useSchematicStore((s) => s.nodes);
   const customTemplates = useSchematicStore((s) => s.customTemplates);
@@ -169,8 +191,8 @@ export default function TowerDraftRenderer({
   const isAllFaces = elevationView === "all-faces";
   const isSectionElevation = isTowerSectionElevationView(elevationView);
   const elevationRef = useMemo(
-    () => resolveTowerElevationReference(page, trackItTowerContext),
-    [page, trackItTowerContext],
+    () => resolveProfileElevationReference(page, referenceVariant, trackItTowerContext),
+    [page, trackItTowerContext, referenceVariant],
   );
   const profileVisual = useMemo(
     () => resolveProfileVisual(page, trackItTowerContext, !!elevationRef?.url),
@@ -181,6 +203,10 @@ export default function TowerDraftRenderer({
     !!elevationRef?.url &&
     profileVisual === "reference_image" &&
     !referenceImageFailed;
+  const deviceHighlight =
+    labelLayers.deviceHighlight ?? (isProfile && profileReferenceUnderlay);
+  /** Reference art is a light sheet — use opaque pills + dark ink (not theme `--ti-ink`). */
+  const labelOnLightArt = isProfile && profileReferenceUnderlay;
   useEffect(() => {
     setReferenceImageFailed(false);
   }, [elevationRef?.url, page.id]);
@@ -242,7 +268,6 @@ export default function TowerDraftRenderer({
     contentOffsetY +
     (isAllFaces ? TOWER_DRAFT_FACES_HEADER_H : 0);
   const gridRulerX = isAllFaces ? 70 : TOWER_DRAFT_RULER_W;
-  const profileLabelX = centerX + 96;
 
   const viewBounds = useMemo((): ContentBounds => {
     return { minX: 0, minY: 0, maxX: contentW, maxY: svgH };
@@ -488,6 +513,7 @@ export default function TowerDraftRenderer({
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     const templateId = e.dataTransfer.getData("application/x-tower-template-id") || draggedTowerTemplateId;
     if (templateId) {
       const template = [...DEVICE_TEMPLATES, ...customTemplates].find((t) => t.id === templateId);
@@ -527,31 +553,62 @@ export default function TowerDraftRenderer({
         ? ({ mixBlendMode: layout.blendMode } as CSSProperties)
         : undefined;
     return (
-      <g aria-label={elevationRef.label ?? "Tower elevation reference"} style={blendStyle}>
-        <image
-          href={elevationRef.url}
+      <>
+        <g
+          aria-label={elevationRef.label ?? "Tower elevation reference"}
+          style={blendStyle}
+          pointerEvents="none"
+        >
+          <image
+            href={elevationRef.url}
+            x={layout.x}
+            y={layout.y}
+            width={layout.width}
+            height={layout.height}
+            preserveAspectRatio={layout.preserveAspectRatio}
+            opacity={layout.opacity}
+            onError={() => setReferenceImageFailed(true)}
+          />
+          {elevationRef.label || referenceVariant === "blueprint" || import.meta.env.DEV ? (
+            <text
+              x={layout.x + layout.width / 2}
+              y={layout.y - 6}
+              textAnchor="middle"
+              fontSize={8}
+              fill="var(--ti-faint)"
+            >
+              {referenceVariant === "blueprint" || import.meta.env.DEV
+                ? mountaintopAssetPathname(elevationRef.url) ?? elevationRef.url
+                : elevationRef.label}
+            </text>
+          ) : null}
+        </g>
+        {/* Decorative image is non-interactive; catch device drops for the tower footprint. */}
+        <rect
+          aria-hidden
           x={layout.x}
           y={layout.y}
           width={layout.width}
           height={layout.height}
-          preserveAspectRatio={layout.preserveAspectRatio}
-          opacity={layout.opacity}
-          onError={() => setReferenceImageFailed(true)}
+          fill="transparent"
+          pointerEvents="all"
+          onDragOver={onDragOver}
+          onDrop={onDrop}
         />
-        {elevationRef.label ? (
-          <text
-            x={layout.x + layout.width / 2}
-            y={layout.y - 6}
-            textAnchor="middle"
-            fontSize={8}
-            fill="var(--ti-faint)"
-          >
-            {elevationRef.label}
-          </text>
-        ) : null}
-      </g>
+      </>
     );
-  }, [profileReferenceUnderlay, elevationRef, layoutHeightFt, centerX, gridRulerX, contentW, pxPerFt]);
+  }, [
+    profileReferenceUnderlay,
+    elevationRef,
+    layoutHeightFt,
+    centerX,
+    gridRulerX,
+    contentW,
+    pxPerFt,
+    referenceVariant,
+    onDragOver,
+    onDrop,
+  ]);
 
   const towerBody = useMemo(() => {
     const showGeneratedProfile =
@@ -749,21 +806,41 @@ export default function TowerDraftRenderer({
     pxPerFt,
   ]);
 
-  const profileLabelY = useMemo(() => {
-    if (!isProfile) return {} as Record<string, number>;
-    const items: { id: string; y: number }[] = [];
+  const profileCallouts = useMemo(() => {
+    if (!isProfile) return {};
+    const inputs: { id: string; mountX: number; mountY: number; offsetX: number }[] = [];
     for (const pl of page.placements) {
       const node = nodes.find((n) => n.id === pl.deviceNodeId);
       const data = node?.data as DeviceData | undefined;
       if (!placementVisibleInView(pl, data, elevationView, trackItTowerContext)) continue;
       const topY = ftAglToY(layoutHeightFt, layoutHeightFt, pxPerFt);
-      items.push({
+      const mountY = Math.max(topY, ftAglToY(pl.mountHeightFtAgl, layoutHeightFt, pxPerFt));
+      const colCenter = placementCenterX(
+        pl,
+        data,
+        elevationView,
+        trackItTowerContext,
+        centerX,
+      );
+      inputs.push({
         id: pl.id,
-        y: Math.max(topY, ftAglToY(pl.mountHeightFtAgl, layoutHeightFt, pxPerFt)),
+        mountX: colCenter + (pl.offsetX ?? 0),
+        mountY,
+        offsetX: pl.offsetX ?? 0,
       });
     }
-    return stackLabelY(items, 30);
-  }, [isProfile, page.placements, layoutHeightFt, pxPerFt, nodes, elevationView, trackItTowerContext]);
+    return resolveProfilePlacementCallouts(inputs, centerX, contentW);
+  }, [
+    isProfile,
+    page.placements,
+    layoutHeightFt,
+    pxPerFt,
+    nodes,
+    elevationView,
+    trackItTowerContext,
+    contentW,
+    centerX,
+  ]);
 
   const facesLabelY = useMemo(() => {
     if (!isAllFaces) return {} as Record<string, number>;
@@ -941,17 +1018,31 @@ export default function TowerDraftRenderer({
                   stroke="color-mix(in oklab, var(--ti-ink) 28%, transparent)"
                   strokeWidth={1}
                 />
-                <text
-                  x={gridRulerX - 12}
-                  y={y + 4}
-                  textAnchor="end"
-                  fontSize={tickLabelStyle.fontSize}
-                  fontWeight={tickLabelStyle.fontWeight}
-                  fill={tickLabelStyle.fill}
-                  fontFamily="var(--ti-font-mono)"
-                >
-                  {formatDistanceFromFt(ft, measurementSystem)}
-                </text>
+                {labelOnLightArt ? (
+                  <SvgTextWithPill
+                    x={gridRulerX - 12}
+                    y={y + 4}
+                    text={formatDistanceFromFt(ft, measurementSystem)}
+                    textAnchor="end"
+                    fontSize={tickLabelStyle.fontSize}
+                    fontWeight={tickLabelStyle.fontWeight}
+                    fill={tickLabelStyle.fill}
+                    fontFamily="var(--ti-font-mono)"
+                    onLightArt
+                  />
+                ) : (
+                  <text
+                    x={gridRulerX - 12}
+                    y={y + 4}
+                    textAnchor="end"
+                    fontSize={tickLabelStyle.fontSize}
+                    fontWeight={tickLabelStyle.fontWeight}
+                    fill={tickLabelStyle.fill}
+                    fontFamily="var(--ti-font-mono)"
+                  >
+                    {formatDistanceFromFt(ft, measurementSystem)}
+                  </text>
+                )}
               </g>
             );
           })}
@@ -960,6 +1051,12 @@ export default function TowerDraftRenderer({
             const structural = isStructuralGuideBand(band);
             const ls = guideBandLineStyle(structural);
             const bandLabel = formatGuideBandElevationLabel(band, measurementSystem);
+            const splitProfileLabel =
+              isProfile && structural && formatGuideBandLabelSuffix(band) != null;
+            const rulerHeightLabel = formatGuideBandRulerHeightLabel(band, measurementSystem);
+            const levelSuffix = splitProfileLabel ? formatGuideBandLabelSuffix(band) : null;
+            const labelY = splitProfileLabel ? y - PROFILE_GUIDE_BAND_LABEL_OFFSET_Y : y + 4;
+            const suffixStyle = profileGuideBandLevelSuffixStyle(structural);
             return (
               <g key={`${band.ftAgl}-${band.label ?? ""}`} pointerEvents="none">
                 <line
@@ -971,28 +1068,83 @@ export default function TowerDraftRenderer({
                   strokeWidth={ls.strokeWidth}
                   strokeDasharray={ls.strokeDasharray}
                 />
-                <text
-                  x={gridRulerX - 12}
-                  y={y + 4}
-                  textAnchor="end"
-                  fontSize={ls.labelFontSize}
-                  fontWeight={ls.labelFontWeight}
-                  fill={ls.labelFill}
-                  fontFamily="var(--ti-font-mono)"
-                  pointerEvents="all"
-                  style={{ cursor: drawMode ? "default" : "pointer" }}
-                  onClick={(ev) => {
-                    if (drawMode) return;
-                    ev.stopPropagation();
-                    if (selectedPlacementId) {
-                      updateTowerDraftPlacement(page.id, selectedPlacementId, {
-                        mountHeightFtAgl: band.ftAgl,
-                      });
-                    }
-                  }}
-                >
-                  {bandLabel}
-                </text>
+                {labelOnLightArt ? (
+                  <SvgTextWithPill
+                    x={gridRulerX - 8}
+                    y={labelY}
+                    text={splitProfileLabel ? rulerHeightLabel : bandLabel}
+                    textAnchor="end"
+                    fontSize={ls.labelFontSize}
+                    fontWeight={ls.labelFontWeight}
+                    fill={ls.labelFill}
+                    fontFamily="var(--ti-font-mono)"
+                    onLightArt
+                    pointerEvents="all"
+                    style={{ cursor: drawMode ? "default" : "pointer" }}
+                    onClick={(ev) => {
+                      if (drawMode) return;
+                      ev.stopPropagation();
+                      if (selectedPlacementId) {
+                        updateTowerDraftPlacement(page.id, selectedPlacementId, {
+                          mountHeightFtAgl: band.ftAgl,
+                        });
+                      }
+                    }}
+                  />
+                ) : (
+                  <text
+                    x={gridRulerX - 8}
+                    y={labelY}
+                    textAnchor="end"
+                    dominantBaseline="alphabetic"
+                    fontSize={ls.labelFontSize}
+                    fontWeight={ls.labelFontWeight}
+                    fill={ls.labelFill}
+                    fontFamily="var(--ti-font-mono)"
+                    pointerEvents="all"
+                    style={{ cursor: drawMode ? "default" : "pointer" }}
+                    onClick={(ev) => {
+                      if (drawMode) return;
+                      ev.stopPropagation();
+                      if (selectedPlacementId) {
+                        updateTowerDraftPlacement(page.id, selectedPlacementId, {
+                          mountHeightFtAgl: band.ftAgl,
+                        });
+                      }
+                    }}
+                  >
+                    {splitProfileLabel ? rulerHeightLabel : bandLabel}
+                  </text>
+                )}
+                {splitProfileLabel && levelSuffix ? (
+                  labelOnLightArt ? (
+                    <SvgTextWithPill
+                      x={gridRulerX + 14}
+                      y={labelY}
+                      text={levelSuffix}
+                      textAnchor="start"
+                      fontSize={suffixStyle.fontSize}
+                      fontWeight={suffixStyle.fontWeight}
+                      fill={suffixStyle.fill}
+                      fontFamily="var(--ti-font-mono)"
+                      onLightArt
+                    />
+                  ) : (
+                    <text
+                      x={gridRulerX + 14}
+                      y={labelY}
+                      textAnchor="start"
+                      dominantBaseline="alphabetic"
+                      fontSize={suffixStyle.fontSize}
+                      fontWeight={suffixStyle.fontWeight}
+                      fill={suffixStyle.fill}
+                      fontFamily="var(--ti-font-mono)"
+                      pointerEvents="none"
+                    >
+                      {levelSuffix}
+                    </text>
+                  )
+                ) : null}
               </g>
             );
           })}
@@ -1101,8 +1253,10 @@ export default function TowerDraftRenderer({
             const label = data ? resolveDeviceLabel(data, { useShortNames }).text : pl.deviceNodeId;
             const topY = ftAglToY(layoutHeightFt, layoutHeightFt, pxPerFt);
             const y = Math.max(topY, ftAglToY(pl.mountHeightFtAgl, layoutHeightFt, pxPerFt));
+            const callout = isProfile ? profileCallouts[pl.id] : undefined;
+            const labelRailX = callout?.labelX ?? profileLabelXForMount(x, centerX, contentW);
             const ly = isProfile
-              ? (profileLabelY[pl.id] ?? y)
+              ? (callout?.labelY ?? y)
               : isAllFaces
                 ? (facesLabelY[pl.id] ?? y)
                 : y;
@@ -1255,26 +1409,41 @@ export default function TowerDraftRenderer({
                 opacity={draggingPlacementId === pl.id ? 0.85 : 1}
               >
                 {isProfile && (labelLayers.designation || labelLayers.azimuth || labelLayers.band) && (
-                  <line
-                    x1={6}
-                    y1={0}
-                    x2={profileLabelX - x - 4}
-                    y2={ly - y}
+                  <polyline
+                    points={profileCalloutLeaderPoints(labelRailX, x, ly, y)}
+                    fill="none"
                     stroke={selected ? "var(--ti-accent)" : "var(--ti-faint)"}
                     strokeWidth={selected ? 1.4 : 1}
                     opacity={0.8}
                   />
                 )}
-                {selected && (
+                {deviceHighlight && (
+                  <TowerDraftPlacementMarker selected={selected} hovered={hovered} />
+                )}
+                {selected && !deviceHighlight && (
                   <>
-                    <circle cx={x} cy={y} r={18} fill="none" stroke="var(--ti-accent)" strokeWidth={1.5} opacity={0.5} strokeDasharray="3 3" />
-                    <rect x={x - 17} y={y - 17} width={34} height={34} rx={8} fill="color-mix(in oklab, var(--ti-accent) 8%, transparent)" />
+                    <circle cx={0} cy={0} r={18} fill="none" stroke="var(--ti-accent)" strokeWidth={1.5} opacity={0.5} strokeDasharray="3 3" />
+                    <rect x={-17} y={-17} width={34} height={34} rx={8} fill="color-mix(in oklab, var(--ti-accent) 8%, transparent)" />
                   </>
+                )}
+                {selected && deviceHighlight && (
+                  <circle
+                    cx={0}
+                    cy={0}
+                    r={22}
+                    fill="none"
+                    stroke="#2563eb"
+                    strokeWidth={2}
+                    opacity={0.55}
+                    strokeDasharray="4 3"
+                    pointerEvents="none"
+                  />
                 )}
                 <TowerDraftPlacementGlyph
                   deviceType={data?.deviceType}
                   selected={selected}
                   hovered={hovered}
+                  prominent={deviceHighlight}
                   azimuthDeg={azimuthDeg}
                   dishDiameterM={dishDiameterMFromData(data)}
                   elevationView={elevationView}
@@ -1284,30 +1453,47 @@ export default function TowerDraftRenderer({
                 />
                 {(labelLayers.designation || labelLayers.azimuth || labelLayers.band) && (
                   <g
-                    transform={`translate(${isProfile ? profileLabelX - x : 16}, ${isProfile || isAllFaces ? ly - y : 0})`}
+                    transform={`translate(${isProfile ? labelRailX - x : 16}, ${isProfile || isAllFaces ? ly - y : 0})`}
                     data-print-show
                   >
-                    {labelLayers.designation && (
-                      <text x={0} y={isProfile ? -2 : -8} fontSize={isProfile ? 10.5 : 10} fontWeight={600} fill="var(--ti-ink)">
-                        {label}
-                      </text>
-                    )}
-                    {labelLayers.azimuth && azimuthDeg != null && (
-                      <text x={0} y={isProfile ? 11 : 4} fontSize={9} fill="var(--ti-accent)" fontFamily="var(--ti-font-mono)">
-                        {azimuthDeg}°
-                      </text>
-                    )}
-                    {labelLayers.band && bandLabel && (
-                      <text
-                        x={isProfile ? 40 : labelLayers.azimuth && azimuthDeg != null ? 36 : 0}
-                        y={isProfile ? 11 : 4}
-                        fontSize={9}
-                        fill="var(--ti-muted)"
-                        fontFamily="var(--ti-font-mono)"
-                      >
-                        {bandLabel}
-                      </text>
-                    )}
+                    <TowerDraftLabelCard
+                      onLightArt={labelOnLightArt}
+                      lines={(() => {
+                        const lines: TowerDraftLabelLine[] = [];
+                        if (labelLayers.designation) {
+                          lines.push({
+                            key: "designation",
+                            text: label,
+                            y: isProfile ? -2 : -8,
+                            fontSize: isProfile ? 10.5 : 10,
+                            fontWeight: 600,
+                            fill: labelOnLightArt ? LIGHT_ART_LABEL.ink : "var(--ti-ink)",
+                          });
+                        }
+                        if (labelLayers.azimuth && azimuthDeg != null) {
+                          lines.push({
+                            key: "azimuth",
+                            text: `${azimuthDeg}°`,
+                            y: isProfile ? 11 : 4,
+                            fontSize: 9,
+                            fill: labelOnLightArt ? LIGHT_ART_LABEL.accent : "var(--ti-accent)",
+                            fontFamily: "var(--ti-font-mono)",
+                          });
+                        }
+                        if (labelLayers.band && bandLabel) {
+                          lines.push({
+                            key: "band",
+                            text: bandLabel,
+                            x: isProfile ? 40 : labelLayers.azimuth && azimuthDeg != null ? 36 : 0,
+                            y: isProfile ? 11 : 4,
+                            fontSize: 9,
+                            fill: labelOnLightArt ? LIGHT_ART_LABEL.muted : "var(--ti-muted)",
+                            fontFamily: "var(--ti-font-mono)",
+                          });
+                        }
+                        return lines;
+                      })()}
+                    />
                     {!isProfile && isAllFaces && Math.abs(ly - y) > 1 && (
                       <line
                         x1={6}

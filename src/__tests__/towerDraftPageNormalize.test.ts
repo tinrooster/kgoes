@@ -37,9 +37,47 @@ describe("normalizeTowerDraftPage", () => {
     );
   });
 
-  it("keeps relative ref on page when context is absent", () => {
+  it("upgrades Sutro starter height from reference art when context is absent", () => {
     const next = normalizeTowerDraftPage(sutroPage, null);
-    expect(next.towerHeightFtAgl).toBe(150);
+    expect(next.towerHeightFtAgl).toBe(977);
     expect(next.elevationReferenceImage?.url).toContain("sutro-elevation-ref.png");
+  });
+
+  it("keeps generic starter height without reference art or context", () => {
+    const generic = {
+      ...sutroPage,
+      towerHeightFtAgl: 150,
+      elevationReferenceImage: undefined,
+    };
+    const next = normalizeTowerDraftPage(generic, null);
+    expect(next.towerHeightFtAgl).toBe(150);
+  });
+
+  it("downgrades stale AMSL-scale page height even without trackIT context", () => {
+    const stale = { ...sutroPage, towerHeightFtAgl: 1811 };
+    const next = normalizeTowerDraftPage(stale, null);
+    expect(next.towerHeightFtAgl).toBe(977);
+  });
+
+  it("replaces stale guide bands when trackIT context arrives", () => {
+    const stale = {
+      ...sutroPage,
+      guideBandsFt: [
+        { ftAgl: 751, label: "751′ · L6 — upper platform" },
+        { ftAgl: 564, label: "564′ · L5 — approx" },
+      ],
+    };
+    const next = normalizeTowerDraftPage(stale, {
+      ...trackItContext,
+      elevationViewport: {
+        tallTowerMode: true,
+        guideBandsFt: [
+          { ftAgl: 762, label: "762′ · L6 — 6th level" },
+          { ftAgl: 630, label: "630′ · L5 — 5th level" },
+        ],
+      },
+    });
+    expect(next.guideBandsFt?.some((b) => b.ftAgl === 762)).toBe(true);
+    expect(next.guideBandsFt?.some((b) => b.ftAgl === 751)).toBe(false);
   });
 });
