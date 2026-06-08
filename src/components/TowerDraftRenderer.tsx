@@ -73,6 +73,10 @@ import {
   TOWER_ELEVATION_DISPLAY_SYSTEM,
 } from "../towerElevationDisplay";
 import { resolveDeviceLabel } from "../displayName";
+import {
+  towerFooterAuxDisplayLines,
+  truncateTowerLabelText,
+} from "../auxiliaryData";
 import { draggedTowerDeviceNodeId, draggedTowerTemplateId } from "./TowerDraftSidebar";
 import type { TowerDraftDrawStyle } from "./TowerDraftToolbar";
 import type { TowerDraftContextMenuState } from "./TowerDraftContextMenu";
@@ -165,6 +169,7 @@ export default function TowerDraftRenderer({
   const towerDraftFocusRequest = useSchematicStore((s) => s.towerDraftFocusRequest);
   const requestTowerDraftFocus = useSchematicStore((s) => s.requestTowerDraftFocus);
   const trackItTowerContext = useSchematicStore((s) => s.trackItTowerContext);
+  const currency = useSchematicStore((s) => s.currency);
   const measurementSystem = TOWER_ELEVATION_DISPLAY_SYSTEM;
 
   const labelLayers = page.labelLayers ?? {};
@@ -1276,8 +1281,16 @@ export default function TowerDraftRenderer({
             const azimuthDeg = resolvePlacementAzimuthDeg(pl, data, trackItTowerContext);
             const bandLabel = data?.ports?.find((p) => p.rf?.band)?.rf?.band ?? "";
             const heightLabel = formatHeightFtAgl(pl.mountHeightFtAgl, measurementSystem);
+            const footerAuxLabel = towerFooterAuxDisplayLines(data, { maxLines: 2, currency });
+            const footerAuxHover = towerFooterAuxDisplayLines(data, { maxLines: 5, currency });
+            const showLabelCard =
+              labelLayers.designation ||
+              labelLayers.azimuth ||
+              labelLayers.band ||
+              footerAuxLabel.length > 0;
             const tipLines = [
               label,
+              ...footerAuxHover,
               heightLabel,
               data?.deviceType ?? "",
               data?.designation?.trim() ? `Designation: ${data.designation}` : "",
@@ -1408,7 +1421,7 @@ export default function TowerDraftRenderer({
                 }}
                 opacity={draggingPlacementId === pl.id ? 0.85 : 1}
               >
-                {isProfile && (labelLayers.designation || labelLayers.azimuth || labelLayers.band) && (
+                {isProfile && showLabelCard && (
                   <polyline
                     points={profileCalloutLeaderPoints(labelRailX, x, ly, y)}
                     fill="none"
@@ -1451,7 +1464,7 @@ export default function TowerDraftRenderer({
                   placementFace={plFace}
                   mountFlip={pl.mountFlip}
                 />
-                {(labelLayers.designation || labelLayers.azimuth || labelLayers.band) && (
+                {showLabelCard && (
                   <g
                     transform={`translate(${isProfile ? labelRailX - x : 16}, ${isProfile || isAllFaces ? ly - y : 0})`}
                     data-print-show
@@ -1460,6 +1473,7 @@ export default function TowerDraftRenderer({
                       onLightArt={labelOnLightArt}
                       lines={(() => {
                         const lines: TowerDraftLabelLine[] = [];
+                        const mutedFill = labelOnLightArt ? LIGHT_ART_LABEL.muted : "var(--ti-muted)";
                         if (labelLayers.designation) {
                           lines.push({
                             key: "designation",
@@ -1487,8 +1501,27 @@ export default function TowerDraftRenderer({
                             x: isProfile ? 40 : labelLayers.azimuth && azimuthDeg != null ? 36 : 0,
                             y: isProfile ? 11 : 4,
                             fontSize: 9,
-                            fill: labelOnLightArt ? LIGHT_ART_LABEL.muted : "var(--ti-muted)",
+                            fill: mutedFill,
                             fontFamily: "var(--ti-font-mono)",
+                          });
+                        }
+                        if (footerAuxLabel.length > 0) {
+                          const footerStartY =
+                            lines.length > 0
+                              ? Math.max(...lines.map((l) => l.y)) + (isProfile ? 13 : 12)
+                              : isProfile
+                                ? 11
+                                : 4;
+                          footerAuxLabel.forEach((raw, i) => {
+                            const truncated = truncateTowerLabelText(raw);
+                            lines.push({
+                              key: `footer-${i}`,
+                              text: truncated,
+                              y: footerStartY + i * (isProfile ? 11 : 10),
+                              fontSize: 8.5,
+                              fill: mutedFill,
+                              title: truncated !== raw ? raw : undefined,
+                            });
                           });
                         }
                         return lines;

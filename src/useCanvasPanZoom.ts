@@ -216,9 +216,16 @@ export function useCanvasPanZoom(options?: {
 
   const onWheelNative = useCallback(
     (e: globalThis.WheelEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.("[data-allow-scroll]")) return;
+
       if (!profileMapNavRef.current || mapNavDisabledRef.current) return;
       const el = containerRef.current;
       if (!el) return;
+
+      // Ignore wheel when the event target is outside this canvas (e.g. modal overlay).
+      if (target && !el.contains(target)) return;
+
       const rect = el.getBoundingClientRect();
       const insideBox =
         e.clientX >= rect.left &&

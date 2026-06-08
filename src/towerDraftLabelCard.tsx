@@ -19,6 +19,8 @@ export interface TowerDraftLabelLine {
   fontWeight?: number | string;
   fill: string;
   fontFamily?: string;
+  /** Full string for native SVG tooltip when text is truncated. */
+  title?: string;
 }
 
 export function estimateSvgTextWidth(
@@ -95,6 +97,7 @@ export function TowerDraftLabelCard({
           fill={line.fill}
           fontFamily={line.fontFamily}
         >
+          {line.title ? <title>{line.title}</title> : null}
           {line.text}
         </text>
       ))}

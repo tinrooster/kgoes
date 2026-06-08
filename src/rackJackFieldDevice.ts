@@ -7,6 +7,7 @@ import { getTemplateById } from "./templateApi";
 import { DEVICE_TEMPLATES } from "./deviceLibraryRuntime";
 import { resolveRackDesignation } from "./rackDesignation";
 import { patchPanelCircuits } from "./devices/_helpers";
+import { rowPosition } from "./auxiliaryData";
 import { autoLayoutAllFacePlateItems } from "./facePlateUtils";
 import { buildVjfGridLayout } from "./vjfLayout";
 import type { JackFieldPorts } from "./rackDistributionPresets";

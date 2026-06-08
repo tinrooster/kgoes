@@ -182,8 +182,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
     useSchematicStore.getState().saveToLocalStorage();
   }, [id]);
 
-
-  // Split ports by visual side (respects flip), not semantic direction.
+  // Split ports by visual side
   // When hideUnconnectedPorts is on, bidir ports with only one side connected
   // collapse into the appropriate column so the device gets smaller.
   // Passthrough ports go into their own list — they render as full-width rows with

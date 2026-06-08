@@ -270,6 +270,32 @@ export function rowsInSlot(rows: unknown, slot: "footer" | "gheader"): AuxRow[] 
   return trimTrailingEmpty(normalizeAuxRows(rows)).filter((r) => rowPosition(r) === slot);
 }
 
+const TOWER_LABEL_MAX_CHARS = 36;
+
+/** Resolved footer aux strings for tower elevation labels (skips blank rows). */
+export function towerFooterAuxDisplayLines(
+  data: DeviceData | undefined,
+  opts?: { maxLines?: number; currency?: string },
+): string[] {
+  if (!data) return [];
+  const maxLines = opts?.maxLines ?? 2;
+  const out: string[] = [];
+  for (const row of rowsInSlot(data.auxiliaryData, "footer")) {
+    if (!row.text.trim()) continue;
+    const resolved = resolveAuxiliaryLine(row.text, data, { currency: opts?.currency }).trim();
+    if (resolved) out.push(resolved);
+    if (out.length >= maxLines) break;
+  }
+  return out;
+}
+
+/** Keep tower label pills compact — full text remains in hover tip / SVG title. */
+export function truncateTowerLabelText(text: string, maxLen = TOWER_LABEL_MAX_CHARS): string {
+  const t = text.trim();
+  if (t.length <= maxLen) return t;
+  return `${t.slice(0, maxLen - 1)}…`;
+}
+
 /**
  * Resolve `{{token}}` placeholders in an aux line against device data.
  * Unknown tokens are left as literal text so typos are visible.
