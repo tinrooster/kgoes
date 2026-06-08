@@ -43,7 +43,16 @@ import {
   SerialPortConfigEditor,
 } from "./RfMetadataEditor";
 import type { FacePlateLayout } from "../types";
-import { AUX_FIELD_GROUPS, normalizeAuxRows, resolveAuxiliaryLine, trimTrailingEmpty } from "../auxiliaryData";
+import {
+  AUX_FIELD_GROUPS,
+  auxPositionLabel,
+  auxPositionTitle,
+  cycleAuxPosition,
+  normalizeAuxRows,
+  resolveAuxiliaryLine,
+  rowPosition,
+  trimTrailingEmpty,
+} from "../auxiliaryData";
 import { deriveThermalBtuh } from "../thermal";
 import type { MountingClass } from "../rackMount";
 import {
@@ -1691,7 +1700,7 @@ export default function DeviceEditor() {
             </summary>
             <div className="flex flex-col gap-1.5 pt-1 pl-2">
               <p className="text-[10px] text-[var(--color-text-muted)] -mb-0.5">
-                Up to 5 custom lines. Use the <span className="font-mono">+</span> button to insert a device field. Leave a line blank to add a separator. Toggle <span className="font-mono">H</span>/<span className="font-mono">F</span> to pin a row to the header or footer of the device.
+                Up to 5 custom lines. Use the <span className="font-mono">+</span> button to insert a device field. Leave a line blank to add a separator. Toggle <span className="font-mono">F</span>/<span className="font-mono">GH</span>/<span className="font-mono">—</span> for footer, global header, or hidden.
               </p>
               {(() => {
                 const previewDevice = {
@@ -1716,7 +1725,7 @@ export default function DeviceEditor() {
                 return [0, 1, 2, 3, 4].map((i) => {
                   const row = auxiliaryData[i] ?? { text: "", position: "footer" as const };
                   const text = row.text;
-                  const position = row.position ?? "footer";
+                  const position = rowPosition(row);
                   const hasToken = text.indexOf("{{") !== -1;
                   const preview = hasToken ? resolveAuxiliaryLine(text, previewDevice) : "";
                   const setRow = (next: Partial<AuxRow>) => {
@@ -1747,11 +1756,17 @@ export default function DeviceEditor() {
                         </button>
                         <button
                           type="button"
-                          title={position === "header" ? "Pinned to header — click to move to footer" : "Pinned to footer — click to move to header"}
-                          className={`px-2 py-1 text-[10px] font-semibold rounded border cursor-pointer shrink-0 w-7 ${position === "header" ? "bg-blue-500 border-blue-500 text-white" : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"}`}
-                          onClick={() => setRow({ position: position === "header" ? "footer" : "header" })}
+                          title={auxPositionTitle(position)}
+                          className={`px-1.5 py-1 text-[10px] font-semibold rounded border cursor-pointer shrink-0 min-w-7 ${
+                            position === "gheader"
+                              ? "bg-blue-500 border-blue-500 text-white"
+                              : position === "hidden"
+                                ? "bg-[var(--color-bg)] border-[var(--color-border)] text-[var(--color-text-muted)] italic"
+                                : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"
+                          }`}
+                          onClick={() => setRow({ position: cycleAuxPosition(position) })}
                         >
-                          {position === "header" ? "H" : "F"}
+                          {auxPositionLabel(position)}
                         </button>
                       </div>
                       {hasToken && (

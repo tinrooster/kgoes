@@ -340,7 +340,7 @@ export default function MenuBar() {
       if (store.fileHandle) {
         try {
           await writeToFileHandle(store.fileHandle);
-          store.addToast("Also saved local copy", "info", 2000);
+          store.addToast("Also saved to prior file picker location", "info", 2000);
         } catch {
           store.setFileHandle(null);
         }

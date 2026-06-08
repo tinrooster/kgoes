@@ -1,4 +1,4 @@
-import type { AuxRow, DeviceData, Port } from "./types";
+import type { AuxRow, AuxRowPosition, DeviceData, Port } from "./types";
 import { effectiveThermalBtuh } from "./thermal";
 
 export interface AuxResolveContext {
@@ -139,9 +139,35 @@ export const AUX_FIELD_GROUPS: { group: string; fields: AuxField[] }[] = (() => 
 
 const TOKEN_RE = /\{\{(\w+)\}\}/g;
 
+/** Normalize any stored position (incl. legacy `"header"`) to a canonical slot. */
+export function normalizeAuxPosition(raw: unknown): AuxRowPosition {
+  if (raw === "gheader" || raw === "header") return "gheader";
+  if (raw === "hidden") return "hidden";
+  return "footer";
+}
+
 /** The slot a row belongs to — defaults to "footer" when a row omits its position. */
-export function rowPosition(row: AuxRow): "header" | "footer" {
-  return row.position ?? "footer";
+export function rowPosition(row: AuxRow): AuxRowPosition {
+  return normalizeAuxPosition(row.position);
+}
+
+/** Cycle footer → gheader → hidden for the device-editor position toggle. */
+export function cycleAuxPosition(pos: AuxRowPosition): AuxRowPosition {
+  if (pos === "footer") return "gheader";
+  if (pos === "gheader") return "hidden";
+  return "footer";
+}
+
+export function auxPositionLabel(pos: AuxRowPosition): string {
+  if (pos === "gheader") return "GH";
+  if (pos === "hidden") return "—";
+  return "F";
+}
+
+export function auxPositionTitle(pos: AuxRowPosition): string {
+  if (pos === "footer") return "Footer — click for global header";
+  if (pos === "gheader") return "Global header — click to hide";
+  return "Hidden — click for footer";
 }
 
 /**
@@ -159,7 +185,7 @@ export function normalizeAuxRows(raw: unknown): AuxRow[] {
       const r = entry as { text: unknown; position?: unknown };
       out.push({
         text: typeof r.text === "string" ? r.text : "",
-        position: r.position === "header" ? "header" : "footer",
+        position: normalizeAuxPosition(r.position),
       });
     }
   }
@@ -175,7 +201,7 @@ export function trimTrailingEmpty(rows: AuxRow[]): AuxRow[] {
   if (rows.length === 0) return rows;
   // Walk backwards per slot, mark last-non-blank index per slot, then keep anything
   // up to and including that index. Rows past the last-non-blank (in their slot) are dropped.
-  const lastIdx: Record<"header" | "footer", number> = { header: -1, footer: -1 };
+  const lastIdx: Record<AuxRowPosition, number> = { footer: -1, gheader: -1, hidden: -1 };
   for (let i = 0; i < rows.length; i++) {
     if (rows[i].text.trim()) lastIdx[rowPosition(rows[i])] = i;
   }
@@ -192,12 +218,18 @@ export function auxRowHeight(row: AuxRow): number {
   return row.text.trim() ? 12 : 6;
 }
 
+/** Collapsed footer strip height on the device tile (chevron only). */
+export const FOOTER_AUX_COLLAPSED_STRIP_PX = 20;
+
 /** Height (in px) of the footer aux block — border-top (1) + Σ row heights, rounded up
  *  to the next 20-multiple so device bottom stays grid-aligned. 0 when no footer rows.
- *  Header rows live in a different band (see `headerBandHeight`). */
-export function auxBlockHeight(rows: unknown): number {
+ *  Global-header rows live in a different band (see `headerBandHeight`). */
+export function auxBlockHeight(rows: unknown, footerCollapsed = false): number {
   const trimmed = trimTrailingEmpty(normalizeAuxRows(rows)).filter((r) => rowPosition(r) === "footer");
   if (trimmed.length === 0) return 0;
+  if (footerCollapsed && trimmed.some((r) => r.text.trim())) {
+    return FOOTER_AUX_COLLAPSED_STRIP_PX;
+  }
   const raw = 1 + trimmed.reduce((sum, r) => sum + auxRowHeight(r), 0);
   return Math.ceil(raw / 20) * 20;
 }
@@ -209,7 +241,7 @@ export function auxBlockHeight(rows: unknown): number {
  *  `labelZone` defaults to HEADER_LABEL_ZONE_PX (20, single-line). Pass HEADER_LABEL_ZONE_2_PX
  *  (32, two-line) for wrapped device labels. */
 export function headerBandHeight(rows: unknown, labelZone: number = HEADER_LABEL_ZONE_PX): number {
-  const trimmed = trimTrailingEmpty(normalizeAuxRows(rows)).filter((r) => rowPosition(r) === "header");
+  const trimmed = trimTrailingEmpty(normalizeAuxRows(rows)).filter((r) => rowPosition(r) === "gheader");
   const content = labelZone + trimmed.reduce((sum, r) => sum + auxRowHeight(r), 0);
   return Math.max(HEADER_BAND_MIN_PX, Math.ceil(content / 20) * 20);
 }
@@ -224,13 +256,17 @@ export const HEADER_BAND_MIN_PX = 40;
 /** Extra vertical space (vs the default 40-px name strip) contributed by aux rows + a
  *  possibly-wrapped device label — used by `estimateDeviceHeight`, which already accounts
  *  for the base 40 in its `60 + ports×20` baseline. Footer block height is additive as before. */
-export function totalAuxHeight(rows: unknown, labelZone: number = HEADER_LABEL_ZONE_PX): number {
+export function totalAuxHeight(
+  rows: unknown,
+  labelZone: number = HEADER_LABEL_ZONE_PX,
+  footerCollapsed = false,
+): number {
   const headerExtra = headerBandHeight(rows, labelZone) - HEADER_BAND_MIN_PX;
-  return headerExtra + auxBlockHeight(rows);
+  return headerExtra + auxBlockHeight(rows, footerCollapsed);
 }
 
-/** Rows belonging to a given slot, with trailing blanks trimmed. Accepts any legacy shape. */
-export function rowsInSlot(rows: unknown, slot: "header" | "footer"): AuxRow[] {
+/** Rows belonging to a visible slot, with trailing blanks trimmed. Accepts any legacy shape. */
+export function rowsInSlot(rows: unknown, slot: "footer" | "gheader"): AuxRow[] {
   return trimTrailingEmpty(normalizeAuxRows(rows)).filter((r) => rowPosition(r) === slot);
 }
 

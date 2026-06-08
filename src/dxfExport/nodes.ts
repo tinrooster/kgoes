@@ -154,7 +154,7 @@ export function emitDevice(
 
   // Header band — merged name strip + header aux rows. Height is 20-multiple (min 40),
   // matching DeviceNode's headerBandHeight() so the DXF export tracks the canvas layout.
-  const headerRows = rowsInSlot(data.auxiliaryData, "header");
+  const headerRows = rowsInSlot(data.auxiliaryData, "gheader");
   const resolvedLabel = resolveDeviceLabel(data, schematicDefaults);
   const labelZone = resolvedLabel.wrap ? HEADER_LABEL_ZONE_2_PX : HEADER_LABEL_ZONE_PX;
   const bandH = headerBandHeight(data.auxiliaryData, labelZone);
@@ -233,7 +233,7 @@ export function emitDevice(
   const renderFooterAux = () => {
     const rows = rowsInSlot(data.auxiliaryData, "footer");
     if (rows.length === 0) return;
-    const blockH = auxBlockHeight(data.auxiliaryData);
+    const blockH = auxBlockHeight(data.auxiliaryData, data.footerAuxCollapsed);
     const rawH = 1 + rows.reduce((sum, r) => sum + auxRowHeight(r), 0);
     const extraPad = blockH - rawH;
     const padTop = Math.floor(extraPad / 2);
@@ -243,26 +243,28 @@ export function emitDevice(
       rect.x, -pxToIn(blockTopY),
       rect.x + rect.w, -pxToIn(blockTopY),
     );
-    let cursor = blockTopY + 1 + padTop;
-    for (const row of rows) {
-      const rowH = auxRowHeight(row);
-      if (row.text.trim()) {
-        const resolved = transformLabelNow(resolveAuxiliaryLine(row.text, data, { currency }));
-        if (resolved) {
-          writer.addText(
-            CANONICAL_LAYERS.LABELS,
-            pxToIn(ax + w / 2),
-            -pxToIn(cursor + rowH - 2),
-            truncateToWidth(resolved, labelAvailIn, auxTextHeight),
-            {
-              height: auxTextHeight,
-              align: "center",
-              style: { trueColor: rgbToTrueColor(120, 120, 120) },
-            },
-          );
+    if (!data.footerAuxCollapsed) {
+      let cursor = blockTopY + 1 + padTop;
+      for (const row of rows) {
+        const rowH = auxRowHeight(row);
+        if (row.text.trim()) {
+          const resolved = transformLabelNow(resolveAuxiliaryLine(row.text, data, { currency }));
+          if (resolved) {
+            writer.addText(
+              CANONICAL_LAYERS.LABELS,
+              pxToIn(ax + w / 2),
+              -pxToIn(cursor + rowH - 2),
+              truncateToWidth(resolved, labelAvailIn, auxTextHeight),
+              {
+                height: auxTextHeight,
+                align: "center",
+                style: { trueColor: rgbToTrueColor(120, 120, 120) },
+              },
+            );
+          }
         }
+        cursor += rowH;
       }
-      cursor += rowH;
     }
   };
   renderFooterAux();

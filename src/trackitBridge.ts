@@ -22,6 +22,14 @@ import {
   type AppearanceSyncPayload,
 } from "./sharedAppearanceBridge";
 import {
+  applyTrackItDefaultSaveFolder,
+  applyTrackItLocalExportResult,
+  TRACKIT_DEFAULT_SAVE_FOLDER_MESSAGE,
+  TRACKIT_LOCAL_EXPORT_RESULT_MESSAGE,
+  type TrackItDefaultSaveFolderPayload,
+  type TrackItLocalExportResultPayload,
+} from "./trackitDefaultSaveFolder";
+import {
   buildTrackItReportCsv,
   parseTrackItExportTab,
 } from "./trackitReportExport";
@@ -82,6 +90,8 @@ type TrackItInboundMessage =
   | { type: "TRACKIT_FOCUS_PAGE"; payload: TrackItFocusPagePayload }
   | { type: "TRACKIT_LOCATION_SNAPSHOT"; payload: TrackItLocationSnapshotPayload }
   | { type: "TRACKIT_EXPORT_REPORT"; payload: TrackItExportReportPayload }
+  | { type: typeof TRACKIT_DEFAULT_SAVE_FOLDER_MESSAGE; payload: TrackItDefaultSaveFolderPayload }
+  | { type: typeof TRACKIT_LOCAL_EXPORT_RESULT_MESSAGE; payload: TrackItLocalExportResultPayload }
   | { type: "TRACKIT_UNDO" }
   | { type: "TRACKIT_UNDO_TO_DEPTH"; depth: number }
   | { type: "TRACKIT_REDO" }
@@ -106,6 +116,8 @@ function isTrackItInbound(data: unknown): data is TrackItInboundMessage {
     t === "TRACKIT_FOCUS_PAGE" ||
     t === "TRACKIT_LOCATION_SNAPSHOT" ||
     t === "TRACKIT_EXPORT_REPORT" ||
+    t === TRACKIT_DEFAULT_SAVE_FOLDER_MESSAGE ||
+    t === TRACKIT_LOCAL_EXPORT_RESULT_MESSAGE ||
     t === "TRACKIT_UNDO" ||
     t === "TRACKIT_UNDO_TO_DEPTH" ||
     t === "TRACKIT_REDO" ||
@@ -399,6 +411,16 @@ export function startTrackItBridge(): void {
         "info",
         3000,
       );
+      return;
+    }
+
+    if (event.data.type === TRACKIT_DEFAULT_SAVE_FOLDER_MESSAGE) {
+      applyTrackItDefaultSaveFolder(event.data.payload);
+      return;
+    }
+
+    if (event.data.type === TRACKIT_LOCAL_EXPORT_RESULT_MESSAGE) {
+      applyTrackItLocalExportResult(event.data.payload);
       return;
     }
 

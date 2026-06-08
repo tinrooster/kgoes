@@ -10,6 +10,7 @@ import { patchPanelCircuits } from "./devices/_helpers";
 import { autoLayoutAllFacePlateItems } from "./facePlateUtils";
 import { buildVjfGridLayout } from "./vjfLayout";
 import type { JackFieldPorts } from "./rackDistributionPresets";
+import { rowPosition } from "./auxiliaryData";
 import type {
   DeviceData,
   DeviceTemplate,
@@ -71,7 +72,7 @@ function inferJackFieldMeta(data: DeviceData): {
   destDesignation?: string;
 } {
   const aux = data.auxiliaryData ?? [];
-  const header = aux.find((a) => a.position === "header")?.text ?? "";
+  const header = aux.find((a) => rowPosition(a) === "gheader")?.text ?? "";
   const footer = aux.find((a) => a.position === "footer")?.text ?? "";
   if (header.startsWith("Source:")) {
     return { isMaster: true, sourceLabel: header.replace(/^Source:\s*/i, "").trim() || "MDF" };

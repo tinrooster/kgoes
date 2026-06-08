@@ -403,9 +403,12 @@ export interface DeviceData {
   showInstallationBlock?: boolean;
   /** Adapter visibility override — only meaningful for deviceType "adapter" */
   adapterVisibility?: "default" | "force-show" | "force-hide";
-  /** User-customizable auxiliary data rows. Each row carries its own slot (header vs
-   *  footer) and text; blank text entries within a slot render as separator gaps. */
+  /** User-customizable auxiliary data rows. Each row carries its own slot (footer,
+   *  global header, or hidden) and text; blank text entries within a slot render as
+   *  separator gaps. */
   auxiliaryData?: AuxRow[];
+  /** When true, footer aux rows collapse to a chevron strip on the device tile. */
+  footerAuxCollapsed?: boolean;
   /** Search terms used to find this device in the library; editable per-placement so
    *  improved terms can ride the "save as template" submission flow. */
   searchTerms?: string[];
@@ -417,13 +420,16 @@ export interface DeviceData {
   dishDiameterM?: number;
 }
 
+/** Where an auxiliary data row renders on the device tile. */
+export type AuxRowPosition = "footer" | "gheader" | "hidden";
+
 /** One row of auxiliary data shown on a device node. */
 export interface AuxRow {
   /** Display text — may contain `{{token}}` placeholders (e.g. `{{modelNumber}}`). */
   text: string;
-  /** Whether the row renders above the ports (header) or below them (footer).
-   *  Defaults to "footer" when omitted. */
-  position?: "header" | "footer";
+  /** footer = below ports; gheader = device header band; hidden = stored but not drawn.
+   *  Legacy `"header"` is accepted and treated as `"gheader"`. Defaults to `"footer"`. */
+  position?: AuxRowPosition | "header";
 }
 
 export interface FacePlateLayout {

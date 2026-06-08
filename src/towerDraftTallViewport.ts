@@ -3,7 +3,8 @@ import { computeFitViewport, type ContentBounds } from "./viewNavUtils";
 import type { TrackItTowerSiteContext } from "./types";
 
 export const TALL_TOWER_THRESHOLD_FT = 300;
-export const DEFAULT_WORKING_ZOOM_RATIO = 3;
+/** 1 = fit full tower in view (~40% UI zoom on typical panels); >1 zooms into a band. */
+export const DEFAULT_WORKING_ZOOM_RATIO = 1;
 
 export function resolveTallTowerProfileMode(
   towerHeightFt: number,
@@ -52,7 +53,7 @@ export function panZoomCenteredOnFtAgl(opts: {
   };
 }
 
-/** Initial tall-tower viewport: ~3× fit-all zoom, centered on focus band. */
+/** Initial tall-tower viewport: fit-all at ratio 1; ratio > 1 zooms into `focusFtAgl`. */
 export function computeTallTowerInitialViewport(opts: {
   containerWidth: number;
   containerHeight: number;
@@ -65,13 +66,15 @@ export function computeTallTowerInitialViewport(opts: {
   pxPerFt?: number;
   maxZoom?: number;
 }): { zoom: number; pan: { x: number; y: number } } {
-  const { zoom: fitZoom } = computeFitViewport(
-    opts.containerWidth,
-    opts.containerHeight,
-    opts.fullBounds,
-    { maxZoom: 4, minZoom: 0.05, padding: 24 },
-  );
-  const zoom = Math.min(opts.maxZoom ?? 4, fitZoom * opts.workingZoomRatio);
+  const fit = computeFitViewport(opts.containerWidth, opts.containerHeight, opts.fullBounds, {
+    maxZoom: opts.maxZoom ?? 4,
+    minZoom: 0.05,
+    padding: 24,
+  });
+  if (opts.workingZoomRatio <= 1) {
+    return fit;
+  }
+  const zoom = Math.min(opts.maxZoom ?? 4, fit.zoom * opts.workingZoomRatio);
   const pan = panZoomCenteredOnFtAgl({
     containerWidth: opts.containerWidth,
     containerHeight: opts.containerHeight,
