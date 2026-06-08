@@ -21,20 +21,13 @@ import { nodeTypes, edgeTypes } from "./nodeTypes";
 import SnapGuides from "./components/SnapGuides";
 import PageBoundaryOverlay from "./components/PageBoundaryOverlay";
 import PrintViewBar from "./components/PrintViewBar";
-import DeviceLibrary from "./components/DeviceLibrary";
+import SchematicWorkspaceLayout from "./components/SchematicWorkspaceLayout";
 import DeviceEditor from "./components/DeviceEditor";
-import SignalColorPanel from "./components/SignalColorPanel";
-import TrackItNumberingPanel from "./components/TrackItNumberingPanel";
-import ShowInfoPanel from "./components/ShowInfoPanel";
-import ViewOptionsPanel from "./components/ViewOptionsPanel";
-import CadToolsPanel from "./components/CadToolsPanel";
-import KgoCanvasToolbar from "./components/KgoCanvasToolbar";
 import ViewportEditorDialog from "./components/ViewportEditorDialog";
 import { DRAWING_VIEWPORT_EDITOR_EVENT } from "./drawingViewportEvents";
-import KgoRightPanel from "./components/KgoRightPanel";
 import KgoCommandBar from "./components/KgoCommandBar";
 import KgoSyncDrawer from "./components/KgoSyncDrawer";
-import { useSidebarStore, useSyncDrawerStore } from "./sidebarStore";
+import { useSyncDrawerStore } from "./sidebarStore";
 import { KGO_ES_NAME, kgoEsDocumentTitle } from "./branding";
 import { isDrawingCanvasActive } from "./drawingPageUtils";
 import MenuBar from "./components/MenuBar";
@@ -44,8 +37,8 @@ import DeviceSwapDialog from "./components/DeviceSwapDialog";
 import MobileGate from "./components/MobileGate";
 import ToastContainer from "./components/ToastContainer";
 import AppDialogHost from "./components/AppDialogHost";
-import PendingSubmissionBanner from "./components/PendingSubmissionBanner";
 import BetaBanner from "./components/BetaBanner";
+import PwaInstallBanner from "./components/PwaInstallBanner";
 import PortContextMenu from "./components/PortContextMenu";
 import RoutingDebugOverlay from "./components/RoutingDebugOverlay";
 import RoutingTuningPanel from "./components/RoutingTuningPanel";
@@ -1749,7 +1742,12 @@ function SchematicCanvas() {
         </div>
       )}
       {!printView && <CanvasOriginOverlay />}
-      <Background variant={BackgroundVariant.Dots} gap={GRID_SIZE} size={1} color={isDark ? "#374151" : "#d4d4d4"} />
+      <Background
+        variant={BackgroundVariant.Dots}
+        gap={GRID_SIZE}
+        size={1}
+        color={printView ? (isDark ? "#4b5563" : "#c1c7d2") : (isDark ? "#374151" : "#d4d4d4")}
+      />
       <AutoRouteConfirmDialog />
       <RoutingDebugOverlay />
     </ReactFlow>
@@ -1792,33 +1790,6 @@ function PrintTitleBlock() {
   );
 }
 
-function DemoBanner() {
-  const isDemo = useSchematicStore((s) => s.isDemo);
-  const [dismissed, setDismissed] = useState(
-    () => localStorage.getItem("easyschematic-demo-dismissed") === "1",
-  );
-
-  if (!isDemo || dismissed) return null;
-
-  return (
-    <div className="bg-slate-700 text-slate-200 text-sm px-4 py-2 flex items-center justify-between gap-4" data-print-hide>
-      <span>
-        You&apos;re viewing a demo schematic. Start fresh with{" "}
-        <strong>File &gt; New</strong>, or explore to see what {KGO_ES_NAME} can do.
-      </span>
-      <button
-        className="text-slate-400 hover:text-white shrink-0"
-        onClick={() => {
-          setDismissed(true);
-          localStorage.setItem("easyschematic-demo-dismissed", "1");
-        }}
-      >
-        ✕
-      </button>
-    </div>
-  );
-}
-
 export default function App() {
   useUnsavedCloseGuard();
   const schematicName = useSchematicStore((s) => s.schematicName);
@@ -1832,7 +1803,6 @@ export default function App() {
   const isSchematicActive = isDrawingCanvasActive(activePage, pages);
   const undo = useSchematicStore((s) => s.undo);
   const redo = useSchematicStore((s) => s.redo);
-  const panelsVisible = useSidebarStore((s) => s.panelsVisible);
   const syncDrawerOpen = useSyncDrawerStore((s) => s.open);
   const setSyncDrawerOpen = useSyncDrawerStore((s) => s.setOpen);
   const [viewportEditorOpen, setViewportEditorOpen] = useState(false);
@@ -1908,40 +1878,21 @@ export default function App() {
         <MenuBar />
       </div>
       <BetaBanner />
-      <DemoBanner />
-      <PendingSubmissionBanner />
+      <PwaInstallBanner />
       {printView && isSchematicActive && <PrintViewBar />}
       {isSchematicActive && <PrintTitleBlock />}
       <PageTabs />
       {isSchematicActive ? (
-        <div className="flex flex-1 flex-col overflow-hidden min-h-0">
-          <div className="flex flex-1 overflow-hidden min-h-0">
-            {panelsVisible.devices && (
-              <div data-print-hide data-mobile-hide>
-                <DeviceLibrary />
-              </div>
-            )}
-            <div className="flex flex-col flex-1 min-w-0 min-h-0">
-              <div className="relative flex-1 min-h-0">
-                <SchematicCanvas />
-                <KgoCanvasToolbar />
-                <ViewportEditorDialog
-                  open={viewportEditorOpen}
-                  onClose={() => setViewportEditorOpen(false)}
-                />
-              </div>
-              <KgoCommandBar />
-            </div>
-            <div data-print-hide className="hidden md:flex shrink-0">
-              {panelsVisible.viewOptions && <ViewOptionsPanel />}
-              {panelsVisible.showInfo && <ShowInfoPanel />}
-              {panelsVisible.trackItNumbers && <TrackItNumberingPanel />}
-              {panelsVisible.colors && <SignalColorPanel />}
-              {panelsVisible.cadTools && <CadToolsPanel />}
-            </div>
-            <KgoRightPanel />
-          </div>
-        </div>
+        <SchematicWorkspaceLayout
+          canvas={<SchematicCanvas />}
+          viewportEditor={
+            <ViewportEditorDialog
+              open={viewportEditorOpen}
+              onClose={() => setViewportEditorOpen(false)}
+            />
+          }
+          commandBar={<KgoCommandBar />}
+        />
       ) : activePgType === "print-sheet" ? (
         <PrintSheetPage />
       ) : activePgType === "tower-draft" ? (

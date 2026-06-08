@@ -3,11 +3,12 @@ import { useSchematicStore } from "../store";
 import { computeFitViewport, rackContentBoundsForRack, rackPageContentBounds } from "../viewNavUtils";
 import { stepViewZoom } from "../viewZoomUtils";
 import ViewNavBar from "./ViewNavBar";
+import RackElevationViewportBar from "./RackElevationViewportBar";
 import type { RackData, RackDevicePlacement, RackAccessory, RackDepthConflict, DeviceData, RackElevationPage, RackCrossLink } from "../types";
 import { getConnectedPortIds, isShelfThrowdownInSlot, resolveHalfRackSide } from "../rackMount";
 import { resolveDeviceLabel, type SchematicDisplayDefaults } from "../displayName";
 import { RACK_ACCESSORY_LABELS, RACK_TYPE_LABELS } from "../types";
-import { resolveFacePlatePorts } from "../facePlateUtils";
+import { rackFacePlatePortCenters, resolveFacePlatePorts } from "../facePlateUtils";
 import {
   inferRackHeightU,
   inferRackForm,
@@ -325,13 +326,16 @@ function DeviceBlock({
   // Connector rendering when face-plate mode is on (lower zoom threshold on rack pages).
   const labelHeight = 14;
   const availableHeight = h - labelHeight;
+  const portCount = deviceData.ports?.length ?? 0;
   const facePlateOn = showFacePlateDetail && zoom >= 0.35;
-  const showConnectors = facePlateOn && (availableHeight >= 10 || (deviceData.ports?.length ?? 0) > 0);
-  const portDotMode = facePlateOn && slotH < 22;
+  const showConnectors = facePlateOn && (availableHeight >= 10 || portCount > 0);
+  /** 1U patch panels: scaled RJ45 silhouettes in a 6-wide grid (not mm-scale or dots). */
+  const compactFacePlate = facePlateOn && slotH <= 28 && portCount >= 4;
+  const portDotMode = !compactFacePlate && facePlateOn && slotH < 18;
 
   // Connector detail level based on zoom
   // 0 = dots, 1 = silhouettes, 2 = detailed with pins
-  const connectorDetail = zoom < 1.2 ? 0 : zoom < 2 ? 1 : 2;
+  const connectorDetail = portDotMode ? 0 : compactFacePlate ? 1 : zoom < 1.2 ? 0 : zoom < 2 ? 1 : 2;
   // Show port labels once silhouettes are visible and there's enough space
   const showPortLabels = connectorDetail >= 1 && availableHeight >= 30;
 
@@ -339,6 +343,28 @@ function DeviceBlock({
     if (!showConnectors) return [];
     return resolveFacePlatePorts(deviceData, placement.face);
   }, [showConnectors, deviceData, placement.face]);
+
+  const compactLabelReservePx = layoutPorts.length > 8 ? 7 : 10;
+
+  const compactPortCenters = useMemo(() => {
+    if (!compactFacePlate || layoutPorts.length < 4) return null;
+    return rackFacePlatePortCenters(layoutPorts.length, x, y, w, h, compactLabelReservePx);
+  }, [compactFacePlate, layoutPorts.length, x, y, w, h, compactLabelReservePx]);
+
+  const compactJackScale = useMemo(() => {
+    if (!compactFacePlate || layoutPorts.length === 0) return PX_PER_MM;
+    const cols = layoutPorts.length > 6 ? 6 : layoutPorts.length;
+    const rows = Math.ceil(layoutPorts.length / cols);
+    const bandH = Math.max(8, h - 11);
+    const cellW = w / (cols + 0.5);
+    const cellH = bandH / (rows + 0.5);
+    const rjSpec = getConnectorSpec("rj45");
+    return Math.min(
+      cellW / (rjSpec.widthMm * 1.1),
+      cellH / (rjSpec.heightMm * 1.15),
+      PX_PER_MM * 3.2,
+    );
+  }, [compactFacePlate, layoutPorts.length, x, y, w, h]);
 
   return (
     <g
@@ -415,7 +441,51 @@ function DeviceBlock({
         {heightU}U
       </text>
 
-      {/* 1U port dots (compact face-plate mode) */}
+      {/* 1U / dense rack face-plate: RJ45 jacks in 6-wide grid (12P → 2×6) */}
+      {compactFacePlate && showConnectors && layoutPorts.map((lp, idx) => {
+        const center = compactPortCenters?.[idx];
+        const cx = center?.cx ?? x + (lp.x / 100) * w;
+        const cy = center?.cy ?? y + (lp.y / 100) * h;
+        const isLinked = connectedPortIds.has(lp.portId);
+        const isPortSelected = selectedPortId === lp.portId;
+        const hitR = Math.max(4, compactJackScale * 5);
+        const jackColor = isPortSelected ? "#fbbf24" : isLinked ? "#4ade80" : "#e2e8f0";
+        const connType = lp.connectorType === "rj45" || lp.connectorType === "rj11"
+          ? lp.connectorType
+          : "rj45";
+        return (
+          <g key={lp.key}>
+            <rect
+              x={cx - hitR}
+              y={cy - hitR}
+              width={hitR * 2}
+              height={hitR * 2}
+              fill="transparent"
+              className="cursor-pointer"
+              onClick={(e) => { e.stopPropagation(); onPortClick(lp.portId, e); }}
+            />
+            {isLinked && (
+              <circle cx={cx} cy={cy} r={hitR + 1} fill="none" stroke="#22c55e" strokeWidth={1.25} style={{ pointerEvents: "none" }} />
+            )}
+            {isPortSelected && (
+              <circle cx={cx} cy={cy} r={hitR + 2} fill="none" stroke="#fbbf24" strokeWidth={1.5} style={{ pointerEvents: "none" }} />
+            )}
+            <g style={{ pointerEvents: "none" }}>
+              <ConnectorIcon
+                x={cx}
+                y={cy}
+                connectorType={connType}
+                scale={compactJackScale}
+                color={jackColor}
+                detail={connectorDetail}
+                outlineColor="#0f172a"
+                outlineStrokeMm={0.45}
+              />
+            </g>
+          </g>
+        );
+      })}
+
       {portDotMode && showConnectors && layoutPorts.map((lp) => {
         const cx = x + (lp.x / 100) * w;
         const cy = y + (lp.y / 100) * h;
@@ -426,9 +496,9 @@ function DeviceBlock({
             <circle
               cx={cx}
               cy={cy}
-              r={4}
-              fill={isPortSelected ? "#fbbf24" : isLinked ? "#4ade80" : "rgba(255,255,255,0.5)"}
-              stroke={isPortSelected ? "#fff" : "none"}
+              r={3}
+              fill={isPortSelected ? "#fbbf24" : isLinked ? "#4ade80" : "rgba(255,255,255,0.55)"}
+              stroke="#0f172a"
               strokeWidth={0.75}
               className="cursor-pointer"
               onClick={(e) => { e.stopPropagation(); onPortClick(lp.portId, e); }}
@@ -437,8 +507,8 @@ function DeviceBlock({
         );
       })}
 
-      {/* Connector icons */}
-      {!portDotMode && showConnectors && layoutPorts.map((lp) => {
+      {/* Connector icons (non-compact slots only — compact 1U path above owns dense patch panels) */}
+      {!portDotMode && !compactFacePlate && showConnectors && layoutPorts.map((lp) => {
         const cx = x + (lp.x / 100) * w;
         const cy = y + (lp.y / 100) * h;
         const sigColor = SIGNAL_COLORS[lp.signalType as keyof typeof SIGNAL_COLORS] ?? "#fff";
@@ -466,9 +536,11 @@ function DeviceBlock({
               x={cx}
               y={cy}
               connectorType={lp.connectorType}
-              scale={PX_PER_MM}
+              scale={slotH <= 32 ? PX_PER_MM * 1.35 : PX_PER_MM}
               color={sigColor}
               detail={connectorDetail}
+              outlineColor={slotH <= 32 ? "#ffffff" : undefined}
+              outlineStrokeMm={slotH <= 32 ? 0.35 : undefined}
             />
             {/* Port label at high zoom with enough space */}
             {showPortLabels && (
@@ -2311,6 +2383,16 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
       onKeyDown={onKeyDown}
     >
       <ViewToggle viewMode={viewMode} onChangeView={setViewMode} />
+      <RackElevationViewportBar
+        page={page}
+        maxHeightU={maxRackHeightU}
+        getContainerSize={() => {
+          const el = containerRef.current;
+          return el ? { width: el.clientWidth, height: el.clientHeight } : null;
+        }}
+        getViewport={() => ({ x: vpRef.current.pan.x, y: vpRef.current.pan.y, zoom: vpRef.current.zoom })}
+        applyViewport={setViewport}
+      />
       {page.racks.length >= 2 && (
         <button
           type="button"

@@ -796,6 +796,8 @@ export interface RackDevicePlacement {
   /** When set, placement was created by a distribution preset (supports replace-on-reapply). */
   distributionPresetId?: string;
   distributionPresetRole?: "jack-field";
+  /** 1-based EJF panel index on stacked master jack fields. */
+  distributionPresetPanelIndex?: number;
 }
 
 /** A front + rear pair whose summed depth exceeds the rack's internal depth at overlapping U positions. */
@@ -847,6 +849,9 @@ export interface RackCrossLink {
   distributionPresetRole?: "eth-trunk" | "fiber-trunk";
 }
 
+/** Config-driven datacom layout (see docs/distribution-plan-roadmap.md). */
+export type { DistributionPlan } from "./distributionPlan";
+
 export interface RackElevationPage {
   id: string;
   label: string;
@@ -860,6 +865,23 @@ export interface RackElevationPage {
   showTrunkCallouts?: boolean;
   /** Last rack-fill-order preset summary (procurement BOM). */
   fillOrderSummary?: FillOrderSummary;
+  /** Site-local distribution + numbering + length model for trackIT sync. */
+  distributionPlan?: import("./distributionPlan").DistributionPlan;
+  /** When true, grid layout runs the bottom row right-to-left (12→7 in a 2×6 site). */
+  rackLayoutReverseOrder?: boolean;
+  /** @deprecated Use rackLayoutReverseOrder — kept for older saved files. */
+  rackLayoutSerpentine?: boolean;
+  /** Saved pan/zoom presets for quick rack-canvas navigation. */
+  viewports?: RackElevationViewportPreset[];
+}
+
+/** Named saved view of a rack elevation canvas (overview, row, rack, or custom pan/zoom). */
+export interface RackElevationViewportPreset {
+  id: string;
+  label: string;
+  fit: "all" | "top-row" | "bottom-row" | "rack" | "custom";
+  rackId?: string;
+  viewport?: { x: number; y: number; zoom: number };
 }
 
 export type TowerDraftTowerType = "self_support" | "guyed" | "monopole";
@@ -894,15 +916,20 @@ export type TowerDraftLineStyle = "solid" | "dashed" | "dotted";
 /** Photographic / line-art elevation underlay (trackIT mountaintop reference art). */
 export interface TowerElevationReferenceImage {
   url: string;
+  /** Line-art / permit blueprint alternate (`detailUrl` toggle in profile view). */
   detailUrl?: string;
   label?: string;
   opacity?: number;
+  /** Optional opacity when blueprint (`detailUrl`) is active. */
+  detailOpacity?: number;
   align?: "center" | "left";
   fullBleed?: boolean;
   blendMode?: "normal" | "lighten" | "screen" | "multiply";
   contentScale?: number;
-  /** Natural width ÷ height of reference art (e.g. Sutro PNG 260÷1080). */
+  /** Natural width ÷ height of reference art (e.g. Sutro PNG 245÷1024). */
   imageAspectRatio?: number;
+  /** Natural width ÷ height of blueprint art when different from primary. */
+  detailImageAspectRatio?: number;
 }
 
 /** User-drawn polyline segment (tower leg, guy wire, callout line). */
@@ -916,6 +943,13 @@ export interface TowerDraftPolyline {
   /** Optional source/target device node ids for generated feedlines. */
   feedlineFromNodeId?: string;
   feedlineToNodeId?: string;
+  /** Human-readable destination (rack device label or equip. bldg). */
+  feedlineToLabel?: string;
+  feedType?: TowerDeviceFeedType;
+  /** hop = short run to another tower device; structure = down to rack / building. */
+  feedlineKind?: "hop" | "structure";
+  /** Estimated run length in ft (path + slack + entry). */
+  feedlineEstFt?: number;
 }
 
 /** Structured vertical tower elevation / section draft (ft-AGL axis). */
@@ -930,7 +964,15 @@ export interface TowerDraftPage {
   polylines: TowerDraftPolyline[];
   /** Profile underlay — preferred over generated lattice polylines. */
   elevationReferenceImage?: TowerElevationReferenceImage;
-  labelLayers?: { designation?: boolean; azimuth?: boolean; band?: boolean };
+  /** Profile toolbar: silhouette (`primary`) vs blueprint (`detailUrl`). */
+  elevationReferenceVariant?: "primary" | "blueprint";
+  labelLayers?: {
+    designation?: boolean;
+    azimuth?: boolean;
+    band?: boolean;
+    /** Accent marker behind device glyphs (defaults on for blueprint profile). */
+    deviceHighlight?: boolean;
+  };
 }
 
 export interface PrintViewport {
@@ -1135,6 +1177,8 @@ export type TrackItTowerSiteContext = {
   siteCode: string;
   siteName: string;
   towerHeightFt: number;
+  /** Site reference elevation AMSL — used to detect catalog tower height mistaken for site elevation. */
+  siteElevationFtAmsl?: number;
   measurementSystem?: MeasurementSystem;
   accessNotes?: string;
   towerCompany?: string;
@@ -1164,6 +1208,15 @@ export type TrackItTowerSiteContext = {
     drawingType?: string;
   }[];
   elevationReferenceImage?: TowerElevationReferenceImage;
+  /** Cap face-column layout height (ft AGL) from importable tower pack. */
+  faceLayoutHeightFtAgl?: number;
+  towerType?: "self_support" | "guyed" | "monopole";
+  profileVisual?:
+    | "reference_image"
+    | "generated_guyed"
+    | "generated_self_support"
+    | "generated_monopole";
+  towerElevationPackId?: string;
   elevationViewport?: {
     tallTowerMode: boolean;
     tallTowerThresholdFt?: number;

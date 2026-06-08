@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouse
 import { useSyncDrawerStore } from "../sidebarStore";
 import { useReactFlow } from "@xyflow/react";
 import {
+  KGO_ES_DEFAULT_PROJECT_LABEL,
   KGO_ES_DRAWING_TAB_LABEL,
   KGO_ES_ISSUES_URL,
   KGO_ES_NAME,
@@ -16,7 +17,6 @@ import { exportImage } from "../exportUtils";
 import { exportDxf } from "../dxfExport";
 import { exportPdf } from "../pdfExport";
 import { exportTemplatesToFile, readTemplateFile } from "../templateExport";
-import { loadSchematicTemplate } from "../templateApi";
 import { getPaperSize } from "../printConfig";
 import type { SchematicFile, SchematicNode, AnnotationData } from "../types";
 import ReportsDialog, { type ReportsTab } from "./ReportsDialog";
@@ -24,16 +24,11 @@ import TitleBlockDialog from "./TitleBlockDialog";
 import AboutDialog from "./AboutDialog";
 import PreferencesDialog from "./PreferencesDialog";
 import RoomDistancesDialog from "./RoomDistancesDialog";
-import UserMenuButton from "./UserMenuButton";
-import SchematicBrowser from "./SchematicBrowser";
-import LoginDialog from "./LoginDialog";
-import { checkSession, saveSchematicToCloud, updateSchematicInCloud } from "../templateApi";
-import AlignmentMenu from "./AlignmentMenu";
+import UndoHistoryControls from "./UndoHistoryControls";
 import ViewOptionsPanel from "./ViewOptionsPanel";
 import ShowInfoPanel from "./ShowInfoPanel";
 import CsvImportWizard from "./CsvImportWizard";
 import SignalColorPanel from "./SignalColorPanel";
-import { useSidebarStore } from "../sidebarStore";
 import { useTheme } from "../hooks/useTheme";
 import { isTrackItDrawingLinked, saveToTrackItParent } from "../trackitIntegration";
 import { isCloudPortalEnabled } from "../deployMode";
@@ -48,8 +43,11 @@ import {
   insertCadScaleBar,
 } from "../towerSiteCadInsert";
 import TrackItModeBadge from "./TrackItModeBadge";
+import AlignmentMenu from "./AlignmentMenu";
 import DrawingProjectDropdown from "./DrawingProjectDropdown";
+import ToolbarSidebarMenu from "./ToolbarSidebarMenu";
 import { isDrawingCanvasActive, resolveActiveDrawingPage } from "../drawingPageUtils";
+import { inferGridColumns, rackLayoutReverseOrder } from "../rackLayout";
 import { useAppBuildInfo } from "../buildVersion";
 import DeviceLibraryAdminPanel from "./DeviceLibraryAdminPanel";
 import { useUiChromeStore } from "../uiChromeStore";
@@ -181,6 +179,7 @@ export default function MenuBar() {
     addRackPage,
     addTowerDraftPage,
     addPrintSheetPage,
+    layoutRacksOnPage,
   } = useSchematicStore();
 
   const printView = useSchematicStore((s) => s.printView);
@@ -237,27 +236,12 @@ export default function MenuBar() {
   const [showPreferences, setShowPreferences] = useState(false);
   const [showRoomDistances, setShowRoomDistances] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
-  const [showSchematicBrowser, setShowSchematicBrowser] = useState(false);
-  const [showCloudLogin, setShowCloudLogin] = useState(false);
-  const [cloudSaving, setCloudSaving] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-
-  // Check login state on mount (cloud portal only)
-  useEffect(() => {
-    if (!cloudPortal) return;
-    checkSession().then((u) => setIsLoggedIn(!!u));
-  }, [cloudPortal]);
 
   const isOnline = useSchematicStore((s) => s.isOnline);
   const trackItLink = useSchematicStore((s) => s.trackItLink);
   const helpMenuActive = openMenu === "Help" || showAboutDialog;
   const { version: appVersion, commit: appCommit } = useAppBuildInfo(helpMenuActive);
 
-  const panelsVisible = useSidebarStore((s) => s.panelsVisible);
-  const setPanelVisible = useSidebarStore((s) => s.setPanelVisible);
-  const expandRightPanel = useSidebarStore((s) => s.expandRightPanel);
-
-  // Keep nameValue in sync when schematicName changes externally
   useEffect(() => {
     if (!editingName) setNameValue(schematicName);
   }, [schematicName, editingName]);
@@ -337,7 +321,10 @@ export default function MenuBar() {
   }, []);
 
   const trackItLinked = isTrackItDrawingLinked();
-  const projectChipLabel = trackItLink?.dwgNumber?.trim() || "GenericENGTruck";
+  const projectChipLabel =
+    trackItLink?.drawingName?.trim() ||
+    trackItLink?.dwgNumber?.trim() ||
+    KGO_ES_DEFAULT_PROJECT_LABEL;
   const activeDrawingPage = resolveActiveDrawingPage(activePage, pages);
   const projectChipDisplay =
     activeDrawingPage?.label ?? projectChipLabel;
@@ -361,21 +348,6 @@ export default function MenuBar() {
       return;
     }
 
-    // Cloud-backed schematic: update cloud (local file handle still used if present)
-    if (store.cloudSchematicId && store.isOnline) {
-      checkSession().then((session) => {
-        if (!session) return;
-        const data = store.exportToJSON();
-        updateSchematicInCloud(store.cloudSchematicId!, data)
-          .then((result) => {
-            store.setCloudSavedAt(result.updated_at);
-          })
-          .catch((e: unknown) => {
-            store.addToast(e instanceof Error ? e.message : "Cloud save failed", "error");
-          });
-      });
-    }
-
     // Has a local file handle: silently overwrite
     if (store.fileHandle) {
       try {
@@ -388,10 +360,7 @@ export default function MenuBar() {
       }
     }
 
-    // If cloud-backed but no local handle, cloud save is enough
-    if (store.cloudSchematicId) return;
-
-    // No handle, no cloud — first save. Use File System Access API if available.
+    // No handle — first save. Use File System Access API if available.
     if ("showSaveFilePicker" in window) {
       const handle = await pickFileHandle();
       if (!handle) return;
@@ -562,38 +531,6 @@ export default function MenuBar() {
     [],
   );
 
-  const handleCloudSave = useCallback(async () => {
-    const store = useSchematicStore.getState();
-
-    if (!navigator.onLine) {
-      store.addToast("You're offline. Use File → Save to save a copy to your computer.", "info");
-      return;
-    }
-
-    const session = await checkSession();
-    if (!session) {
-      setShowCloudLogin(true);
-      return;
-    }
-    setCloudSaving(true);
-    try {
-      const data = exportToJSON();
-      if (store.cloudSchematicId) {
-        const result = await updateSchematicInCloud(store.cloudSchematicId, data);
-        store.setCloudSavedAt(result.updated_at);
-      } else {
-        const result = await saveSchematicToCloud(data);
-        store.setCloudSchematicId(result.id);
-        store.setCloudSavedAt(result.updated_at);
-      }
-      setIsLoggedIn(true);
-    } catch (e) {
-      useSchematicStore.getState().addToast(e instanceof Error ? e.message : "Failed to save to cloud", "error");
-    } finally {
-      setCloudSaving(false);
-    }
-  }, [exportToJSON]);
-
   // Listen for keyboard shortcut events from App.tsx
   useEffect(() => {
     const onSave = () => { handleSave(); };
@@ -705,23 +642,79 @@ export default function MenuBar() {
     state.saveToLocalStorage();
   }, [reactFlowInstance]);
 
-  const handleNew = useCallback(async () => {
-    if (isLoggedIn && isOnline) {
-      try {
-        const tpl = await loadSchematicTemplate();
-        if (tpl) {
-          newSchematic(tpl as SchematicFile);
-          return;
-        }
-      } catch { /* fall through to blank */ }
-    }
+  const handleNew = useCallback(() => {
     newSchematic();
-  }, [isLoggedIn, isOnline, newSchematic]);
+  }, [newSchematic]);
 
   const closeMenu = () => setOpenMenu(null);
 
   const rackPageCount = pages.filter((p) => p.type === "rack-elevation").length;
   const towerDraftCount = pages.filter((p) => p.type === "tower-draft").length;
+  const activeRackPage = pages.find(
+    (p): p is import("../types").RackElevationPage =>
+      p.id === activePage && p.type === "rack-elevation",
+  );
+
+  const layoutMenuItems: MenuEntry[] = activeRackPage
+    ? [
+        {
+          type: "item",
+          label: "1 row",
+          title: "Single horizontal row, aligned U tops",
+          onClick: () => layoutRacksOnPage(activeRackPage.id, { mode: "row" }),
+        },
+        {
+          type: "item",
+          label: "2×6 grid",
+          disabled: (activeRackPage.racks?.length ?? 0) < 2,
+          title: "Two or more rows, 6 racks per row (e.g. Sutro 12-rack site)",
+          onClick: () =>
+            layoutRacksOnPage(activeRackPage.id, {
+              mode: "grid",
+              columns: 6,
+              serpentineRows: rackLayoutReverseOrder(activeRackPage),
+            }),
+        },
+        ...((activeRackPage.racks?.length ?? 0) > 6 && (activeRackPage.racks?.length ?? 0) % 6 !== 0
+          ? [{
+              type: "item" as const,
+              label: `Grid (${Math.ceil((activeRackPage.racks?.length ?? 0) / Math.min(6, Math.ceil((activeRackPage.racks?.length ?? 0) / 2)))} rows)`,
+              onClick: () =>
+                layoutRacksOnPage(activeRackPage.id, {
+                  mode: "grid",
+                  columns: Math.min(6, Math.ceil((activeRackPage.racks?.length ?? 0) / 2)),
+                  serpentineRows: rackLayoutReverseOrder(activeRackPage),
+                }),
+            }]
+          : []),
+        ...((activeRackPage.racks?.length ?? 0) >= 2
+          ? [
+              { type: "separator" as const },
+              {
+                type: "item" as const,
+                label: "Re-apply current grid",
+                title: "Re-layout racks using inferred column count and reverse-order setting",
+                onClick: () => {
+                  const racks = activeRackPage.racks ?? [];
+                  const columns = inferGridColumns(racks);
+                  layoutRacksOnPage(activeRackPage.id, {
+                    mode: columns >= racks.length ? "row" : "grid",
+                    columns,
+                    serpentineRows: rackLayoutReverseOrder(activeRackPage),
+                  });
+                },
+              },
+            ]
+          : []),
+      ]
+    : [
+        {
+          type: "item",
+          label: "Open a rack elevation page",
+          disabled: true,
+          onClick: () => {},
+        },
+      ];
 
   const pagesMenuItems: MenuEntry[] = [
     {
@@ -787,24 +780,6 @@ export default function MenuBar() {
               label: "Import into drawing…",
               title: "Merge another ES JSON file into this drawing sheet",
               onClick: handleImportIntoDrawing,
-            },
-          ]
-        : []),
-      ...(cloudPortal
-        ? [
-            { type: "separator" as const },
-            {
-              type: "item" as const,
-              label: cloudSaving ? "Saving..." : isOnline ? "Save to Cloud" : "Save to Cloud (Offline)",
-              disabled: cloudSaving || !isOnline,
-              onClick: handleCloudSave,
-            },
-            {
-              type: "item" as const,
-              label: "My Schematics...",
-              disabled: !isLoggedIn,
-              title: isLoggedIn ? undefined : "Must be logged in",
-              onClick: () => setShowSchematicBrowser(true),
             },
           ]
         : []),
@@ -904,6 +879,7 @@ export default function MenuBar() {
       { type: "item", label: "Add Triangle", onClick: () => addAnnotation("triangle") },
     ],
     Pages: pagesMenuItems,
+    Layout: layoutMenuItems,
     View: [
       {
         type: "item",
@@ -943,49 +919,6 @@ export default function MenuBar() {
         shortcut: "Ctrl+B",
         checked: useSchematicStore.getState().debugEdges,
         onClick: () => useSchematicStore.getState().toggleDebugEdges(),
-      },
-    ],
-    Toolbar: [
-      { type: "caption", label: "Sidebar" },
-      {
-        type: "item",
-        label: "Devices",
-        checked: panelsVisible.devices,
-        onClick: () => setPanelVisible("devices", !panelsVisible.devices),
-      },
-      {
-        type: "item",
-        label: "View options",
-        checked: panelsVisible.viewOptions,
-        onClick: () => setPanelVisible("viewOptions", !panelsVisible.viewOptions),
-      },
-      {
-        type: "item",
-        label: "trackIT numbers",
-        checked: panelsVisible.trackItNumbers,
-        onClick: () => setPanelVisible("trackItNumbers", !panelsVisible.trackItNumbers),
-      },
-      {
-        type: "item",
-        label: "Show info",
-        checked: panelsVisible.showInfo,
-        onClick: () => setPanelVisible("showInfo", !panelsVisible.showInfo),
-      },
-      {
-        type: "item",
-        label: "Colors",
-        checked: panelsVisible.colors,
-        onClick: () => setPanelVisible("colors", !panelsVisible.colors),
-      },
-      {
-        type: "item",
-        label: "CAD tools",
-        checked: panelsVisible.cadTools,
-        onClick: () => {
-          const next = !panelsVisible.cadTools;
-          setPanelVisible("cadTools", next);
-          if (next) expandRightPanel("cadTools");
-        },
       },
     ],
     Export: [
@@ -1052,6 +985,11 @@ export default function MenuBar() {
   };
 
   const menuNames = Object.keys(menus);
+  const navMenuNames = [
+    ...menuNames.slice(0, menuNames.indexOf("Export")),
+    "Toolbar",
+    ...menuNames.slice(menuNames.indexOf("Export")),
+  ];
 
   const closeMobileMenu = () => {
     setMobileMenuOpen(false);
@@ -1169,7 +1107,7 @@ export default function MenuBar() {
             fileName={schematicName}
           />
           {/* Menu nav */}
-          {menuNames.map((name) => (
+          {navMenuNames.map((name) => (
             <div key={name} className="relative">
               <button
                 style={{
@@ -1188,7 +1126,11 @@ export default function MenuBar() {
                 {name}
               </button>
               {openMenu === name && (
-                <MenuDropdown items={menus[name]} onClose={closeMenu} />
+                name === "Toolbar" ? (
+                  <ToolbarSidebarMenu />
+                ) : (
+                  <MenuDropdown items={menus[name]} onClose={closeMenu} />
+                )
               )}
             </div>
           ))}
@@ -1291,38 +1233,7 @@ export default function MenuBar() {
             <TiIcon name="arrowSwap" size={12} color="currentColor" />
           </button>
           <div style={{ width: 1, height: 20, background: "var(--ti-divider)", margin: "0 4px" }} />
-          <button
-            title="Undo (Ctrl+Z)"
-            disabled={undoSize === 0}
-            onClick={undo}
-            style={{
-              width: 30, height: 30, display: "grid", placeItems: "center",
-              border: 0, background: "transparent", borderRadius: 7,
-              color: "var(--ti-ink-2)", cursor: undoSize === 0 ? "not-allowed" : "pointer",
-              opacity: undoSize === 0 ? 0.3 : 1, transition: "background 100ms",
-            }}
-            className="hover:bg-[var(--ti-surface-2,#f0eeea)]"
-          >
-            <svg viewBox="0 0 16 16" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 7h7a3 3 0 0 1 0 6H9" /><path d="M6 4 3 7l3 3" />
-            </svg>
-          </button>
-          <button
-            title="Redo (Ctrl+Shift+Z)"
-            disabled={redoSize === 0}
-            onClick={redo}
-            style={{
-              width: 30, height: 30, display: "grid", placeItems: "center",
-              border: 0, background: "transparent", borderRadius: 7,
-              color: "var(--ti-ink-2)", cursor: redoSize === 0 ? "not-allowed" : "pointer",
-              opacity: redoSize === 0 ? 0.3 : 1, transition: "background 100ms",
-            }}
-            className="hover:bg-[var(--ti-surface-2,#f0eeea)]"
-          >
-            <svg viewBox="0 0 16 16" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M13 7H6a3 3 0 0 0 0 6h1" /><path d="M10 4l3 3-3 3" />
-            </svg>
-          </button>
+          <UndoHistoryControls variant="desktop" />
           <div style={{ width: 1, height: 20, background: "var(--ti-divider)", margin: "0 4px" }} />
           <button
             type="button"
@@ -1339,8 +1250,6 @@ export default function MenuBar() {
           >
             <TiIcon name={isDark ? "sun" : "moon"} size={16} color="var(--ti-ink-2)" />
           </button>
-          <div style={{ width: 1, height: 20, background: "var(--ti-divider)", margin: "0 4px" }} />
-          <UserMenuButton />
         </div>
       </div>
 
@@ -1370,28 +1279,7 @@ export default function MenuBar() {
         <div className="fixed inset-0 z-[100] bg-[var(--color-surface)] flex flex-col">
           {/* Overlay header: undo/redo + close */}
           <div className="flex items-center justify-between px-3 h-12 border-b border-[var(--color-border)] shrink-0">
-            <div className="flex items-center gap-2">
-              <button
-                disabled={undoSize === 0}
-                onClick={undo}
-                className="p-2 rounded hover:bg-[var(--color-surface-hover)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[var(--color-text)]"
-              >
-                <svg viewBox="0 0 16 16" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 7h7a3 3 0 0 1 0 6H9" />
-                  <path d="M6 4 3 7l3 3" />
-                </svg>
-              </button>
-              <button
-                disabled={redoSize === 0}
-                onClick={redo}
-                className="p-2 rounded hover:bg-[var(--color-surface-hover)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[var(--color-text)]"
-              >
-                <svg viewBox="0 0 16 16" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M13 7H6a3 3 0 0 0 0 6h1" />
-                  <path d="M10 4l3 3-3 3" />
-                </svg>
-              </button>
-            </div>
+            <UndoHistoryControls variant="mobile" />
             <span className="text-sm font-semibold text-[var(--color-text-heading)]">Menu</span>
             <div className="flex items-center gap-1">
               <button
@@ -1451,11 +1339,6 @@ export default function MenuBar() {
               ))}
             </div>
           </div>
-
-          {/* Footer: user section */}
-          <div className="border-t border-[var(--color-border)] px-4 py-3 shrink-0">
-            <UserMenuButton />
-          </div>
         </div>
       )}
 
@@ -1514,12 +1397,6 @@ export default function MenuBar() {
       )}
       {showCsvImport && (
         <CsvImportWizard onClose={() => setShowCsvImport(false)} />
-      )}
-      {showSchematicBrowser && (
-        <SchematicBrowser onClose={() => setShowSchematicBrowser(false)} />
-      )}
-      {cloudPortal && (
-        <LoginDialog open={showCloudLogin} onClose={() => setShowCloudLogin(false)} />
       )}
       <DeviceLibraryAdminPanel />
     </div>

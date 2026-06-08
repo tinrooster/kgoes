@@ -45,12 +45,12 @@ export function buildTrackItKgoEsUrl(tab?: string): string {
   return `${getTrackItAppOrigin()}/kgo-es${q ? `?${q}` : ""}`;
 }
 
-/** Bring the trackIT tab that opened this popup to the foreground (no navigation). */
-export function focusTrackItOpener(): boolean {
+function postToTrackItOpener(message: { type: string; url?: string }): boolean {
   if (!isTrackItPopupOpener()) return false;
   try {
     const opener = window.opener;
     if (opener && !opener.closed) {
+      opener.postMessage(message, "*");
       opener.focus();
       return true;
     }
@@ -60,19 +60,15 @@ export function focusTrackItOpener(): boolean {
   return false;
 }
 
-/** Focus trackIT opener when same-origin; otherwise open a new trackIT tab. */
+/** Bring the trackIT tab that opened this popup to the foreground (no navigation). */
+export function focusTrackItOpener(): boolean {
+  return postToTrackItOpener({ type: "KGO_ES_REQUEST_FOCUS" });
+}
+
+/** Focus trackIT opener when opened as popup; otherwise open URL in a new tab. */
 export function openTrackItUrl(url: string): void {
-  if (isTrackItPopupOpener()) {
-    try {
-      const opener = window.opener;
-      if (opener && !opener.closed) {
-        opener.location.href = url;
-        opener.focus();
-        return;
-      }
-    } catch {
-      // cross-origin
-    }
+  if (postToTrackItOpener({ type: "KGO_ES_REQUEST_NAVIGATE", url })) {
+    return;
   }
-  window.open(url, "trackit");
+  window.open(url, "_blank", "noopener,noreferrer");
 }

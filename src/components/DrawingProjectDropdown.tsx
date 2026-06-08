@@ -138,7 +138,7 @@ export default function DrawingProjectDropdown({
   const viewportOptions = useMemo(
     () =>
       activeDrawing
-        ? mergeDrawingViewportOptions(activeDrawing.viewports, nodes)
+        ? mergeDrawingViewportOptions(activeDrawing.viewports ?? [], nodes)
         : [],
     [activeDrawing, nodes],
   );

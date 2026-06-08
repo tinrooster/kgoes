@@ -1,4 +1,7 @@
 /** KGO fork branding (formerly EasySchematic). */
+/** PWA / OS title bar — match trackIT (`vite.config.ts` theme_color). */
+export const KGO_ES_PWA_THEME_COLOR = "#1e3a5f";
+
 export const KGO_ES_NAME = "KGO-ES";
 export const KGO_ES_SHORT = "ES";
 export const KGO_ES_LEGACY_NAME = "EasySchematic";
@@ -10,6 +13,12 @@ export const KGO_ES_UPSTREAM_REPO_URL = "https://github.com/duremovich/EasySchem
 
 /** Primary tab label for the signal-flow canvas (store id remains `"schematic"`). */
 export const KGO_ES_DRAWING_TAB_LABEL = "Drawing";
+
+/** Default name for a blank drawing file (center title + new document). */
+export const KGO_ES_DEFAULT_DRAWING_NAME = "Untitled Drawing";
+
+/** Project chip label when no trackIT drawing is linked. */
+export const KGO_ES_DEFAULT_PROJECT_LABEL = "Untitled project";
 
 /** Plain-language fork credit (About dialog, etc.). */
 export const KGO_ES_FORK_CREDIT =

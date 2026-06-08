@@ -1,4 +1,5 @@
 import { useSidebarStore } from "../sidebarStore";
+import WorkspacePresetsSection from "./WorkspacePresetsSection";
 
 const PANEL_LABELS: { key: keyof ReturnType<typeof useSidebarStore.getState>["panelsVisible"]; label: string }[] = [
   { key: "devices", label: "Devices (left)" },
@@ -50,6 +51,8 @@ export default function WorkspaceSettingsSection() {
           Compact icon buttons for CAD tools and similar sidebars. Toggle also in each palette header.
         </p>
       </div>
+      <div className="h-px bg-[var(--color-border)] my-4" />
+      <WorkspacePresetsSection />
     </>
   );
 }

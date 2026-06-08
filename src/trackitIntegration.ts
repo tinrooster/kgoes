@@ -12,6 +12,7 @@ import {
 } from "./store";
 import { useSidebarStore } from "./sidebarStore";
 import { LEGACY_SCHEMATIC_PAGE_ID } from "./drawingPageUtils";
+import { listSchematicUndoHistory } from "./schematicUndo";
 import type { SchematicFile, TrackItLinkContext } from "./types";
 
 /** Mirrors trackIT `TrackItFocusPagePayload` (Pack tab sheet deep links). */
@@ -85,6 +86,10 @@ const TRACKIT_AUTOSAVE_MS = 25_000;
 
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
 let pagehideHookInstalled = false;
+/** Avoid duplicate link/toast handling when trackIT bootstrap retries postMessage. */
+let trackItLinkAppliedForDrawingId: string | null = null;
+/** Avoid resetting the canvas when empty TRACKIT_LOAD_SCHEMATIC arrives after TRACKIT_LINK. */
+let trackItBlankInitializedForDrawingId: string | null = null;
 
 /** How this KGO-ES session relates to trackIT (drives banner + save targets). */
 export function getTrackItEditorMode(): TrackItEditorMode {
@@ -141,6 +146,31 @@ export function isTrackItPopupOpener(): boolean {
     return !!(typeof window !== "undefined" && window.opener && !window.opener.closed);
   } catch {
     return false;
+  }
+}
+
+/** Push current schematic JSON to trackIT opener (Plant drawing panel). */
+export function notifyTrackItParentUndoState(): void {
+  if (!isTrackItPopupOpener()) return;
+  try {
+    const store = useSchematicStore.getState();
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(
+        {
+          type: "KGO_ES_UNDO_STATE",
+          payload: {
+            canUndo: store.canUndo(),
+            canRedo: store.canRedo(),
+            undoSize: store.undoSize,
+            redoSize: store.redoSize,
+            undoHistory: listSchematicUndoHistory(8),
+          },
+        },
+        "*",
+      );
+    }
+  } catch {
+    // cross-origin opener
   }
 }
 
@@ -234,8 +264,10 @@ export function restoreTrackItPopupAutosaveOnMount(): void {
       store.setTrackItLink(link);
       const drawingName = link.drawingName?.trim();
       if (drawingName) store.setSchematicName(drawingName);
-      useSchematicStore.setState({ isDemo: false });
-      if (loaded) return;
+      if (loaded) {
+        trackItLinkAppliedForDrawingId = link.drawingId;
+        return;
+      }
     }
   }
 
@@ -277,6 +309,14 @@ export function loadTrackItDrawingAutosave(drawingId: string): boolean {
 
 /** Empty canvas for a linked plant drawing (no legacy demo / other drawing content). */
 export function beginBlankTrackItDrawing(link: TrackItLinkContext): void {
+  if (!link?.drawingId) return;
+  if (
+    trackItBlankInitializedForDrawingId === link.drawingId &&
+    useSchematicStore.getState().trackItLink?.drawingId === link.drawingId
+  ) {
+    return;
+  }
+  trackItBlankInitializedForDrawingId = link.drawingId;
   const store = useSchematicStore.getState();
   store.newSchematic();
   store.setTrackItLink(link);
@@ -284,15 +324,26 @@ export function beginBlankTrackItDrawing(link: TrackItLinkContext): void {
   if (drawingName) {
     store.setSchematicName(drawingName);
   }
-  useSchematicStore.setState({ isDemo: false });
 }
 
 export function applyTrackItLink(link: TrackItLinkContext): void {
   if (!link?.drawingId) return;
-  persistTrackItActiveLink(link);
+
   const store = useSchematicStore.getState();
   const switched = store.trackItLink?.drawingId !== link.drawingId;
+
+  if (!switched && trackItLinkAppliedForDrawingId === link.drawingId) {
+    persistTrackItActiveLink(link);
+    store.setTrackItLink(link);
+    const drawingName = link.drawingName?.trim();
+    if (drawingName) store.setSchematicName(drawingName);
+    return;
+  }
+
+  persistTrackItActiveLink(link);
   if (switched) {
+    trackItLinkAppliedForDrawingId = null;
+    trackItBlankInitializedForDrawingId = null;
     cadToolsAutoOpenedForDrawingId = null;
     towerDraftAutoOpenedForDrawingId = null;
   }
@@ -307,7 +358,6 @@ export function applyTrackItLink(link: TrackItLinkContext): void {
       if (drawingName) {
         store.setSchematicName(drawingName);
       }
-      useSchematicStore.setState({ isDemo: false });
     }
   } else {
     store.setTrackItLink(link);
@@ -317,6 +367,7 @@ export function applyTrackItLink(link: TrackItLinkContext): void {
     }
   }
 
+  trackItLinkAppliedForDrawingId = link.drawingId;
   store.addToast(`Linked to trackIT DWG ${link.dwgNumber}`, "success", 3500);
   if (link.drawingType === "tower_stack") {
     window.setTimeout(() => maybeAutoOpenTowerDraftTab(), 0);

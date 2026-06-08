@@ -1,15 +1,28 @@
 import { create } from "zustand";
-import { layoutRackPositions } from "./rackLayout";
-import { getDevicesInRoom } from "./rackLink";
+import { layoutRackPositions, rackLayoutReverseOrder } from "./rackLayout";
+import { defaultRackElevationViewports } from "./rackElevationViewportUtils";
 import {
   applyRackFillOrderPreset,
   applyTowerDatacomHubPreset,
   formatApplyPresetSummary,
+  guessMasterRackId,
   RACK_FILL_ORDER_PRESET_ID,
   TOWER_DATACOM_HUB_PRESET_ID,
   type RackFillOrderApplyOptions,
   type TowerDatacomHubApplyOptions,
 } from "./rackDistributionPresets";
+import { upgradeJackFieldNodesForPages } from "./rackJackFieldDevice";
+import {
+  buildHubPortPairEdges,
+  layoutHubJackFieldsForDrawing,
+  stripHubJackFieldEdges,
+} from "./hubDrawingLayout";
+import type { CableSegment } from "./topology/domain/types";
+import {
+  collectHubJackFieldBindings,
+  hubEdgesFromMatrixSegments,
+  resolveHubMatrixPair,
+} from "./topology/adapters/hubMatrix";
 import { pushLibraryBackup } from "./libraryTemplateBackup";
 import {
   applyNodeChanges,
@@ -41,6 +54,7 @@ import type {
   TowerDraftPlacement,
   DrawingPage,
   DrawingViewportPreset,
+  RackElevationViewportPreset,
   TitleBlock,
   TitleBlockLayout,
   TemplatePreset,
@@ -76,9 +90,11 @@ import { CURRENT_SCHEMA_VERSION, migrateSchematic } from "./migrations";
 import {
   activeDrawingPageId,
   createDrawingPage,
+  normalizeSchematicPages,
   ensureDrawingPageGraphs,
   isDrawingCanvasActive,
   LEGACY_SCHEMATIC_PAGE_ID,
+  mergeHubGraphIntoDrawingPages,
   persistActiveDrawingGraph,
   resolveActiveDrawingPage,
   stripEdgesForPersist,
@@ -111,13 +127,30 @@ import type {
 } from "./types";
 import { scheduleTrackItAutosave } from "./trackitIntegration";
 import {
+  clearSchematicUndoHistory,
+  clearPendingUndoSnapshot,
+  flushPendingUndoSnapshot,
+  listSchematicUndoHistory,
+  pushSchematicUndo,
+  redoSchematic,
+  restoreSchematicUndoFromSession,
+  schematicRedoSize,
+  schematicUndoSize,
+  setPendingUndoSnapshot as setPendingSchematicUndoSnapshot,
+  setSchematicUndoScope,
+  undoSchematic,
+  undoSchematicSteps,
+  type SchematicSnapshot,
+} from "./schematicUndo";
+import {
   createDefaultTowerDraftPage,
-  ftAglToY,
   isTowerDraftEligibleDeviceType,
-  towerDraftGroundY,
-  towerDraftTowerCenterX,
 } from "./towerDraftUtils";
-import { resolveCatalogTowerHeightFtAgl } from "./towerDraftDisplayHeight";
+import {
+  formatSuggestFeedlinesToast,
+  suggestTowerDraftFeedlinesForPage,
+} from "./towerDraftFeedlines";
+import { normalizeTowerDraftPages } from "./towerDraftPageNormalize";
 import {
   blockSlotNumbers,
   formatCableNumber,
@@ -528,7 +561,9 @@ interface SchematicState {
   clearPendingUndoSnapshot: () => void;
   flushPendingSnapshot: () => void;
   undo: () => void;
+  undoToDepth: (depth: number) => void;
   redo: () => void;
+  listUndoHistory: (limit?: number) => ReturnType<typeof listSchematicUndoHistory>;
   canUndo: () => boolean;
   canRedo: () => boolean;
   undoSize: number;
@@ -637,9 +672,6 @@ interface SchematicState {
   // Resize snap guides (shown while resizing rooms)
   resizeGuides: import("./snapUtils").GuideLine[];
   setResizeGuides: (guides: import("./snapUtils").GuideLine[]) => void;
-
-  // Demo state — true when the demo schematic was auto-loaded for first-time visitors
-  isDemo: boolean;
 
   // Drag state — edges freeze during drag and recalculate on drop
   isDragging: boolean;
@@ -898,7 +930,17 @@ interface SchematicState {
   removeTowerDraftPage: (pageId: string) => void;
   updateTowerDraftPage: (
     pageId: string,
-    patch: Partial<Pick<TowerDraftPage, "label" | "towerHeightFtAgl" | "towerType" | "guideBandsFt" | "labelLayers">>,
+    patch: Partial<
+      Pick<
+        TowerDraftPage,
+        | "label"
+        | "towerHeightFtAgl"
+        | "towerType"
+        | "guideBandsFt"
+        | "labelLayers"
+        | "elevationReferenceVariant"
+      >
+    >,
   ) => void;
   addTowerDraftPlacement: (pageId: string, placement: Omit<TowerDraftPlacement, "id">) => string;
   updateTowerDraftPlacement: (pageId: string, placementId: string, patch: Partial<TowerDraftPlacement>) => void;
@@ -929,6 +971,13 @@ interface SchematicState {
     pageId: string,
     options?: import("./rackLayout").LayoutRackPositionsOptions,
   ) => void;
+  addRackElevationViewport: (pageId: string, preset: Omit<RackElevationViewportPreset, "id">) => string;
+  updateRackElevationViewport: (
+    pageId: string,
+    viewportId: string,
+    patch: Partial<RackElevationViewportPreset>,
+  ) => void;
+  removeRackElevationViewport: (pageId: string, viewportId: string) => void;
   /** Pan/zoom the rack canvas to one rack (from sidebar / list). */
   rackFocusRequest: { pageId: string; rackId: string } | null;
   requestRackFocus: (pageId: string, rackId: string) => void;
@@ -955,13 +1004,22 @@ interface SchematicState {
   ) => void;
   selectedCrossLinkId: string | null;
   setSelectedCrossLinkId: (linkId: string | null) => void;
+  /** Spread datacom hub jack-field devices in linked drawing room(s); optional port-pair wiring. */
+  relayoutHubDrawing: (pageId: string, options?: { wirePortPairs?: boolean }) => void;
+  /** Sync matrix-view port patches to schematic hub jack-field edges for one satellite rack. */
+  syncHubMatrixSegments: (
+    pageId: string,
+    masterRackId: string,
+    destRackId: string,
+    segments: CableSegment[],
+  ) => void;
   /** Apply a facility distribution preset (jack fields + trunk cross-links). */
   applyRackDistributionPreset: (
     pageId: string,
     presetId: string,
     options: TowerDatacomHubApplyOptions | RackFillOrderApplyOptions,
   ) => void;
-  updateRackElevationPage: (pageId: string, patch: Partial<Pick<RackElevationPage, "showTrunkCallouts" | "label">>) => void;
+  updateRackElevationPage: (pageId: string, patch: Partial<Pick<RackElevationPage, "showTrunkCallouts" | "label" | "rackLayoutReverseOrder" | "rackLayoutSerpentine">>) => void;
   /** Rebalance half-rack sides and clear stale placement flags after device rack metadata changes. */
   syncRackPlacementsForDevice: (deviceNodeId: string) => void;
 
@@ -1080,7 +1138,7 @@ function reconcileShelfPlacementsForPages(
   pages: SchematicPage[],
   deviceDataMap: Map<string, DeviceData>,
 ): SchematicPage[] {
-  return pages.map((page) => {
+  return normalizeSchematicPages(pages).map((page) => {
     if (page.type !== "rack-elevation") return page;
 
     let accessories = [...page.accessories];
@@ -1151,6 +1209,11 @@ function nextDrawingViewportId(): string {
   return `drawvp-${++drawingViewportIdCounter}`;
 }
 
+let rackElevationViewportIdCounter = 0;
+function nextRackElevationViewportId(): string {
+  return `rackvp-${++rackElevationViewportIdCounter}`;
+}
+
 let viewportIdCounter = 0;
 function nextViewportId(): string {
   return `viewport-${++viewportIdCounter}`;
@@ -1193,13 +1256,13 @@ function syncRackCounters(pages: SchematicPage[]) {
     const dm = page.id.match(/^drawing-(\d+)$/);
     if (dm) drawingPageIdCounter = Math.max(drawingPageIdCounter, Number(dm[1]));
     if (page.type === "drawing") {
-      for (const vp of page.viewports) {
+      for (const vp of page.viewports ?? []) {
         const dvm = vp.id.match(/^drawvp-(\d+)$/);
         if (dvm) drawingViewportIdCounter = Math.max(drawingViewportIdCounter, Number(dvm[1]));
       }
     }
     if (page.type === "print-sheet") {
-      for (const vp of page.viewports) {
+      for (const vp of page.viewports ?? []) {
         const vm = vp.id.match(/^viewport-(\d+)$/);
         if (vm) viewportIdCounter = Math.max(viewportIdCounter, Number(vm[1]));
         const sm = page.id.match(/^printsheet-(\d+)$/);
@@ -1208,22 +1271,22 @@ function syncRackCounters(pages: SchematicPage[]) {
       continue;
     }
     if (page.type === "tower-draft") {
-      for (const pl of page.placements) {
+      for (const pl of page.placements ?? []) {
         const tdp = pl.id.match(/^tdp-(\d+)$/);
         if (tdp) towerDraftPlacementIdCounter = Math.max(towerDraftPlacementIdCounter, Number(tdp[1]));
       }
-      for (const pl of page.polylines) {
+      for (const pl of page.polylines ?? []) {
         const tdpl = pl.id.match(/^tdpl-(\d+)$/);
         if (tdpl) towerDraftPolylineIdCounter = Math.max(towerDraftPolylineIdCounter, Number(tdpl[1]));
       }
       continue;
     }
     if (page.type !== "rack-elevation") continue;
-    for (const rack of page.racks) {
+    for (const rack of page.racks ?? []) {
       const rm = rack.id.match(/^rack-(\d+)$/);
       if (rm) rackIdCounter = Math.max(rackIdCounter, Number(rm[1]));
     }
-    for (const p of page.placements) {
+    for (const p of page.placements ?? []) {
       const pm2 = p.id.match(/^rp-(\d+)$/);
       if (pm2) placementIdCounter = Math.max(placementIdCounter, Number(pm2[1]));
     }
@@ -1253,35 +1316,47 @@ function syncCounters(nodes: SchematicNode[], edges: ConnectionEdge[]) {
 let clipboard: Clipboard | null = null;
 const PASTE_GAP = 20;
 
-// Undo/redo history
-interface Snapshot {
+function schematicSnapshotFromState(state: {
   nodes: SchematicNode[];
   edges: ConnectionEdge[];
   pages: SchematicPage[];
   autoRoute?: boolean;
+}): SchematicSnapshot {
+  return {
+    nodes: state.nodes,
+    edges: state.edges,
+    pages: state.pages,
+    autoRoute: state.autoRoute,
+  };
 }
-const MAX_HISTORY = 50;
-const undoStack: Snapshot[] = [];
-const redoStack: Snapshot[] = [];
 
-/** If set, the next pushUndo call uses this instead of the passed snapshot. */
-let pendingUndoSnapshot: Snapshot | null = null;
+function syncUndoCounters(): void {
+  useSchematicStore.setState({
+    undoSize: schematicUndoSize(),
+    redoSize: schematicRedoSize(),
+  });
+}
+
+function pushUndo(partial: { nodes: SchematicNode[]; edges: ConnectionEdge[]; autoRoute?: boolean }) {
+  const pages = useSchematicStore?.getState?.()?.pages ?? [];
+  pushSchematicUndo({ ...partial, pages });
+  syncUndoCounters();
+}
+
+function resolveSchematicUndoScope(state: {
+  trackItLink?: { drawingId?: string } | null;
+  schematicName?: string;
+}): string {
+  const drawingId = state.trackItLink?.drawingId?.trim();
+  if (drawingId) return `trackit:${drawingId}`;
+  const name = state.schematicName?.trim();
+  return name ? `local:${name}` : "standalone";
+}
 
 /** Edge ID being reconnected — excluded from isValidConnection duplicate checks. */
 let _reconnectingEdgeId: string | null = null;
 export function setReconnectingEdgeId(id: string | null) {
   _reconnectingEdgeId = id;
-}
-
-function pushUndo(partial: { nodes: SchematicNode[]; edges: ConnectionEdge[]; autoRoute?: boolean }) {
-  const pages = useSchematicStore?.getState?.()?.pages ?? [];
-  const snapshot: Snapshot = { ...partial, pages };
-  undoStack.push(structuredClone(pendingUndoSnapshot ?? snapshot));
-  pendingUndoSnapshot = null;
-  if (undoStack.length > MAX_HISTORY) undoStack.shift();
-  redoStack.length = 0; // clear redo on new action
-  // Sync reactive counters so undo/redo buttons stay in sync
-  useSchematicStore.setState({ undoSize: undoStack.length, redoSize: 0 });
 }
 
 function clonePorts(ports: Port[]): Port[] {
@@ -1614,7 +1689,7 @@ function resolveActiveReservedBlock(
 export const useSchematicStore = create<SchematicState>((set, get) => ({
   nodes: [],
   edges: [],
-  schematicName: "Untitled Schematic",
+  schematicName: "Untitled Drawing",
   trackItNumbering: null,
   trackItLocations: null,
   activeTrackItReservationId: null,
@@ -1663,7 +1738,6 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   debugShowGrid: true,
   routingParamVersion: 0,
   resizeGuides: [],
-  isDemo: false,
   isDragging: false,
   isRouting: false,
   overlapNodeId: null,
@@ -2703,7 +2777,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     set({
       nodes,
       facePlateDefinitionLayouts: definitionLayouts,
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -2746,7 +2820,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     set({
       nodes,
       deviceDefinitionRackMetadata,
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -3403,6 +3477,17 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
     set({ nodes: updatedNodes, pages: updatedPages });
     get().saveToLocalStorage();
+    if (linkChanged && newLinkedRackPageId && newLinkedRackId) {
+      const hubPage = updatedPages.find((p) => p.id === newLinkedRackPageId && p.type === "rack-elevation") as
+        | RackElevationPage
+        | undefined;
+      if (
+        hubPage?.distributionPlan
+        && hubPage.placements.some((p) => p.distributionPresetRole === "jack-field")
+      ) {
+        get().relayoutHubDrawing(newLinkedRackPageId);
+      }
+    }
   },
 
   updateAnnotation: (nodeId, data) => {
@@ -3607,44 +3692,73 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
   setPendingUndoSnapshot: () => {
     const state = get();
-    pendingUndoSnapshot = structuredClone({ nodes: state.nodes, edges: state.edges, pages: state.pages });
+    setPendingSchematicUndoSnapshot(schematicSnapshotFromState(state));
   },
 
-  clearPendingUndoSnapshot: () => {
-    pendingUndoSnapshot = null;
-  },
+  clearPendingUndoSnapshot,
 
   flushPendingSnapshot: () => {
-    if (pendingUndoSnapshot) {
-      // pushUndo consumes pendingUndoSnapshot automatically
-      pushUndo({ nodes: get().nodes, edges: get().edges });
-    }
+    const state = get();
+    flushPendingUndoSnapshot(schematicSnapshotFromState(state));
+    syncUndoCounters();
   },
 
   undo: () => {
-    const prev = undoStack.pop();
-    if (!prev) return;
     const state = get();
-    redoStack.push(structuredClone({ nodes: state.nodes, edges: state.edges, pages: state.pages, autoRoute: state.autoRoute }));
+    const prev = undoSchematic(schematicSnapshotFromState(state));
+    if (!prev) return;
     const edges = prev.edges.map(({ zIndex: _, selected: _s, ...rest }) => ({ ...rest, zIndex: 0 })) as typeof prev.edges;
     const restoreAutoRoute = prev.autoRoute !== undefined ? { autoRoute: prev.autoRoute } : {};
-    set({ nodes: prev.nodes, edges, pages: prev.pages ?? state.pages, ...restoreAutoRoute, undoSize: undoStack.length, redoSize: redoStack.length });
+    set({
+      nodes: prev.nodes,
+      edges,
+      pages: prev.pages ?? state.pages,
+      ...restoreAutoRoute,
+      undoSize: schematicUndoSize(),
+      redoSize: schematicRedoSize(),
+    });
     get().saveToLocalStorage();
   },
+
+  undoToDepth: (depth) => {
+    if (depth < 1) return;
+    const state = get();
+    const prev = undoSchematicSteps(schematicSnapshotFromState(state), depth);
+    if (!prev) return;
+    const edges = prev.edges.map(({ zIndex: _, selected: _s, ...rest }) => ({ ...rest, zIndex: 0 })) as typeof prev.edges;
+    const restoreAutoRoute = prev.autoRoute !== undefined ? { autoRoute: prev.autoRoute } : {};
+    set({
+      nodes: prev.nodes,
+      edges,
+      pages: prev.pages ?? state.pages,
+      ...restoreAutoRoute,
+      undoSize: schematicUndoSize(),
+      redoSize: schematicRedoSize(),
+    });
+    get().saveToLocalStorage();
+  },
+
+  listUndoHistory: (limit) => listSchematicUndoHistory(limit),
 
   redo: () => {
-    const next = redoStack.pop();
-    if (!next) return;
     const state = get();
-    undoStack.push(structuredClone({ nodes: state.nodes, edges: state.edges, pages: state.pages, autoRoute: state.autoRoute }));
+    const next = redoSchematic(schematicSnapshotFromState(state));
+    if (!next) return;
     const edges = next.edges.map(({ zIndex: _, selected: _s, ...rest }) => ({ ...rest, zIndex: 0 })) as typeof next.edges;
     const restoreAutoRoute = next.autoRoute !== undefined ? { autoRoute: next.autoRoute } : {};
-    set({ nodes: next.nodes, edges, pages: next.pages ?? state.pages, ...restoreAutoRoute, undoSize: undoStack.length, redoSize: redoStack.length });
+    set({
+      nodes: next.nodes,
+      edges,
+      pages: next.pages ?? state.pages,
+      ...restoreAutoRoute,
+      undoSize: schematicUndoSize(),
+      redoSize: schematicRedoSize(),
+    });
     get().saveToLocalStorage();
   },
 
-  canUndo: () => undoStack.length > 0,
-  canRedo: () => redoStack.length > 0,
+  canUndo: () => schematicUndoSize() > 0,
+  canRedo: () => schematicRedoSize() > 0,
 
   selectAll: () => {
     const state = get();
@@ -4544,8 +4658,17 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const state = get();
     pushUndo({ nodes: state.nodes, edges: state.edges });
     const id = nextRackPageId();
-    const page: RackElevationPage = { id, label, type: "rack-elevation", racks: [], placements: [], accessories: [], crossLinks: [] };
-    set({ pages: [...state.pages, page], activePage: id, undoSize: undoStack.length, redoSize: 0 });
+    const page: RackElevationPage = {
+      id,
+      label,
+      type: "rack-elevation",
+      racks: [],
+      placements: [],
+      accessories: [],
+      crossLinks: [],
+      viewports: defaultRackElevationViewports(),
+    };
+    set({ pages: [...state.pages, page], activePage: id, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
     return id;
   },
@@ -4555,14 +4678,14 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     pushUndo({ nodes: state.nodes, edges: state.edges });
     const pages = state.pages.filter((p) => p.id !== pageId);
     const activePage = state.activePage === pageId ? "schematic" : state.activePage;
-    set({ pages, activePage, undoSize: undoStack.length, redoSize: 0 });
+    set({ pages, activePage, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
   },
 
   renameRackPage: (pageId, label) => {
     const state = get();
     pushUndo({ nodes: state.nodes, edges: state.edges });
-    set({ pages: state.pages.map((p) => p.id === pageId ? { ...p, label } : p), undoSize: undoStack.length, redoSize: 0 });
+    set({ pages: state.pages.map((p) => p.id === pageId ? { ...p, label } : p), undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
   },
 
@@ -4573,7 +4696,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const rack: RackData = { ...rackData, id };
     set({
       pages: mapElevationPage(state.pages, pageId, (p) => ({ ...p, racks: [...p.racks, rack] })),
-      undoSize: undoStack.length, redoSize: 0,
+      undoSize: schematicUndoSize(), redoSize: 0,
     });
     get().saveToLocalStorage();
     return id;
@@ -4591,7 +4714,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       placements: p.placements.filter((pl) => pl.rackId !== rackId),
       accessories: p.accessories.filter((a) => a.rackId !== rackId),
     }));
-    set({ pages: updatedPages, undoSize: undoStack.length, redoSize: 0 });
+    set({ pages: updatedPages, undoSize: schematicUndoSize(), redoSize: 0 });
     // Clear the backpointer on the linked room node
     if (linkedRoomId) {
       set({
@@ -4623,7 +4746,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const placement: RackDevicePlacement = { ...placementData, id };
     set({
       pages: mapElevationPage(state.pages, pageId, (p) => ({ ...p, placements: [...p.placements, placement] })),
-      undoSize: undoStack.length, redoSize: 0,
+      undoSize: schematicUndoSize(), redoSize: 0,
     });
     get().saveToLocalStorage();
     return id;
@@ -4678,7 +4801,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
           accessories: [...p.accessories, shelf],
           placements: [...p.placements, placement],
         })),
-        undoSize: undoStack.length, redoSize: 0,
+        undoSize: schematicUndoSize(), redoSize: 0,
       });
       get().saveToLocalStorage();
       return { ok: true, placementId, shelfId };
@@ -4700,7 +4823,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       const placement: RackDevicePlacement = { id, rackId, deviceNodeId, uPosition, face, halfRackSide };
       set({
         pages: mapElevationPage(state.pages, pageId, (p) => ({ ...p, placements: [...p.placements, placement] })),
-        undoSize: undoStack.length, redoSize: 0,
+        undoSize: schematicUndoSize(), redoSize: 0,
       });
       get().saveToLocalStorage();
       return { ok: true, placementId: id };
@@ -4712,7 +4835,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const placement: RackDevicePlacement = { id, rackId, deviceNodeId, uPosition, face };
     set({
       pages: mapElevationPage(state.pages, pageId, (p) => ({ ...p, placements: [...p.placements, placement] })),
-      undoSize: undoStack.length, redoSize: 0,
+      undoSize: schematicUndoSize(), redoSize: 0,
     });
     get().saveToLocalStorage();
     return { ok: true, placementId: id };
@@ -4723,7 +4846,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     pushUndo({ nodes: state.nodes, edges: state.edges });
     set({
       pages: mapElevationPage(state.pages, pageId, (p) => ({ ...p, placements: p.placements.filter((pl) => pl.id !== placementId) })),
-      undoSize: undoStack.length, redoSize: 0,
+      undoSize: schematicUndoSize(), redoSize: 0,
     });
     get().saveToLocalStorage();
   },
@@ -4746,7 +4869,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const accessory: RackAccessory = { ...accessoryData, id };
     set({
       pages: mapElevationPage(state.pages, pageId, (p) => ({ ...p, accessories: [...p.accessories, accessory] })),
-      undoSize: undoStack.length, redoSize: 0,
+      undoSize: schematicUndoSize(), redoSize: 0,
     });
     get().saveToLocalStorage();
     return id;
@@ -4757,7 +4880,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     pushUndo({ nodes: state.nodes, edges: state.edges });
     set({
       pages: mapElevationPage(state.pages, pageId, (p) => ({ ...p, accessories: p.accessories.filter((a) => a.id !== accessoryId) })),
-      undoSize: undoStack.length, redoSize: 0,
+      undoSize: schematicUndoSize(), redoSize: 0,
     });
     get().saveToLocalStorage();
   },
@@ -4783,7 +4906,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         // Drop occupant placements — devices remain in the schematic, return to unracked pool
         placements: p.placements.filter((pl) => pl.mountedOnShelfId !== accessoryId),
       })),
-      undoSize: undoStack.length, redoSize: 0,
+      undoSize: schematicUndoSize(), redoSize: 0,
     });
     get().saveToLocalStorage();
   },
@@ -4873,7 +4996,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
           : p.accessories,
         placements: [...p.placements, placement],
       })),
-      undoSize: undoStack.length, redoSize: 0,
+      undoSize: schematicUndoSize(), redoSize: 0,
     });
     get().saveToLocalStorage();
     return id;
@@ -4954,8 +5077,17 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       return n;
     });
 
-    set({ pages: updatedPages, nodes: updatedNodes, undoSize: undoStack.length, redoSize: 0 });
+    set({ pages: updatedPages, nodes: updatedNodes, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
+    const hubPage = updatedPages.find((p) => p.id === pageId && p.type === "rack-elevation") as
+      | RackElevationPage
+      | undefined;
+    if (
+      hubPage?.distributionPlan
+      && hubPage.placements.some((p) => p.distributionPresetRole === "jack-field")
+    ) {
+      get().relayoutHubDrawing(pageId);
+    }
   },
 
   unlinkRoom: (roomId) => {
@@ -4976,7 +5108,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       n.id === roomId ? { ...n, data: { ...n.data, linkedRackPageId: undefined, linkedRackId: undefined } } as SchematicNode : n
     );
 
-    set({ pages: updatedPages, nodes: updatedNodes, undoSize: undoStack.length, redoSize: 0 });
+    set({ pages: updatedPages, nodes: updatedNodes, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
   },
 
@@ -4995,7 +5127,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       showTitleBlock: true,
     };
 
-    set({ pages: [...state.pages, page], activePage: id, undoSize: undoStack.length, redoSize: 0 });
+    set({ pages: [...state.pages, page], activePage: id, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
     return id;
   },
@@ -5005,14 +5137,14 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     pushUndo({ nodes: state.nodes, edges: state.edges });
     const pages = state.pages.filter((p) => p.id !== pageId);
     const activePage = state.activePage === pageId ? "schematic" : state.activePage;
-    set({ pages, activePage, undoSize: undoStack.length, redoSize: 0 });
+    set({ pages, activePage, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
   },
 
   renamePrintSheetPage: (pageId, label) => {
     const state = get();
     pushUndo({ nodes: state.nodes, edges: state.edges });
-    set({ pages: state.pages.map((p) => p.id === pageId ? { ...p, label } : p), undoSize: undoStack.length, redoSize: 0 });
+    set({ pages: state.pages.map((p) => p.id === pageId ? { ...p, label } : p), undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
   },
 
@@ -5059,7 +5191,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     // Insert immediately after the source
     const idx = state.pages.findIndex((p) => p.id === pageId);
     const pages = [...state.pages.slice(0, idx + 1), newPage, ...state.pages.slice(idx + 1)];
-    set({ pages, activePage: newPageId, undoSize: undoStack.length, redoSize: 0 });
+    set({ pages, activePage: newPageId, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
     return newPageId;
   },
@@ -5076,7 +5208,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       nodes: [],
       edges: [],
       loadSeq: state.loadSeq + 1,
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -5102,7 +5234,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         loadSeq += 1;
       }
     }
-    set({ pages: remaining, activePage, nodes, edges, loadSeq, undoSize: undoStack.length, redoSize: 0 });
+    set({ pages: remaining, activePage, nodes, edges, loadSeq, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
   },
 
@@ -5111,7 +5243,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     pushUndo({ nodes: state.nodes, edges: state.edges });
     set({
       pages: mapDrawingPage(state.pages, pageId, (p) => ({ ...p, label: label.trim() || p.label })),
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -5139,7 +5271,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       nodes: structuredClone(newPage.nodes),
       edges: structuredClone(newPage.edges),
       loadSeq: state.loadSeq + 1,
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -5156,7 +5288,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...p,
         viewports: [...p.viewports, entry],
       })),
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -5171,7 +5303,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...p,
         viewports: p.viewports.map((v) => (v.id === viewportId ? { ...v, ...patch } : v)),
       })),
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -5186,7 +5318,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...p,
         viewports: p.viewports.filter((v) => v.id !== viewportId),
       })),
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -5202,7 +5334,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       towerType: opts?.towerType,
       guideBandsFt: opts?.guideBandsFt,
     });
-    set({ pages: [...state.pages, page], activePage: id, undoSize: undoStack.length, redoSize: 0 });
+    set({ pages: [...state.pages, page], activePage: id, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
     return id;
   },
@@ -5213,7 +5345,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const pages = state.pages.filter((p) => p.id !== pageId);
     const activePage =
       state.activePage === pageId ? fallbackDrawingActivePage(pages) : state.activePage;
-    set({ pages, activePage, undoSize: undoStack.length, redoSize: 0 });
+    set({ pages, activePage, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
   },
 
@@ -5222,7 +5354,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     pushUndo({ nodes: state.nodes, edges: state.edges });
     set({
       pages: mapTowerDraftPage(state.pages, pageId, (p) => ({ ...p, ...patch })),
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -5242,7 +5374,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...p,
         placements: [...p.placements.filter((pl) => pl.deviceNodeId !== placement.deviceNodeId), placement],
       })),
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -5263,7 +5395,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
             : pl,
         ),
       })),
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -5277,7 +5409,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...p,
         placements: p.placements.filter((pl) => pl.id !== placementId),
       })),
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -5301,7 +5433,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
           },
         ],
       })),
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -5316,7 +5448,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...p,
         polylines: p.polylines.filter((pl) => pl.id !== polylineId),
       })),
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -5337,7 +5469,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     };
     const idx = state.pages.findIndex((p) => p.id === pageId);
     const pages = [...state.pages.slice(0, idx + 1), newPage, ...state.pages.slice(idx + 1)];
-    set({ pages, activePage: newPageId, undoSize: undoStack.length, redoSize: 0 });
+    set({ pages, activePage: newPageId, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
     return newPageId;
   },
@@ -5376,51 +5508,31 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const state = get();
     const page = state.pages.find((p) => p.id === pageId && p.type === "tower-draft") as TowerDraftPage | undefined;
     if (!page) return 0;
-    const centerX = towerDraftTowerCenterX();
-    const groundY = towerDraftGroundY(page.towerHeightFtAgl);
-    // equipment building anchor — matches renderer's equip. bldg label offset
-    const bldgX = centerX - 12;
-    const bldgY = groundY + 14;
 
-    // drop all previously generated feedlines; regenerate fresh
-    const keptPolylines = page.polylines.filter((pl) => pl.cadLayer !== "generated" || !pl.feedlineFromNodeId);
-    const newPolylines = [...keptPolylines];
+    const result = suggestTowerDraftFeedlinesForPage({
+      page,
+      nodes: state.nodes,
+      edges: state.edges,
+      pages: state.pages,
+      context: state.trackItTowerContext,
+      useShortNames: state.useShortNames,
+      nextPolylineId: nextTowerDraftPolylineId,
+    });
 
-    for (const placement of page.placements) {
-      const y = ftAglToY(placement.mountHeightFtAgl, page.towerHeightFtAgl);
-      const px = centerX + (placement.offsetX ?? 0);
-      // hug the tower face: left side devices go to the left mast edge, right to the right
-      const edgeX = centerX + (px >= centerX ? 1 : -1) * 18;
-      newPolylines.push({
-        id: nextTowerDraftPolylineId(),
-        points: [
-          { x: px, y },
-          { x: edgeX, y },
-          { x: edgeX, y: groundY },
-          { x: bldgX, y: bldgY },
-        ],
-        strokeWidth: 1,
-        lineStyle: "dashed",
-        cadLayer: "generated",
-        feedlineFromNodeId: placement.deviceNodeId,
-      });
-    }
-
-    const added = newPolylines.length - keptPolylines.length;
-    if (added === 0) {
-      get().addToast("No placed devices to suggest feedlines for", "info");
+    if (result.added === 0) {
+      get().addToast(formatSuggestFeedlinesToast(result), "info");
       return 0;
     }
 
     pushUndo({ nodes: state.nodes, edges: state.edges });
     set({
-      pages: mapTowerDraftPage(state.pages, pageId, (p) => ({ ...p, polylines: newPolylines })),
-      undoSize: undoStack.length,
+      pages: mapTowerDraftPage(state.pages, pageId, (p) => ({ ...p, polylines: result.polylines })),
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
-    get().addToast(`Suggested ${added} feedline run${added > 1 ? "s" : ""} to structure`, "success");
-    return added;
+    get().addToast(formatSuggestFeedlinesToast(result), "success");
+    return result.added;
   },
 
   requestTowerDraftFocus: (req) => set({ towerDraftFocusRequest: req }),
@@ -5439,7 +5551,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     };
     const idx = state.pages.findIndex((p) => p.id === pageId);
     const pages = [...state.pages.slice(0, idx + 1), newPage, ...state.pages.slice(idx + 1)];
-    set({ pages, activePage: newPageId, undoSize: undoStack.length, redoSize: 0 });
+    set({ pages, activePage: newPageId, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
     return newPageId;
   },
@@ -5454,7 +5566,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       if (p.id !== pageId || p.type !== "print-sheet") return p;
       return { ...p, viewports: [...p.viewports, viewport] };
     });
-    set({ pages: updatedPages, undoSize: undoStack.length, redoSize: 0 });
+    set({ pages: updatedPages, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
     return id;
   },
@@ -5476,7 +5588,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       if (p.id !== pageId || p.type !== "print-sheet") return p;
       return { ...p, viewports: p.viewports.filter((v) => v.id !== viewportId) };
     });
-    set({ pages: updatedPages, undoSize: undoStack.length, redoSize: 0 });
+    set({ pages: updatedPages, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
   },
 
@@ -5487,7 +5599,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       if (p.id !== pageId || p.type !== "print-sheet") return p;
       return { ...p, paperId, orientation, customWidthIn, customHeightIn };
     });
-    set({ pages: updatedPages, undoSize: undoStack.length, redoSize: 0 });
+    set({ pages: updatedPages, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
   },
 
@@ -5543,7 +5655,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         )
       : state.nodes;
 
-    set({ pages: updatedPages, nodes: updatedNodes, undoSize: undoStack.length, redoSize: 0 });
+    set({ pages: updatedPages, nodes: updatedNodes, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
   },
 
@@ -5553,7 +5665,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     if (!page || page.racks.length < 2) return;
     pushUndo({ nodes: state.nodes, edges: state.edges });
     const maxHeightU = page.racks.reduce((m, r) => Math.max(m, r.heightU), 0);
-    const posById = layoutRackPositions(page.racks, { maxHeightU, ...options });
+    const serpentineRows = options?.serpentineRows ?? rackLayoutReverseOrder(page);
+    const posById = layoutRackPositions(page.racks, { maxHeightU, serpentineRows, ...options });
     set({
       pages: mapElevationPage(state.pages, pageId, (p) => ({
         ...p,
@@ -5561,8 +5674,59 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
           const pos = posById.get(r.id);
           return pos ? { ...r, position: pos } : r;
         }),
+        ...(options?.serpentineRows != null
+          ? { rackLayoutReverseOrder: options.serpentineRows, rackLayoutSerpentine: undefined }
+          : {}),
       })),
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+  },
+
+  addRackElevationViewport: (pageId, preset) => {
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    const id = nextRackElevationViewportId();
+    const entry: RackElevationViewportPreset = { ...preset, id };
+    set({
+      pages: mapElevationPage(state.pages, pageId, (p) => ({
+        ...p,
+        viewports: [...(p.viewports ?? defaultRackElevationViewports()), entry],
+      })),
+      undoSize: schematicUndoSize(),
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+    return id;
+  },
+
+  updateRackElevationViewport: (pageId, viewportId, patch) => {
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    set({
+      pages: mapElevationPage(state.pages, pageId, (p) => ({
+        ...p,
+        viewports: (p.viewports ?? defaultRackElevationViewports()).map((v) =>
+          v.id === viewportId ? { ...v, ...patch } : v,
+        ),
+      })),
+      undoSize: schematicUndoSize(),
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+  },
+
+  removeRackElevationViewport: (pageId, viewportId) => {
+    if (viewportId === "overview") return;
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    set({
+      pages: mapElevationPage(state.pages, pageId, (p) => ({
+        ...p,
+        viewports: (p.viewports ?? defaultRackElevationViewports()).filter((v) => v.id !== viewportId),
+      })),
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -5601,7 +5765,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...p,
         crossLinks: [...(p.crossLinks ?? []), link],
       })),
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -5617,7 +5781,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         crossLinks: (p.crossLinks ?? []).filter((l) => l.id !== linkId),
       })),
       selectedCrossLinkId: state.selectedCrossLinkId === linkId ? null : state.selectedCrossLinkId,
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -5631,13 +5795,178 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...p,
         crossLinks: (p.crossLinks ?? []).map((l) => (l.id === linkId ? { ...l, ...patch } : l)),
       })),
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
   },
 
   setSelectedCrossLinkId: (linkId) => set({ selectedCrossLinkId: linkId }),
+
+  relayoutHubDrawing: (pageId, options) => {
+    const state = get();
+    const page = state.pages.find((p) => p.id === pageId && p.type === "rack-elevation") as
+      | RackElevationPage
+      | undefined;
+    if (!page?.distributionPlan) {
+      get().addToast("No distribution plan on this elevation page", "info");
+      return;
+    }
+    const masterRackId = guessMasterRackId(page.racks);
+    if (!masterRackId) return;
+    const masterRack = page.racks.find((r) => r.id === masterRackId);
+
+    const jackPlacements = page.placements.filter((p) => p.distributionPresetRole === "jack-field");
+    if (jackPlacements.length === 0) {
+      get().addToast("No hub jack-field devices on this page", "info");
+      return;
+    }
+
+    const jackFields = jackPlacements
+      .map((pl) => {
+        const node = state.nodes.find((n) => n.id === pl.deviceNodeId && n.type === "device");
+        if (!node) return null;
+        return {
+          deviceNodeId: pl.deviceNodeId,
+          deviceData: node.data as DeviceData,
+          placement: pl,
+        };
+      })
+      .filter((jf): jf is NonNullable<typeof jf> => jf != null);
+
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+
+    const { layoutByNode, hubRoomId, placedInLinkedRoom } = layoutHubJackFieldsForDrawing({
+      jackFields,
+      racks: page.racks,
+      masterRackId,
+      masterRack,
+      plan: page.distributionPlan,
+    });
+    if (layoutByNode.size === 0) {
+      get().addToast("No jack-field devices to place on Drawing", "info");
+      return;
+    }
+    let nodes = state.nodes.map((n) => {
+      if (n.type !== "device") return n;
+      const pos = layoutByNode.get(n.id);
+      if (!pos) return n;
+      return {
+        ...n,
+        position: pos,
+        ...(hubRoomId && jackPlacements.some((p) => p.deviceNodeId === n.id) ? { parentId: hubRoomId } : {}),
+      };
+    }) as SchematicNode[];
+
+    nodes = upgradeJackFieldNodesForPages(nodes, [page]);
+
+    // Refresh jack field list after port upgrades (wire uses passthrough port ids).
+    const jackFieldsForWire = jackPlacements
+      .map((pl) => {
+        const node = nodes.find((n) => n.id === pl.deviceNodeId && n.type === "device");
+        if (!node) return null;
+        return {
+          deviceNodeId: pl.deviceNodeId,
+          deviceData: node.data as DeviceData,
+          placement: pl,
+        };
+      })
+      .filter((jf): jf is NonNullable<typeof jf> => jf != null);
+
+    let edges = state.edges;
+    const jackIdSet = new Set(jackPlacements.map((p) => p.deviceNodeId));
+    if (options?.wirePortPairs !== false && page.distributionPlan.fanout?.mode === "port-pair") {
+      edges = stripHubJackFieldEdges(edges, jackIdSet);
+    }
+    let wireAdded = 0;
+    let wireSkipped = 0;
+    let drewTrunkLines = false;
+    const destJackCount = jackFieldsForWire.filter((jf) => jf.placement.rackId !== masterRackId).length;
+    if (options?.wirePortPairs !== false && page.distributionPlan.fanout?.mode === "port-pair" && jackFieldsForWire.length > 0) {
+      const wire = buildHubPortPairEdges({
+        nodes,
+        jackFields: jackFieldsForWire,
+        racks: page.racks,
+        masterRackId,
+        plan: page.distributionPlan,
+        existingEdges: edges,
+        nextEdgeId,
+      });
+      wireSkipped = wire.skipped;
+      drewTrunkLines = wire.drewTrunkLines;
+      if (wire.edges.length > 0) {
+        edges = [...edges, ...wire.edges];
+        wireAdded = wire.added;
+      }
+    }
+
+    const jackNodeIds = jackPlacements.map((p) => p.deviceNodeId);
+    const pages = mergeHubGraphIntoDrawingPages(state.pages, nodes, edges, jackNodeIds);
+
+    set({ nodes, edges, pages, undoSize: schematicUndoSize(), redoSize: 0 });
+    get().saveToLocalStorage();
+    const parts = [`Placed ${layoutByNode.size} EJF device(s) on Drawing`];
+    if (wireAdded > 0) {
+      parts.push(
+        drewTrunkLines
+          ? `${wireAdded} trunk line(s)`
+          : `${wireAdded} cable run(s)`,
+      );
+    } else if (page.distributionPlan.fanout?.mode !== "port-pair") {
+      parts.push("no runs (set Fan-out to Port-pair in distribution preset)");
+    } else if (destJackCount === 0) {
+      parts.push("no satellite jack fields on elevation — re-apply distribution preset");
+    } else if (wireSkipped > 0) {
+      parts.push(`0 new runs (${wireSkipped} port pairs skipped — re-apply preset)`);
+    } else {
+      parts.push("cable runs already exist");
+    }
+    if (!placedInLinkedRoom) {
+      parts.push("optional: link Rack 1 to a room below to group devices");
+    }
+    get().addToast(parts.join(" · "), wireAdded > 0 ? "success" : "info");
+  },
+
+  syncHubMatrixSegments: (pageId, masterRackId, destRackId, segments) => {
+    const state = get();
+    const page = state.pages.find((p) => p.id === pageId && p.type === "rack-elevation") as
+      | import("./types").RackElevationPage
+      | undefined;
+    if (!page) return;
+
+    const prefix = page.distributionPlan?.layout?.designationPrefix ?? "RACK";
+    const bindings = collectHubJackFieldBindings(page, state.nodes, masterRackId, prefix);
+    const pair = resolveHubMatrixPair(
+      bindings,
+      page,
+      masterRackId,
+      destRackId,
+      page.distributionPlan ?? null,
+    );
+    if (!pair) {
+      get().addToast("Could not resolve jack-field pair for matrix sync", "info");
+      return;
+    }
+
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+
+    const nextEdges = hubEdgesFromMatrixSegments({
+      segments,
+      pair,
+      existingEdges: state.edges,
+      nextEdgeId,
+    });
+
+    const jackNodeIds = bindings.map((b) => b.deviceNodeId);
+    const pages = mergeHubGraphIntoDrawingPages(state.pages, state.nodes, nextEdges, jackNodeIds);
+
+    set({ edges: nextEdges, pages, undoSize: schematicUndoSize(), redoSize: 0 });
+    get().saveToLocalStorage();
+    get().addToast(
+      `Matrix: ${segments.length} patch(es) synced to Drawing for ${pair.destBinding.rackCode}`,
+      "success",
+    );
+  },
 
   applyRackDistributionPreset: (pageId, presetId, options) => {
     const state = get();
@@ -5650,9 +5979,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     let summary = "Preset applied";
 
     if (presetId === TOWER_DATACOM_HUB_PRESET_ID) {
+      const hubOpts = options as TowerDatacomHubApplyOptions;
       const hub = applyTowerDatacomHubPreset(
         page,
-        options as TowerDatacomHubApplyOptions,
+        hubOpts,
         {
           accessory: nextAccessoryId,
           crossLink: () => crypto.randomUUID(),
@@ -5660,45 +5990,104 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
           placement: () => nextPlacementId(),
         },
       );
-      updatedPage = hub.page;
+      const hubPage = hubOpts.distributionPlan
+        ? { ...hub.page, distributionPlan: hubOpts.distributionPlan }
+        : hub.page;
 
       const removeIds = new Set(hub.removedJackDeviceNodeIds);
       const keptNodes = state.nodes.filter((n) => !removeIds.has(n.id));
-      const jackNodes: DeviceNode[] = hub.jackFields.map((jf, i) => {
-        const rack = hub.page.racks.find((r) => r.id === jf.placement.rackId);
-        const linkedRoomId = rack?.linkedRoomId;
-        if (linkedRoomId) {
-          const roomDevices = getDevicesInRoom(linkedRoomId, keptNodes);
-          const stackIndex = roomDevices.length + i;
-          return {
-            id: jf.deviceNodeId,
-            type: "device",
-            parentId: linkedRoomId,
-            position: { x: 48, y: 48 + stackIndex * 72 },
-            data: jf.deviceData,
-          };
-        }
-        return {
-          id: jf.deviceNodeId,
-          type: "device",
-          position: { x: -4000 - i * 24, y: -4000 },
-          data: jf.deviceData,
-        };
+      const plan = hubOpts.distributionPlan ?? hubPage.distributionPlan;
+
+      const masterRack = hub.page.racks.find((r) => r.id === hubOpts.masterRackId);
+
+      let jackNodes: DeviceNode[] = hub.jackFields.map((jf) => ({
+        id: jf.deviceNodeId,
+        type: "device" as const,
+        position: { x: 0, y: 0 },
+        data: jf.deviceData,
+      }));
+
+      const { layoutByNode, hubRoomId: layoutHubRoomId, placedInLinkedRoom } = layoutHubJackFieldsForDrawing({
+        jackFields: hub.jackFields,
+        racks: hub.page.racks,
+        masterRackId: hubOpts.masterRackId,
+        masterRack,
+        plan,
+      });
+      jackNodes = jackNodes.map((n) => {
+        const pos = layoutByNode.get(n.id);
+        if (!pos) return n;
+        const inHubRoom = layoutHubRoomId && hub.jackFields.some((jf) => jf.deviceNodeId === n.id);
+        const { parentId: _drop, ...rest } = n;
+        return inHubRoom && layoutHubRoomId
+          ? { ...rest, position: pos, parentId: layoutHubRoomId }
+          : { ...rest, position: pos };
       });
 
+      jackNodes = upgradeJackFieldNodesForPages(jackNodes, [hubPage]) as DeviceNode[];
+      const upgradedKept = upgradeJackFieldNodesForPages(keptNodes, [hubPage]);
+      const mergedNodes = [...upgradedKept, ...jackNodes];
+
+      let nextEdges = state.edges;
+      let wireAdded = 0;
+      let drewTrunkLines = false;
+      const hubJackIds = new Set(hub.jackFields.map((jf) => jf.deviceNodeId));
+      if (plan?.fanout?.mode === "port-pair" && hub.jackFields.length > 0) {
+        nextEdges = stripHubJackFieldEdges(nextEdges, hubJackIds);
+        const wire = buildHubPortPairEdges({
+          nodes: mergedNodes,
+          jackFields: hub.jackFields,
+          racks: hub.page.racks,
+          masterRackId: hubOpts.masterRackId,
+          plan,
+          existingEdges: nextEdges,
+          nextEdgeId,
+        });
+        drewTrunkLines = wire.drewTrunkLines;
+        if (wire.edges.length > 0) {
+          nextEdges = [...nextEdges, ...wire.edges];
+          wireAdded = wire.added;
+        }
+      }
+
+      const jackNodeIds = hub.jackFields.map((jf) => jf.deviceNodeId);
+      const pagesWithHub = mergeHubGraphIntoDrawingPages(
+        mapElevationPage(state.pages, pageId, () => hubPage),
+        mergedNodes,
+        nextEdges,
+        jackNodeIds,
+      );
+
       set({
-        nodes: [...keptNodes, ...jackNodes],
-        pages: mapElevationPage(state.pages, pageId, () => hub.page),
-        undoSize: undoStack.length,
+        nodes: mergedNodes,
+        edges: nextEdges,
+        pages: pagesWithHub,
+        undoSize: schematicUndoSize(),
         redoSize: 0,
       });
       get().saveToLocalStorage();
       summary = formatApplyPresetSummary(hub.result);
+      if (layoutByNode.size > 0) {
+        summary += ` · ${layoutByNode.size} device(s) laid out in drawing`;
+      }
+      if (wireAdded > 0) {
+        summary += drewTrunkLines
+          ? ` · ${wireAdded} trunk line(s) wired`
+          : ` · ${wireAdded} run(s) wired`;
+      } else if (plan?.fanout?.mode === "port-pair") {
+        summary += " · no new runs (check satellite jack fields on elevation)";
+      }
+      if (!placedInLinkedRoom && layoutByNode.size > 0) {
+        summary += " · EJF on Drawing canvas (link Rack 1 to a room to group)";
+      }
 
       const link = state.trackItLink;
       if (link && typeof window !== "undefined") {
         const opts = options as TowerDatacomHubApplyOptions;
         const schematicJson = get().exportToJSON();
+        const pageAfter = get().pages.find((p) => p.id === pageId && p.type === "rack-elevation") as
+          | RackElevationPage
+          | undefined;
         window.opener?.postMessage(
           {
             type: "KGO_ES_DISTRIBUTION_PRESET_APPLIED",
@@ -5709,9 +6098,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
             ethTrunkRackIds: opts.ethTrunkRackIds,
             jackFieldPorts: opts.jackFieldPorts ?? 24,
             designationPrefix: opts.designationPrefix ?? "RACK",
+            distributionPlan: pageAfter?.distributionPlan ?? opts.distributionPlan,
             schematicJson,
           },
-          window.location.origin,
+          "*",
         );
       }
       get().addToast(summary, "success");
@@ -5745,7 +6135,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
     set({
       pages: mapElevationPage(state.pages, pageId, () => updatedPage),
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
@@ -5993,7 +6383,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       for (const n of nodes) {
         if (n.type === "device") deviceDataMap.set(n.id, n.data as DeviceData);
       }
-      const pages = reconcileShelfPlacementsForPages(data.pages ?? [], deviceDataMap);
+      let pages = reconcileShelfPlacementsForPages(data.pages ?? [], deviceDataMap);
+      nodes = upgradeJackFieldNodesForPages(nodes, pages);
       // Always apply colors — if file has none, reset to defaults
       const colors = data.signalColors ?? {};
       applySignalColors(colors);
@@ -6003,7 +6394,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         edges: data.edges,
         facePlateDefinitionLayouts,
         deviceDefinitionRackMetadata,
-        schematicName: data.name ?? "Untitled Schematic",
+        schematicName: data.name ?? "Untitled Drawing",
         ownedGear: data.ownedGear ?? [],
         signalColors: data.signalColors,
         signalLineStyles: data.signalLineStyles,
@@ -6076,14 +6467,15 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         trackItLink: data.trackItLink ?? null,
         siteLicensed: data.siteLicensed ?? null,
         siteNetwork: data.siteNetwork ?? null,
-        isDemo: false,
         // Restore cloud identity from autosave (not part of SchematicFile)
-        cloudSchematicId: parsed.cloudSchematicId ?? null,
         cloudSavedAt: parsed.cloudSavedAt ?? null,
         loadSeq: get().loadSeq + 1,
       });
       if (pages.length) syncRackCounters(pages);
       hydrated = true;
+      setSchematicUndoScope(resolveSchematicUndoScope(get()));
+      restoreSchematicUndoFromSession();
+      syncUndoCounters();
       return true;
     } catch {
       hydrated = true;
@@ -6191,7 +6583,13 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     if (trackItLink?.measurementSystem) {
       get().setMeasurementSystem(trackItLink.measurementSystem);
     }
-    set({ trackItLink });
+    set({
+      trackItLink,
+      ...(trackItLink ? { fileHandle: null } : {}),
+    });
+    setSchematicUndoScope(resolveSchematicUndoScope(get()));
+    restoreSchematicUndoFromSession();
+    syncUndoCounters();
     get().saveToLocalStorage();
   },
 
@@ -6230,43 +6628,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     if (trackItTowerContext) {
       const ctxRef = trackItTowerContext.elevationReferenceImage;
       if (trackItTowerContext.towerHeightFt || ctxRef?.url) {
-        const pages = get().pages;
-        let pagesChanged = false;
-        const nextPages = pages.map((p) => {
-          if (p.type !== "tower-draft") return p;
-          const td = p as TowerDraftPage;
-          let next = td;
-          const catalogH = resolveCatalogTowerHeightFtAgl(td, trackItTowerContext);
-          if (catalogH > 0 && Math.abs(td.towerHeightFtAgl - catalogH) > 1) {
-            next = { ...next, towerHeightFtAgl: catalogH };
-            pagesChanged = true;
-          }
-          if (ctxRef?.url) {
-            const mergedRef = {
-              ...ctxRef,
-              ...td.elevationReferenceImage,
-              url: td.elevationReferenceImage?.url?.trim() || ctxRef.url,
-              imageAspectRatio:
-                td.elevationReferenceImage?.imageAspectRatio ?? ctxRef.imageAspectRatio,
-              fullBleed: td.elevationReferenceImage?.fullBleed ?? ctxRef.fullBleed,
-              contentScale: td.elevationReferenceImage?.contentScale ?? ctxRef.contentScale,
-              opacity: td.elevationReferenceImage?.opacity ?? ctxRef.opacity,
-              blendMode: td.elevationReferenceImage?.blendMode ?? ctxRef.blendMode,
-            };
-            const prevJson = JSON.stringify(td.elevationReferenceImage ?? null);
-            const nextJson = JSON.stringify(mergedRef);
-            if (prevJson !== nextJson) {
-              next = {
-                ...next,
-                elevationReferenceImage: mergedRef,
-                polylines: td.elevationReferenceImage?.url ? td.polylines : [],
-              };
-              pagesChanged = true;
-            }
-          }
-          return next;
-        });
-        if (pagesChanged) patch.pages = nextPages;
+        const nextPages = normalizeTowerDraftPages(get().pages, trackItTowerContext);
+        if (nextPages !== get().pages) patch.pages = nextPages;
       }
     }
     set(patch);
@@ -6483,6 +6846,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       if (n.type === "device") importDeviceDataMap.set(n.id, n.data as DeviceData);
     }
     let importPages = reconcileShelfPlacementsForPages(data.pages ?? [], importDeviceDataMap);
+    nodes = upgradeJackFieldNodesForPages(nodes, importPages);
     if (!importPages.some((p) => p.type === "drawing")) {
       importPages = [createDrawingPage("Drawing", "drawing-1", { nodes, edges }), ...importPages];
     }
@@ -6522,7 +6886,6 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       facePlateDefinitionLayouts,
       deviceDefinitionRackMetadata,
       schematicName: data.name ?? "Imported Schematic",
-      isDemo: false,
       ownedGear: data.ownedGear ?? [],
       signalColors: data.signalColors,
       signalLineStyles: data.signalLineStyles,
@@ -6604,6 +6967,9 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     });
     if (data.pages?.length) syncRackCounters(data.pages);
     saveCategoryOrder(data.categoryOrder ?? null);
+    setSchematicUndoScope(resolveSchematicUndoScope(get()));
+    restoreSchematicUndoFromSession();
+    syncUndoCounters();
     get().saveToLocalStorage();
   },
 
@@ -6704,7 +7070,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       facePlateDefinitionLayouts: mergedFacePlates,
       deviceDefinitionRackMetadata: mergedRackMeta,
       loadSeq: state.loadSeq + 1,
-      undoSize: undoStack.length,
+      undoSize: schematicUndoSize(),
       redoSize: 0,
     });
 
@@ -6734,14 +7100,12 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   },
 
   newSchematic: (templateData?: SchematicFile) => {
-    undoStack.length = 0;
-    redoStack.length = 0;
+    clearSchematicUndoHistory();
     if (templateData) {
       // Load template as a new unsaved file
       get().importFromJSON(templateData);
       set({
-        schematicName: "Untitled Schematic",
-        isDemo: false,
+        schematicName: "Untitled Drawing",
         cloudSchematicId: null,
         cloudSavedAt: null,
         fileHandle: null,
@@ -6754,8 +7118,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       set({
         nodes: [],
         edges: [],
-        schematicName: "Untitled Schematic",
-        isDemo: false,
+        schematicName: "Untitled Drawing",
         ownedGear: [],
         cloudSchematicId: null,
         cloudSavedAt: null,

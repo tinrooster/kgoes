@@ -394,6 +394,8 @@ function EdgeInspector({ edgeId }: { edgeId: string }) {
 function KgoRightPanel() {
   const rightOpen = useSidebarStore((s) => s.rightInspectorOpen ?? true);
   const setRightOpen = useSidebarStore((s) => s.setRightInspectorOpen);
+  const inspectorDockSide =
+    useSidebarStore((s) => s.panelLayouts.inspector?.edge) === "left" ? "left" : "right";
 
   // Derive first selected non-room device node and first selected edge
   const selNodeId = useSchematicStore((s) => {
@@ -409,17 +411,25 @@ function KgoRightPanel() {
 
   if (!rightOpen) {
     return (
-      <SidebarRail label="Inspector" title="Open inspector" onExpand={() => setRightOpen(true)} />
+      <SidebarRail
+        label="Inspector"
+        title="Open inspector"
+        dockSide={inspectorDockSide}
+        onExpand={() => setRightOpen(true)}
+      />
     );
   }
 
   return (
     <SidebarPanelShell
       widthClass="w-[19.5rem]"
+      dockSide={inspectorDockSide}
       className="!bg-[var(--ti-surface)] !border-[var(--ti-border)]"
     >
       <SidebarPanelHeader
         title={label}
+        workspacePanelId="inspector"
+        dockSide={inspectorDockSide}
         onCollapse={() => setRightOpen(false)}
         collapseTitle="Collapse inspector"
         trailing={

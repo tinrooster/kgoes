@@ -2,10 +2,14 @@ import type {
   ConnectionEdge,
   DrawingPage,
   DrawingViewportPreset,
+  PrintSheetPage,
+  RackElevationPage,
   RoomData,
   SchematicNode,
   SchematicPage,
+  TowerDraftPage,
 } from "./types";
+import { defaultRackElevationViewports } from "./rackElevationViewportUtils";
 import { computeSchematicContentBounds, type ContentBounds } from "./viewNavUtils";
 
 export const LEGACY_SCHEMATIC_PAGE_ID = "schematic";
@@ -44,6 +48,53 @@ export function resolveActiveDrawingPage(
 
 export function stripEdgesForPersist(edges: ConnectionEdge[]): ConnectionEdge[] {
   return edges.map(({ zIndex: _, selected: _s, ...rest }) => rest) as ConnectionEdge[];
+}
+
+/**
+ * Copy hub jack-field device nodes (and their room parents + cable edges) onto every
+ * Drawing page. Required when hub layout runs on a Rack Elevations tab — live
+ * state.nodes is not the Drawing sheet graph until persisted here.
+ */
+export function mergeHubGraphIntoDrawingPages(
+  pages: SchematicPage[],
+  liveNodes: SchematicNode[],
+  liveEdges: ConnectionEdge[],
+  jackDeviceNodeIds: Iterable<string>,
+): SchematicPage[] {
+  const jackIds = new Set(jackDeviceNodeIds);
+  if (jackIds.size === 0) return pages;
+
+  const jackNodes = liveNodes.filter((n) => jackIds.has(n.id));
+  if (jackNodes.length === 0) return pages;
+
+  const parentRoomIds = new Set(
+    jackNodes.map((n) => n.parentId).filter((id): id is string => typeof id === "string" && id.length > 0),
+  );
+  const hubNodes = [
+    ...liveNodes.filter((n) => parentRoomIds.has(n.id)),
+    ...jackNodes,
+  ];
+  const hubNodeIds = new Set(hubNodes.map((n) => n.id));
+  const hubEdges = liveEdges.filter((e) => hubNodeIds.has(e.source) && hubNodeIds.has(e.target));
+
+  return pages.map((p) => {
+    if (p.type !== "drawing") return p;
+    const dp = p as DrawingPage;
+    const baseNodes = (dp.nodes ?? []).filter((n) => !jackIds.has(n.id));
+    const mergedNodes = [...baseNodes];
+    for (const n of hubNodes) {
+      const idx = mergedNodes.findIndex((x) => x.id === n.id);
+      const clone = structuredClone(n);
+      if (idx >= 0) mergedNodes[idx] = clone;
+      else mergedNodes.push(clone);
+    }
+
+    const hubEdgeIds = new Set(hubEdges.map((e) => e.id));
+    const baseEdges = (dp.edges ?? []).filter((e) => !hubEdgeIds.has(e.id));
+    const mergedEdges = stripEdgesForPersist([...baseEdges, ...hubEdges]);
+
+    return { ...dp, nodes: mergedNodes, edges: mergedEdges };
+  });
 }
 
 /** Write the live React Flow graph into the active drawing page entry. */
@@ -88,6 +139,53 @@ export function ensureDrawingPageGraphs(
 
 export function defaultDrawingViewports(): DrawingViewportPreset[] {
   return [{ id: "overview", label: "Overview", fit: "all" }];
+}
+
+/** Ensure every page type has required arrays (older saves / partial trackIT JSON). */
+export function normalizeSchematicPages(pages: SchematicPage[]): SchematicPage[] {
+  return pages.map((page) => {
+    if (page.type === "drawing") {
+      const dp = page as DrawingPage;
+      return {
+        ...dp,
+        viewports:
+          Array.isArray(dp.viewports) && dp.viewports.length > 0
+            ? dp.viewports
+            : defaultDrawingViewports(),
+        nodes: dp.nodes ?? [],
+        edges: dp.edges ?? [],
+      };
+    }
+    if (page.type === "print-sheet") {
+      const ps = page as PrintSheetPage;
+      return { ...ps, viewports: Array.isArray(ps.viewports) ? ps.viewports : [] };
+    }
+    if (page.type === "rack-elevation") {
+      const rp = page as RackElevationPage;
+      return {
+        ...rp,
+        racks: rp.racks ?? [],
+        placements: rp.placements ?? [],
+        accessories: rp.accessories ?? [],
+        crossLinks: rp.crossLinks ?? [],
+        viewports: rp.viewports ?? defaultRackElevationViewports(),
+      };
+    }
+    if (page.type === "tower-draft") {
+      const td = page as TowerDraftPage;
+      return {
+        ...td,
+        placements: td.placements ?? [],
+        polylines: (td.polylines ?? []).map((pl) => ({
+          ...pl,
+          points: pl.points ?? [],
+        })),
+        guideBandsFt: td.guideBandsFt ?? [],
+        towerHeightFtAgl: td.towerHeightFtAgl ?? 200,
+      };
+    }
+    return page;
+  });
 }
 
 export function createDrawingPage(

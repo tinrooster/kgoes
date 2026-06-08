@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { formatGuideBandElevationLabel } from "../towerElevationDisplay";
+import {
+  formatGuideBandElevationLabel,
+  formatGuideBandLabelSuffix,
+  formatGuideBandRulerHeightLabel,
+} from "../towerElevationDisplay";
 
 describe("towerElevationDisplay", () => {
   it("formats guide band height in feet even when label stored metric", () => {
@@ -19,5 +23,11 @@ describe("towerElevationDisplay", () => {
 
   it("formats major tick heights in feet", () => {
     expect(formatGuideBandElevationLabel({ ftAgl: 244, label: "244 m" }, "imperial")).toBe("244′");
+  });
+
+  it("splits ruler height from level suffix for profile layout", () => {
+    const band = { ftAgl: 751, label: "751′ · L6 — upper platform" };
+    expect(formatGuideBandRulerHeightLabel(band, "imperial")).toBe("751′");
+    expect(formatGuideBandLabelSuffix(band)).toBe("L6 — upper platform");
   });
 });

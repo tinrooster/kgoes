@@ -1,97 +1,195 @@
 import { describe, expect, it } from "vitest";
 import {
-  enrichTowerElevationReference,
-  inferReferenceImageAspectRatio,
+  canonicalizeElevationReference,
   mergeTowerElevationReference,
-  profileCenterXForReference,
-  profileContentWidthForReference,
-  referenceImageHeightPx,
-  referenceImageWidthPx,
-  towerElevationReferenceLayout,
-  REFERENCE_ELEVATION_DEFAULT_OPACITY,
+  pickElevationReferenceUrl,
+  resolveActiveElevationReference,
+  resolveProfileElevationReference,
+  rewriteSutroBlueprintUrl,
+  SUTRO_ELEVATION_BLUEPRINT_ASPECT,
   SUTRO_ELEVATION_IMAGE_ASPECT,
+  SUTRO_ELEVATION_SGM_BLUEPRINT_URL,
 } from "../towerElevationReference";
-import type { TowerElevationReferenceImage } from "../types";
-import { TOWER_DRAFT_RULER_W } from "../towerDraftUtils";
 
-const SUTRO_ASPECT = 260 / 1080;
+describe("rewriteSutroBlueprintUrl", () => {
+  it("rewrites legacy screenshot blueprint filename to canonical SGM", () => {
+    expect(
+      rewriteSutroBlueprintUrl("/assets/mountaintops/sutro/sutro-elevation-blueprint.png"),
+    ).toBe(SUTRO_ELEVATION_SGM_BLUEPRINT_URL);
+    expect(
+      rewriteSutroBlueprintUrl(
+        "http://localhost:5173/assets/mountaintops/sutro/sutro-elevation-sgh-s1.png",
+      ),
+    ).toBe(`http://localhost:5173${SUTRO_ELEVATION_SGM_BLUEPRINT_URL}`);
+  });
+});
 
-const sutroRef: TowerElevationReferenceImage = {
-  url: "/assets/mountaintops/sutro/sutro-elevation-ref.png",
-  fullBleed: true,
-  imageAspectRatio: SUTRO_ASPECT,
-  align: "center",
-};
-
-describe("towerElevationReference", () => {
-  it("sizes Sutro reference width from aspect ratio (not narrow strip)", () => {
-    const towerHeightFt = 977;
-    const pxPerFt = 2.4;
-    const baseW = 668;
-    const heightPx = referenceImageHeightPx(towerHeightFt, pxPerFt);
-    const widthPx = referenceImageWidthPx(sutroRef, heightPx, baseW, TOWER_DRAFT_RULER_W);
-    expect(widthPx).toBeGreaterThan(500);
-    expect(widthPx / heightPx).toBeCloseTo(SUTRO_ASPECT, 5);
+describe("pickElevationReferenceUrl", () => {
+  it("prefers absolute trackIT context URL over relative page path", () => {
+    expect(
+      pickElevationReferenceUrl(
+        "/assets/mountaintops/sutro/sutro-elevation-ref.png",
+        "https://trackit.example/assets/mountaintops/sutro/sutro-elevation-ref.png",
+      ),
+    ).toBe("https://trackit.example/assets/mountaintops/sutro/sutro-elevation-ref.png");
   });
 
-  it("widens profile content canvas for full Sutro silhouette", () => {
-    const w = profileContentWidthForReference({
-      ref: sutroRef,
-      towerHeightFt: 977,
-      pxPerFt: 2.4,
-      baseContentWidth: 668,
-    });
-    expect(w).toBeGreaterThan(900);
+  it("keeps absolute page URL when present", () => {
+    expect(
+      pickElevationReferenceUrl(
+        "https://cdn.example/tower.png",
+        "https://trackit.example/assets/tower.png",
+      ),
+    ).toBe("https://cdn.example/tower.png");
   });
 
-  it("centers placements on reference axis", () => {
-    const cx = profileCenterXForReference({
-      ref: sutroRef,
-      towerHeightFt: 977,
-      pxPerFt: 2.4,
-      baseContentWidth: 668,
-    });
-    expect(cx).toBeGreaterThan(200);
+  it("prefers trackIT context over stale absolute ES host for same mountaintop path", () => {
+    expect(
+      pickElevationReferenceUrl(
+        "https://kgoes.vercel.app/assets/mountaintops/sutro/sutro-elevation-ref.png",
+        "https://trackit.example/assets/mountaintops/sutro/sutro-elevation-ref.png",
+      ),
+    ).toBe("https://trackit.example/assets/mountaintops/sutro/sutro-elevation-ref.png");
   });
+});
 
-  it("defaults full-bleed opacity to 50%", () => {
-    const layout = towerElevationReferenceLayout({
-      towerHeightFt: 200,
-      centerX: 300,
-      rulerX: TOWER_DRAFT_RULER_W,
-      contentWidth: 1200,
-      pxPerFt: 2.4,
-      ref: { url: "/x.png", fullBleed: true, imageAspectRatio: 0.3 },
-    });
-    expect(layout.opacity).toBe(REFERENCE_ELEVATION_DEFAULT_OPACITY);
-  });
-
-  it("infers Sutro aspect from URL when legacy page omits imageAspectRatio", () => {
-    const legacy = {
-      url: "/assets/mountaintops/sutro/sutro-elevation-ref.png",
-      fullBleed: true,
-      opacity: 0.92,
-      blendMode: "multiply" as const,
+describe("mergeTowerElevationReference", () => {
+  it("keeps context blueprint when page detailUrl is a stale silhouette", () => {
+    const ctx = {
+      url: "https://trackit.example/assets/mountaintops/sutro/sutro-elevation-ref.png",
+      detailUrl: "https://trackit.example/assets/mountaintops/sutro/sutro-elevation-sgm.png?v=6",
+      imageAspectRatio: SUTRO_ELEVATION_IMAGE_ASPECT,
+      detailImageAspectRatio: SUTRO_ELEVATION_BLUEPRINT_ASPECT,
     };
-    const merged = mergeTowerElevationReference(legacy, null);
-    expect(merged?.imageAspectRatio).toBeCloseTo(SUTRO_ELEVATION_IMAGE_ASPECT, 6);
-    expect(merged?.opacity).toBe(0.92);
-    expect(merged?.blendMode).toBe("multiply");
-    const enriched = enrichTowerElevationReference({ url: legacy.url });
-    expect(inferReferenceImageAspectRatio(enriched)).toBeCloseTo(SUTRO_ELEVATION_IMAGE_ASPECT, 6);
+    const merged = mergeTowerElevationReference(
+      {
+        url: "https://es.example/assets/mountaintops/sutro/sutro-elevation-ref.png",
+        detailUrl: "https://es.example/assets/mountaintops/sutro/sutro-elevation-ref.png",
+      },
+      ctx,
+    );
+    expect(merged?.url).toContain("sutro-elevation-ref.png");
+    expect(merged?.detailUrl).toContain("sutro-elevation-sgm.png");
+    const blueprint = resolveActiveElevationReference(merged!, "blueprint", {
+      siteCode: "SUTRO",
+      elevationReferenceImage: ctx,
+    } as import("../types").TrackItTowerSiteContext);
+    expect(blueprint.url).toBe(ctx.detailUrl);
   });
 
-  it("uses preserveAspectRatio none when aspect is known", () => {
-    const layout = towerElevationReferenceLayout({
-      towerHeightFt: 977,
-      centerX: 800,
-      rulerX: TOWER_DRAFT_RULER_W,
-      contentWidth: 1900,
-      pxPerFt: 6,
-      ref: sutroRef,
+  it("merges Sutro ref with absolute context URL", () => {
+    const merged = mergeTowerElevationReference(
+      {
+        url: "/assets/mountaintops/sutro/sutro-elevation-ref.png",
+        imageAspectRatio: 245 / 1024,
+      },
+      {
+        url: "https://trackit.example/assets/mountaintops/sutro/sutro-elevation-ref.png",
+        label: "Sutro Tower · reference elevation",
+      },
+    );
+    expect(merged?.url).toBe(
+      "https://trackit.example/assets/mountaintops/sutro/sutro-elevation-ref.png",
+    );
+    expect(merged?.label).toBe("Sutro Tower · reference elevation");
+  });
+});
+
+describe("resolveActiveElevationReference", () => {
+  const ref = {
+    url: "/assets/mountaintops/sutro/sutro-elevation-ref.png",
+    detailUrl: "/assets/mountaintops/sutro/sutro-elevation-sgm.png",
+    label: "Sutro Tower · reference elevation",
+    imageAspectRatio: SUTRO_ELEVATION_IMAGE_ASPECT,
+    detailImageAspectRatio: SUTRO_ELEVATION_BLUEPRINT_ASPECT,
+    fullBleed: true,
+    opacity: 0.85,
+    detailOpacity: 0.92,
+  };
+
+  it("keeps primary silhouette by default", () => {
+    const active = resolveActiveElevationReference(ref, "primary");
+    expect(active.url).toContain("sutro-elevation-ref.png");
+    expect(active.imageAspectRatio).toBe(SUTRO_ELEVATION_IMAGE_ASPECT);
+  });
+
+  it("switches to blueprint detailUrl with its aspect ratio", () => {
+    const active = resolveActiveElevationReference(ref, "blueprint");
+    expect(active.url).toContain("sutro-elevation-sgm.png");
+    expect(active.imageAspectRatio).toBe(SUTRO_ELEVATION_BLUEPRINT_ASPECT);
+    expect(active.opacity).toBe(0.92);
+    expect(active.label).toContain("blueprint");
+  });
+});
+
+describe("resolveProfileElevationReference", () => {
+  it("falls back to bundled SGH asset for Sutro when pack detailUrl is missing", () => {
+    const page = {
+      id: "td-1",
+      label: "Tower",
+      type: "tower-draft" as const,
+      towerHeightFtAgl: 977,
+      guideBandsFt: [],
+      placements: [],
+      polylines: [],
+      elevationReferenceImage: {
+        url: "/assets/mountaintops/sutro/sutro-elevation-ref.png",
+      },
+    };
+    const blueprint = resolveProfileElevationReference(page, "blueprint", {
+      siteCode: "SUTRO",
+      elevationReferenceImage: {
+        url: "/assets/mountaintops/sutro/sutro-elevation-ref.png",
+      },
+    } as import("../types").TrackItTowerSiteContext);
+    expect(blueprint?.url).toContain("sutro-elevation-sgm.png");
+  });
+
+  it("uses context SGH blueprint even when page only stores silhouette urls", () => {
+    const ctx = {
+      url: "https://trackit.example/assets/mountaintops/sutro/sutro-elevation-ref.png",
+      detailUrl: "https://trackit.example/assets/mountaintops/sutro/sutro-elevation-sgm.png?v=6",
+    };
+    const page = {
+      id: "td-1",
+      label: "Tower",
+      type: "tower-draft" as const,
+      towerHeightFtAgl: 977,
+      guideBandsFt: [],
+      placements: [],
+      polylines: [],
+      elevationReferenceImage: {
+        url: "https://es.example/assets/mountaintops/sutro/sutro-elevation-ref.png",
+        detailUrl: "https://es.example/assets/mountaintops/sutro/sutro-elevation-ref.png",
+      },
+    };
+    const blueprint = resolveProfileElevationReference(page, "blueprint", {
+      siteCode: "SUTRO",
+      elevationReferenceImage: ctx,
+    } as import("../types").TrackItTowerSiteContext);
+    expect(blueprint?.url).toBe(ctx.detailUrl);
+    const silhouette = resolveProfileElevationReference(page, "primary", {
+      siteCode: "SUTRO",
+      elevationReferenceImage: ctx,
+    } as import("../types").TrackItTowerSiteContext);
+    expect(silhouette?.url).toContain("sutro-elevation-ref.png");
+  });
+});
+
+describe("canonicalizeElevationReference", () => {
+  it("repairs swapped silhouette and blueprint urls on stale pages", () => {
+    const fixed = canonicalizeElevationReference({
+      url: "/assets/mountaintops/sutro/sutro-elevation-sgm.png",
+      detailUrl: "/assets/mountaintops/sutro/sutro-elevation-ref.png",
+      imageAspectRatio: SUTRO_ELEVATION_IMAGE_ASPECT,
+      detailImageAspectRatio: SUTRO_ELEVATION_BLUEPRINT_ASPECT,
     });
-    expect(layout.preserveAspectRatio).toBe("none");
-    expect(layout.width).toBeGreaterThan(1200);
-    expect(layout.height).toBeGreaterThan(5000);
+    expect(fixed.url).toContain("sutro-elevation-ref.png");
+    expect(fixed.detailUrl).toContain("sutro-elevation-sgm.png");
+
+    const primary = resolveActiveElevationReference(fixed, "primary");
+    const blueprint = resolveActiveElevationReference(fixed, "blueprint");
+    expect(primary.url).toContain("sutro-elevation-ref.png");
+    expect(blueprint.url).toContain("sutro-elevation-sgm.png");
   });
 });

@@ -64,6 +64,7 @@ export default function SignalColorPanel({ mobile, onClose }: { mobile?: boolean
     <SidebarPanelShell widthClass="w-48" mobile={mobile}>
       <SidebarPanelHeader
         title="Signal colors"
+        workspacePanelId="colors"
         onCollapse={() => (mobile ? onClose?.() : setRightExpanded(false))}
         closeMode={!!mobile}
       />

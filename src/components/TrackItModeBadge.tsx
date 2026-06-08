@@ -102,7 +102,10 @@ function PanelAction({
   return (
     <button
       type="button"
-      onClick={onClick}
+      onMouseDown={(e) => {
+        e.preventDefault();
+        onClick();
+      }}
       style={{
         display: "block",
         width: "100%",

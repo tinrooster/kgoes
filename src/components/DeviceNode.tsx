@@ -226,6 +226,11 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
   };
 
   const isPatchPanel = data.deviceType === "patch-panel";
+  const densePassthrough = passthroughPorts.length > 6;
+  const passthroughRowClass = densePassthrough ? "h-7" : "h-5";
+  const portHandleClass = densePassthrough
+    ? "!w-3 !h-3 !border-2 !border-[var(--color-border)]"
+    : "!w-2.5 !h-2.5 !border-2 !border-[var(--color-border)]";
 
   const leftItems = useMemo(() => {
     const items = buildColumnItems(leftPorts);
@@ -315,7 +320,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
     return (
       <div
         key={port.id}
-        className="flex justify-between items-center relative h-5"
+        className={`flex justify-between items-center relative ${passthroughRowClass}`}
         onContextMenu={(e) => openPortMenu(e, port)}
       >
         {/* Rear handle — left edge, source (ConnectionMode.Loose; isValidConnection enforces direction) */}
@@ -324,11 +329,11 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
           position={Position.Left}
           id={rearId}
           data-connected={rearConnected || undefined}
-          className="!w-2.5 !h-2.5 !border-2 !border-[var(--color-border)] !-left-[5px]"
+          className={`${portHandleClass} !-left-[6px]`}
           style={{ background: signalColor, top: "50%" }}
         />
         <span
-          className="text-[10px] leading-5 truncate px-3 flex-1 text-center"
+          className={`text-[10px] truncate px-3 flex-1 text-center ${densePassthrough ? "leading-7" : "leading-5"}`}
           style={{ color: signalColor }}
           title={`${displayLabel(port.label)} (${signalLabel}) — passthrough`}
         >
@@ -340,7 +345,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
           position={Position.Right}
           id={frontId}
           data-connected={frontConnected || undefined}
-          className="!w-2.5 !h-2.5 !border-2 !border-[var(--color-border)] !-right-[5px]"
+          className={`${portHandleClass} !-right-[6px]`}
           style={{ background: signalColor, top: "50%" }}
         />
       </div>
@@ -622,7 +627,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
       {/* Passthrough Ports — one row per circuit, rear handle left, front handle right */}
       {passthroughPorts.length > 0 && (
         <div>
-          <div className="flex h-5">
+          <div className={`flex ${passthroughRowClass}`}>
             <div className="flex-1 flex items-end pl-2">
               <span className="text-[9px] text-[var(--color-text-muted)] truncate border-b border-[var(--color-border)]/30 w-full pb-0.5 mr-1">
                 Rear

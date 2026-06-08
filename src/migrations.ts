@@ -10,6 +10,7 @@
  *   3. Update package.json version to 0.<new schema version>.0
  */
 
+import { normalizeSchematicPages } from "./drawingPageUtils";
 import { createDefaultLayout } from "./titleBlockLayout";
 import { DEFAULT_CONNECTOR } from "./connectorTypes";
 import { defaultStubPlacement } from "./stubPlacement";
@@ -924,6 +925,10 @@ export function migrateSchematic(data: any): any {
     }
     data = migrate(data);
     version = data.version;
+  }
+
+  if (Array.isArray(data.pages)) {
+    data.pages = normalizeSchematicPages(data.pages);
   }
 
   return data;

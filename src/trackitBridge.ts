@@ -82,6 +82,9 @@ type TrackItInboundMessage =
   | { type: "TRACKIT_FOCUS_PAGE"; payload: TrackItFocusPagePayload }
   | { type: "TRACKIT_LOCATION_SNAPSHOT"; payload: TrackItLocationSnapshotPayload }
   | { type: "TRACKIT_EXPORT_REPORT"; payload: TrackItExportReportPayload }
+  | { type: "TRACKIT_UNDO" }
+  | { type: "TRACKIT_UNDO_TO_DEPTH"; depth: number }
+  | { type: "TRACKIT_REDO" }
   | { type: typeof APPEARANCE_SYNC_MESSAGE; payload: AppearanceSyncPayload };
 
 export type TrackItExportReportPayload = {
@@ -103,6 +106,9 @@ function isTrackItInbound(data: unknown): data is TrackItInboundMessage {
     t === "TRACKIT_FOCUS_PAGE" ||
     t === "TRACKIT_LOCATION_SNAPSHOT" ||
     t === "TRACKIT_EXPORT_REPORT" ||
+    t === "TRACKIT_UNDO" ||
+    t === "TRACKIT_UNDO_TO_DEPTH" ||
+    t === "TRACKIT_REDO" ||
     t === APPEARANCE_SYNC_MESSAGE
   );
 }
@@ -289,12 +295,16 @@ export function startTrackItBridge(): void {
       if (!file) return;
       const nodes = file.nodes ?? [];
       const edges = file.edges ?? [];
+      const pages = file.pages ?? [];
       const store = useSchematicStore.getState();
       const link = file.trackItLink ?? store.trackItLink;
 
-      if (nodes.length === 0 && edges.length === 0) {
+      if (nodes.length === 0 && edges.length === 0 && pages.length === 0) {
         if (link?.drawingId) {
-          const hasCanvasContent = store.nodes.length > 0 || store.edges.length > 0;
+          const hasCanvasContent =
+            store.nodes.length > 0 ||
+            store.edges.length > 0 ||
+            (store.pages?.length ?? 0) > 0;
           const hasLocalAutosave = hasTrackItDrawingAutosave(link.drawingId);
           if (hasCanvasContent || hasLocalAutosave) {
             if (!hasCanvasContent && hasLocalAutosave) {
@@ -303,7 +313,6 @@ export function startTrackItBridge(): void {
             store.setTrackItLink(link);
             const drawingName = link.drawingName?.trim();
             if (drawingName) store.setSchematicName(drawingName);
-            useSchematicStore.setState({ isDemo: false });
             return;
           }
           beginBlankTrackItDrawing(link);
@@ -311,8 +320,9 @@ export function startTrackItBridge(): void {
         return;
       }
 
-      const currentContent = store.nodes.length + store.edges.length;
-      const incomingContent = nodes.length + edges.length;
+      const currentContent =
+        store.nodes.length + store.edges.length + (store.pages?.length ?? 0);
+      const incomingContent = nodes.length + edges.length + pages.length;
       if (
         link?.drawingId &&
         store.trackItLink?.drawingId === link.drawingId &&
@@ -324,7 +334,7 @@ export function startTrackItBridge(): void {
         return;
       }
 
-      store.importFromJSON({ ...file, nodes, edges, trackItLink: link ?? undefined });
+      store.importFromJSON({ ...file, nodes, edges, pages, trackItLink: link ?? undefined });
       if (link?.drawingId) {
         store.setTrackItLink(link);
       }
@@ -334,7 +344,6 @@ export function startTrackItBridge(): void {
         store.setSchematicName(activeLinkName);
       }
       useSchematicStore.setState({
-        isDemo: false,
         trackItUnsavedChanges: false,
         trackItLastPushedAt: new Date().toISOString(),
       });
@@ -444,6 +453,24 @@ export function startTrackItBridge(): void {
       return;
     }
 
+    if (event.data.type === "TRACKIT_UNDO") {
+      useSchematicStore.getState().undo();
+      return;
+    }
+
+    if (event.data.type === "TRACKIT_UNDO_TO_DEPTH") {
+      const depth = (event.data as { depth?: number }).depth;
+      if (typeof depth === "number" && depth > 0) {
+        useSchematicStore.getState().undoToDepth(depth);
+      }
+      return;
+    }
+
+    if (event.data.type === "TRACKIT_REDO") {
+      useSchematicStore.getState().redo();
+      return;
+    }
+
     if (event.data.type === APPEARANCE_SYNC_MESSAGE) {
       applyAppearanceSync(event.data.payload);
     }
@@ -452,5 +479,4 @@ export function startTrackItBridge(): void {
   window.addEventListener("message", onMessage);
 
   window.setTimeout(() => notifyReady(), 300);
-  window.setTimeout(() => notifyReady(), 1200);
 }

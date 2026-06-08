@@ -1,6 +1,7 @@
 import type { TowerDraftLineStyle, TowerDraftPage } from "../types";
 import { TOWER_DRAFT_SNAP_LEVEL } from "../towerDraftUtils";
 import type { TowerFaceFilter, TowerMainView } from "../towerDraftFaces";
+import type { TowerElevationReferenceVariant } from "../towerElevationReference";
 import { formatDistanceFromFt, type MeasurementSystem } from "../measurementUnits";
 import { TiDivider, TiIcon, TiSeg } from "./ti/TiBase";
 
@@ -30,6 +31,12 @@ interface TowerDraftToolbarProps {
   onMainViewChange: (view: TowerMainView) => void;
   onFaceFilterChange: (face: TowerFaceFilter) => void;
   measurementSystem: MeasurementSystem;
+  /** When set, show silhouette / blueprint toggle on profile view. */
+  referenceVariant?: TowerElevationReferenceVariant;
+  onReferenceVariantChange?: (variant: TowerElevationReferenceVariant) => void;
+  hasBlueprintReference?: boolean;
+  /** Any mountaintop reference underlay (silhouette or blueprint) on profile view. */
+  hasProfileReference?: boolean;
 }
 
 function TwToolBtn({
@@ -93,6 +100,10 @@ export default function TowerDraftToolbar({
   onMainViewChange,
   onFaceFilterChange,
   measurementSystem,
+  referenceVariant = "primary",
+  onReferenceVariantChange,
+  hasBlueprintReference = false,
+  hasProfileReference = false,
 }: TowerDraftToolbarProps) {
   const toggleDraw = () => {
     if (drawMode) {
@@ -130,6 +141,18 @@ export default function TowerDraftToolbar({
           { value: "site", label: "Site plan" },
         ]}
       />
+
+      {mainView === "profile" && hasBlueprintReference && onReferenceVariantChange ? (
+        <TiSeg
+          size="sm"
+          value={referenceVariant}
+          onChange={(v) => onReferenceVariantChange(v as TowerElevationReferenceVariant)}
+          options={[
+            { value: "primary", label: "Silhouette" },
+            { value: "blueprint", label: "Blueprint" },
+          ]}
+        />
+      ) : null}
 
       {mainView === "faces" && (
         <div style={{ display: "flex", gap: 2 }}>
@@ -260,6 +283,39 @@ export default function TowerDraftToolbar({
       {onPrint && <TwToolBtn icon="print" label="Print tab" onClick={onPrint} />}
 
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+        {mainView === "profile" ? (
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              color: "var(--ti-ink-2)",
+              cursor: "pointer",
+            }}
+            title="Show color markers behind equipment on the elevation"
+          >
+            <input
+              type="checkbox"
+              checked={labelLayers.deviceHighlight ?? hasProfileReference}
+              onChange={(e) => onLabelLayersChange({ deviceHighlight: e.target.checked })}
+            />
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <span
+                aria-hidden
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: "var(--ti-accent)",
+                  border: "2px solid white",
+                  boxShadow: "0 0 0 1px var(--ti-accent)",
+                }}
+              />
+              Markers
+            </span>
+          </label>
+        ) : null}
         {(
           [
             ["designation", "Designation"],

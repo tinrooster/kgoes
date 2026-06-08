@@ -77,7 +77,7 @@ export default function ViewportEditorDialog({ open, onClose }: ViewportEditorDi
   const viewportOptions = useMemo(
     () =>
       drawingPage
-        ? mergeDrawingViewportOptions(drawingPage.viewports, nodes)
+        ? mergeDrawingViewportOptions(drawingPage.viewports ?? [], nodes)
         : [],
     [drawingPage, nodes],
   );

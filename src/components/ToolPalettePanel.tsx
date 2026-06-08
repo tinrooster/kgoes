@@ -80,6 +80,7 @@ export default function ToolPalettePanel({
     <SidebarPanelShell widthClass={mobile ? "max-w-xs w-full" : panelWidth} mobile={mobile}>
       <SidebarPanelHeader
         title={iconOnly ? "" : title}
+        workspacePanelId="cadTools"
         onCollapse={() => (mobile ? onClose?.() : setExpanded(false))}
         closeMode={mobile}
         leading={headerIcon && !iconOnly ? <span className="shrink-0 text-[var(--color-text-muted)]">{headerIcon}</span> : undefined}

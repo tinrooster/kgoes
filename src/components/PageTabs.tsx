@@ -200,11 +200,12 @@ export default function PageTabs() {
     }
     if (page.type === "tower-draft") {
       const td = page as TowerDraftPage;
-      return `${page.label} · ${td.towerHeightFtAgl}′ · ${td.placements.length} placed`;
+      const placedN = td.placements?.length ?? 0;
+      return `${page.label} · ${td.towerHeightFtAgl}′ · ${placedN} placed`;
     }
     const elev = page as RackElevationPage;
-    const rackN = elev.racks.length;
-    const devN = elev.placements.length;
+    const rackN = elev.racks?.length ?? 0;
+    const devN = elev.placements?.length ?? 0;
     return `${page.label} · ${rackN} rack${rackN === 1 ? "" : "s"}${devN ? `, ${devN} placed` : ""}`;
   };
 

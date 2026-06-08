@@ -7,11 +7,11 @@ import { getRackMountSummary, shelfThrowdownDimensionsMissing } from "../rackMou
 import { aggregateRackStats, computeRackStats, formatStatsLine } from "../rackStats";
 import { getDevicesInRoom } from "../rackLink";
 import { resolveDeviceLabel } from "../displayName";
-import { nextRackPosition, sortRacksByLabel } from "../rackLayout";
+import { nextRackPosition, sortRacksByLabel, inferGridColumns, rackLayoutReverseOrder } from "../rackLayout";
 import { TiIcon } from "./ti/TiBase";
 import RackDistributionPresetDialog from "./RackDistributionPresetDialog";
 import { formatFillOrderPlainText, normalizeFillOrderSummary } from "../rackFillCatalog";
-import { RACK_DISTRIBUTION_PRESETS } from "../rackDistributionPresets";
+import { guessMasterRackId, RACK_DISTRIBUTION_PRESETS } from "../rackDistributionPresets";
 
 /** Shared drag state — set by sidebar, read by RackRenderer during dragOver.
  *  (dataTransfer.getData is blocked during dragover for security; this fallback
@@ -29,6 +29,7 @@ export default function RackSidebar({ page }: RackSidebarProps) {
   const updateRack = useSchematicStore((s) => s.updateRack);
   const moveRackToPage = useSchematicStore((s) => s.moveRackToPage);
   const layoutRacksOnPage = useSchematicStore((s) => s.layoutRacksOnPage);
+  const updateRackElevationPage = useSchematicStore((s) => s.updateRackElevationPage);
   const requestRackFocus = useSchematicStore((s) => s.requestRackFocus);
   const selectedRackId = useSchematicStore((s) => s.selectedRackId);
   const setSelectedRackId = useSchematicStore((s) => s.setSelectedRackId);
@@ -37,7 +38,23 @@ export default function RackSidebar({ page }: RackSidebarProps) {
   const removeRackCrossLink = useSchematicStore((s) => s.removeRackCrossLink);
   const updateRackCrossLink = useSchematicStore((s) => s.updateRackCrossLink);
   const addToast = useSchematicStore((s) => s.addToast);
-  const updateRackElevationPage = useSchematicStore((s) => s.updateRackElevationPage);
+  const relayoutHubDrawing = useSchematicStore((s) => s.relayoutHubDrawing);
+  const updateRoom = useSchematicStore((s) => s.updateRoom);
+  const addRoom = useSchematicStore((s) => s.addRoom);
+  const setActivePage = useSchematicStore((s) => s.setActivePage);
+  const hasHubJackFields = page.placements.some((p) => p.distributionPresetRole === "jack-field");
+  const masterRackId = useMemo(() => guessMasterRackId(page.racks), [page.racks]);
+  const masterRack = useMemo(
+    () => (masterRackId ? page.racks.find((r) => r.id === masterRackId) : undefined),
+    [page.racks, masterRackId],
+  );
+  const drawingRooms = useMemo(
+    () =>
+      nodes
+        .filter((n) => n.type === "room")
+        .map((n) => ({ id: n.id, label: (n.data as RoomData).label || "Room" })),
+    [nodes],
+  );
   const allPagesForMove = useSchematicStore((s) => s.pages);
   const useShortNames = useSchematicStore((s) => s.useShortNames);
   const otherElevationPages = useMemo(() =>
@@ -267,6 +284,85 @@ export default function RackSidebar({ page }: RackSidebarProps) {
           >
             Apply distribution preset…
           </button>
+          {page.distributionPlan && hasHubJackFields ? (
+            <>
+              <button
+                type="button"
+                className="w-full mt-1.5 px-2 py-1.5 text-[11px] rounded font-medium border border-[var(--ti-border)] bg-[var(--ti-surface-2)] text-[var(--ti-ink-2)] hover:bg-[var(--ti-surface)] transition-[background] duration-100"
+                style={{ fontFamily: "var(--ti-font-sans)", cursor: "pointer" }}
+                onClick={() => relayoutHubDrawing(page.id)}
+                title="Place EJF panels on the Drawing page and create port-pair cable runs"
+              >
+                Place EJF on Drawing &amp; wire…
+              </button>
+              {masterRack && !masterRack.linkedRoomId ? (
+                <div className="mt-1.5 px-1 text-[10px] leading-snug" style={{ color: "var(--ti-muted)" }}>
+                  <div className="mb-1">Optional — group EJF devices inside a Drawing room:</div>
+                  {drawingRooms.length > 0 ? (
+                    <select
+                      className="w-full text-[11px] rounded border border-[var(--ti-border)] bg-[var(--ti-surface-2)] px-1.5 py-1"
+                      style={{ color: "var(--ti-ink)", fontFamily: "var(--ti-font-sans)" }}
+                      defaultValue=""
+                      onChange={(e) => {
+                        const roomId = e.target.value;
+                        if (!roomId || !masterRackId) return;
+                        const room = nodes.find((n) => n.id === roomId && n.type === "room");
+                        if (!room) return;
+                        updateRoom(roomId, {
+                          ...(room.data as RoomData),
+                          linkedRackPageId: page.id,
+                          linkedRackId: masterRackId,
+                        });
+                        e.target.value = "";
+                      }}
+                    >
+                      <option value="">Link Rack 1 to room…</option>
+                      {drawingRooms.map((r) => (
+                        <option key={r.id} value={r.id}>{r.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <button
+                      type="button"
+                      className="w-full px-2 py-1 text-[11px] rounded border border-dashed border-[var(--ti-border)] bg-[var(--ti-surface)] hover:bg-[var(--ti-surface-2)]"
+                      style={{ color: "var(--ti-ink-2)", fontFamily: "var(--ti-font-sans)", cursor: "pointer" }}
+                      onClick={() => {
+                        if (!masterRackId) return;
+                        addRoom("MDF / Datacom", { x: 80, y: 80 });
+                        const room = useSchematicStore
+                          .getState()
+                          .nodes.find((n) => n.type === "room" && n.selected);
+                        if (!room) return;
+                        updateRoom(room.id, {
+                          ...(room.data as RoomData),
+                          label: "MDF / Datacom",
+                          linkedRackPageId: page.id,
+                          linkedRackId: masterRackId,
+                        });
+                        addToast("Created MDF room on Drawing and linked Rack 1", "success");
+                      }}
+                    >
+                      + Add MDF room on Drawing
+                    </button>
+                  )}
+                </div>
+              ) : masterRack?.linkedRoomId ? (
+                <button
+                  type="button"
+                  className="w-full mt-1 px-2 py-1 text-[10px] rounded border border-[var(--ti-border)] text-[var(--ti-accent-ink)] hover:bg-[var(--ti-surface-2)]"
+                  style={{ fontFamily: "var(--ti-font-sans)", cursor: "pointer" }}
+                  onClick={() => {
+                    setActivePage("__main__");
+                    requestAnimationFrame(() => {
+                      useSchematicStore.getState().requestSchematicFocus(masterRack.linkedRoomId!);
+                    });
+                  }}
+                >
+                  Open linked Drawing room ↗
+                </button>
+              ) : null}
+            </>
+          ) : null}
         </div>
       )}
 
@@ -316,48 +412,43 @@ export default function RackSidebar({ page }: RackSidebarProps) {
         </div>
       ) : null}
 
-      {/* Rack layout */}
+      {/* Rack layout preferences */}
       {page.racks.length > 1 && (
-        <div className="px-2 pt-2 pb-0 flex flex-col gap-1">
+        <div className="px-2 pt-2 pb-0 flex flex-col gap-1.5">
           <div
             className="font-semibold text-neutral-500 uppercase tracking-wider px-0.5"
             style={{ fontSize: 9 }}
           >
             Layout
           </div>
-          <div className="flex gap-1">
-            <button
-              type="button"
-              className="flex-1 px-2 py-1 text-[11px] rounded border border-neutral-200 text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300"
-              onClick={() => layoutRacksOnPage(page.id, { mode: "row" })}
-              title="Single horizontal row, aligned U tops"
-            >
-              1 row
-            </button>
-            <button
-              type="button"
-              className="flex-1 px-2 py-1 text-[11px] rounded border border-neutral-200 text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300"
-              onClick={() => layoutRacksOnPage(page.id, { mode: "grid", columns: 6 })}
-              title="Two or more rows, 6 racks per row (e.g. Sutro 12-rack site)"
-            >
-              2×6 grid
-            </button>
-          </div>
-          {page.racks.length > 6 && page.racks.length % 6 !== 0 && (
-            <button
-              type="button"
-              className="w-full px-2 py-1 text-[10px] rounded border border-dashed border-neutral-200 text-neutral-500 hover:bg-neutral-50"
-              onClick={() =>
-                layoutRacksOnPage(page.id, {
-                  mode: "grid",
-                  columns: Math.min(6, Math.ceil(page.racks.length / 2)),
-                })
-              }
-              title="Wrap racks into rows with up to 6 columns"
-            >
-              Grid ({Math.ceil(page.racks.length / Math.min(6, Math.ceil(page.racks.length / 2)))} rows)
-            </button>
-          )}
+          <label
+            className="flex items-start gap-2 px-0.5 py-0.5 text-[11px] text-neutral-600 cursor-pointer leading-snug"
+            title="When laying out a multi-row grid, run the bottom row right-to-left (12→7 in a 2×6 site). Use Layout menu to apply grid."
+          >
+            <input
+              type="checkbox"
+              className="mt-0.5 shrink-0"
+              checked={rackLayoutReverseOrder(page)}
+              onChange={(e) => {
+                const reverse = e.target.checked;
+                updateRackElevationPage(page.id, {
+                  rackLayoutReverseOrder: reverse,
+                  rackLayoutSerpentine: undefined,
+                });
+                if (page.racks.length > inferGridColumns(page.racks)) {
+                  layoutRacksOnPage(page.id, {
+                    mode: "grid",
+                    columns: inferGridColumns(page.racks),
+                    serpentineRows: reverse,
+                  });
+                }
+              }}
+            />
+            <span>Reverse bottom row order</span>
+          </label>
+          <p className="px-0.5 text-[10px] text-neutral-400 leading-snug">
+            Grid presets are in the <span className="font-medium">Layout</span> menu.
+          </p>
         </div>
       )}
 

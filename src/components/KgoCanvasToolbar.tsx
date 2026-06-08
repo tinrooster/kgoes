@@ -9,14 +9,17 @@ import { memo, useEffect, useState } from "react";
 import { useReactFlow, useViewport } from "@xyflow/react";
 import { useSchematicStore } from "../store";
 import { useSidebarStore } from "../sidebarStore";
+import { useWorkspacePanelDragHandle, useWorkspacePanelFloating } from "../workspacePanelContext";
+import WorkspacePanelDragHandle from "./WorkspacePanelDragHandle";
 import { TiIcon } from "./ti/TiBase";
 import { activeReservedBlocks } from "../trackitNumberingUtils";
 import { isPersistedDrawingViewport } from "../drawingPageUtils";
 import { dispatchOpenViewportEditor } from "../drawingViewportEvents";
 import { useDrawingViewportActions } from "../hooks/useDrawingViewportActions";
+import AlignmentMenu from "./AlignmentMenu";
 
 function Chip({
-  label, icon, active, badge, compact, disabled, onClick, title,
+  label, icon, active, badge, compact, disabled = false, onClick, title,
 }: {
   label: string;
   icon?: string;
@@ -160,6 +163,10 @@ function KgoCanvasToolbar() {
   });
 
   const expandRightPanel = useSidebarStore((s) => s.expandRightPanel);
+  const toolbarEdge = useSidebarStore((s) => s.panelLayouts.canvasToolbar.edge);
+  const embedded = toolbarEdge === "top" || toolbarEdge === "bottom";
+  const floating = useWorkspacePanelFloating();
+  const workspaceDrag = useWorkspacePanelDragHandle();
   const onOpenNumbering = () => {
     expandRightPanel("trackIt");
   };
@@ -189,16 +196,50 @@ function KgoCanvasToolbar() {
     maxWidth: 160,
   };
 
-  return (
+  const zoomCluster = (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 2,
+        height: 34,
+        padding: 3,
+        background: "color-mix(in oklab, var(--ti-surface) 92%, transparent)",
+        backdropFilter: "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        border: "1px solid var(--ti-border)",
+        borderRadius: 9,
+        boxShadow: "var(--ti-shadow-sm)",
+      }}
+    >
+      <ZoomBtn title="Zoom out" onClick={() => zoomOut({ duration: 150 })}>
+        <TiIcon name="minus" size={14} color="var(--ti-ink-2)" />
+      </ZoomBtn>
+      <span style={{
+        fontSize: 11.5, fontWeight: 600,
+        width: 42, textAlign: "center",
+        color: "var(--ti-ink-2)",
+        fontFamily: "var(--ti-font-mono)",
+        userSelect: "none",
+      }}>
+        {zoomPct}%
+      </span>
+      <ZoomBtn title="Zoom in" onClick={() => zoomIn({ duration: 150 })}>
+        <TiIcon name="plus" size={14} color="var(--ti-ink-2)" />
+      </ZoomBtn>
+      <div style={{ width: 1, height: 18, background: "var(--ti-divider)", margin: "0 2px" }} />
+      <ZoomBtn title="Fit to view" onClick={() => fitView({ duration: 250, padding: 0.1 })}>
+        <TiIcon name="maximize" size={14} color="var(--ti-ink-2)" />
+      </ZoomBtn>
+    </div>
+  );
+
+  const dragHandle = workspaceDrag ? (
+    <WorkspacePanelDragHandle panelId="canvasToolbar" onStartDrag={workspaceDrag.startDrag} />
+  ) : null;
+
+  const quickActions = (
     <>
-      <div
-        data-print-hide
-        style={{
-          position: "absolute", left: 14, top: 14,
-          display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap",
-          zIndex: 10,
-        }}
-      >
         <button
           type="button"
           title="Cable numbering — assign numbers from reserved ranges"
@@ -263,6 +304,7 @@ function KgoCanvasToolbar() {
           onClick={toggleCanvasInteractive}
           title={canvasInteractive ? "Canvas is interactive — click to unlock" : "Canvas is locked — click to unlock"}
         />
+        <AlignmentMenu variant="toolbar" />
         <button
           type="button"
           title={compactQuickActions ? "Show labeled toolbar chips" : "Show icon-only toolbar chips"}
@@ -355,44 +397,49 @@ function KgoCanvasToolbar() {
             </button>
           </>
         )}
-      </div>
-
-      <div
-        data-print-hide
-        style={{
-          position: "absolute", left: 14, bottom: 14,
-          display: "flex", alignItems: "center", gap: 2,
-          height: 34, padding: 3,
-          background: "color-mix(in oklab, var(--ti-surface) 92%, transparent)",
-          backdropFilter: "blur(6px)",
-          WebkitBackdropFilter: "blur(6px)",
-          border: "1px solid var(--ti-border)",
-          borderRadius: 9,
-          boxShadow: "var(--ti-shadow-sm)",
-          zIndex: 10,
-        }}
-      >
-        <ZoomBtn title="Zoom out" onClick={() => zoomOut({ duration: 150 })}>
-          <TiIcon name="minus" size={14} color="var(--ti-ink-2)" />
-        </ZoomBtn>
-        <span style={{
-          fontSize: 11.5, fontWeight: 600,
-          width: 42, textAlign: "center",
-          color: "var(--ti-ink-2)",
-          fontFamily: "var(--ti-font-mono)",
-          userSelect: "none",
-        }}>
-          {zoomPct}%
-        </span>
-        <ZoomBtn title="Zoom in" onClick={() => zoomIn({ duration: 150 })}>
-          <TiIcon name="plus" size={14} color="var(--ti-ink-2)" />
-        </ZoomBtn>
-        <div style={{ width: 1, height: 18, background: "var(--ti-divider)", margin: "0 2px" }} />
-        <ZoomBtn title="Fit to view" onClick={() => fitView({ duration: 250, padding: 0.1 })}>
-          <TiIcon name="maximize" size={14} color="var(--ti-ink-2)" />
-        </ZoomBtn>
-      </div>
     </>
+  );
+
+  if (embedded) {
+    return (
+      <div data-print-hide data-workspace-panel="canvasToolbar" className="flex flex-wrap items-center gap-2">
+        {dragHandle}
+        {quickActions}
+        {zoomCluster}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-print-hide
+      data-workspace-panel="canvasToolbar"
+      style={{
+        position: floating ? "relative" : "absolute",
+        left: floating ? undefined : 14,
+        top: floating ? undefined : 14,
+        zIndex: 10,
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        maxWidth: floating ? 520 : undefined,
+      }}
+    >
+      {(floating || workspaceDrag) && (
+        <div className="flex items-center gap-1 px-1 py-0.5 border-b border-[var(--ti-border)] bg-[var(--color-surface)] rounded-t-lg">
+          {dragHandle}
+          <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--color-text-muted)]">
+            Canvas toolbar
+          </span>
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", padding: floating ? "0 8px" : 0 }}>
+        {quickActions}
+      </div>
+      <div style={{ padding: floating ? "0 8px 8px" : undefined, alignSelf: floating ? "flex-start" : undefined, position: floating ? "relative" : "absolute", left: floating ? undefined : 14, bottom: floating ? undefined : 14 }}>
+        {zoomCluster}
+      </div>
+    </div>
   );
 }
 

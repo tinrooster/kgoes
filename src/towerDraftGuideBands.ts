@@ -1,6 +1,29 @@
 import type { TowerDraftPage, TowerGuideBandFt, TrackItTowerSiteContext } from "./types";
 
-/** Prefer page bands when they include structural L2–L6; else trackIT context. */
+function structuralFtAgls(bands: TowerGuideBandFt[]): number[] {
+  return bands
+    .filter((b) => b.ftAgl > 0 && isStructuralGuideBand(b))
+    .map((b) => b.ftAgl)
+    .sort((a, b) => b - a);
+}
+
+/** True when persisted page bands no longer match trackIT / pack context (e.g. after SGH elevation update). */
+export function guideBandsStaleVsContext(
+  pageBands: TowerGuideBandFt[] | undefined,
+  contextBands: TowerGuideBandFt[] | undefined,
+): boolean {
+  const page = pageBands ?? [];
+  const ctx = contextBands ?? [];
+  if (!ctx.length) return false;
+  const pageHeights = structuralFtAgls(page);
+  const ctxHeights = structuralFtAgls(ctx);
+  if (!ctxHeights.length) return false;
+  if (!pageHeights.length) return true;
+  if (pageHeights.length !== ctxHeights.length) return true;
+  return pageHeights.some((ft, i) => Math.abs(ft - ctxHeights[i]) > 1);
+}
+
+/** Prefer trackIT context when page bands are stale; else persisted structural bands. */
 export function resolveTowerDraftGuideBands(
   page: TowerDraftPage,
   context?: TrackItTowerSiteContext | null,
@@ -8,6 +31,9 @@ export function resolveTowerDraftGuideBands(
   const pageBands = page.guideBandsFt ?? [];
   const ctxBands =
     (context?.elevationViewport?.guideBandsFt as TowerGuideBandFt[] | undefined) ?? [];
+  if (ctxBands.length > 0 && guideBandsStaleVsContext(pageBands, ctxBands)) {
+    return ctxBands;
+  }
   const pageHasStructural = pageBands.some(isStructuralGuideBand);
   if (pageHasStructural) return pageBands;
   if (ctxBands.length > 0) return ctxBands;
@@ -70,5 +96,27 @@ export function elevationTickLabelStyle(): {
     fontSize: 12.5,
     fontWeight: 600,
     fill: "var(--ti-ink-2)",
+  };
+}
+
+/** Profile split layout: level name sits above the guide line (not on the stroke). */
+export const PROFILE_GUIDE_BAND_LABEL_OFFSET_Y = 9;
+
+export function profileGuideBandLevelSuffixStyle(structural: boolean): {
+  fontSize: number;
+  fontWeight: number;
+  fill: string;
+} {
+  if (structural) {
+    return {
+      fontSize: 13,
+      fontWeight: 700,
+      fill: "var(--ti-ink)",
+    };
+  }
+  return {
+    fontSize: 11,
+    fontWeight: 500,
+    fill: "var(--ti-muted)",
   };
 }

@@ -7,10 +7,8 @@ import {
   cloneForUserLibrary,
   cloneTemplateDeep,
   LIBRARY_EDIT_PLACEMENT,
-  submitTemplateToCommunity,
   templateKey,
 } from "../deviceTemplateActions";
-import { isCloudPortalEnabled } from "../deployMode";
 
 export interface LibraryTemplateMenuState {
   template: DeviceTemplate;
@@ -24,7 +22,6 @@ interface Props {
   onClose: () => void;
   groups: CustomTemplateGroup[];
   onOpenAdmin?: (template: DeviceTemplate) => void;
-  onLoginRequired?: () => void;
 }
 
 export default function DeviceLibraryTemplateContextMenu({
@@ -32,9 +29,7 @@ export default function DeviceLibraryTemplateContextMenu({
   onClose,
   groups,
   onOpenAdmin,
-  onLoginRequired,
 }: Props) {
-  const cloudPortal = isCloudPortalEnabled();
   const { ref: menuRef, pos: menuPos } = useContextMenuPosition(
     menu?.screenX ?? 0,
     menu?.screenY ?? 0,
@@ -177,34 +172,12 @@ export default function DeviceLibraryTemplateContextMenu({
         />
       )}
 
-      {cloudPortal && (
-        <>
-          <div className="border-t border-gray-200 my-1" />
-          <MenuItem
-            label="Submit to community..."
-            onClick={() =>
-              run(async () => {
-                try {
-                  const result = await submitTemplateToCommunity(template);
-                  if (result === "login_required") {
-                    onLoginRequired?.();
-                    addToast("Sign in to submit to the community library", "info");
-                  } else {
-                    addToast("Opened community submission", "success");
-                  }
-                } catch (e) {
-                  addToast(e instanceof Error ? e.message : "Submission failed", "error");
-                }
-              })
-            }
-          />
-          {onOpenAdmin && (
-            <MenuItem
-              label="Manage in admin panel..."
-              onClick={() => run(() => onOpenAdmin(template))}
-            />
-          )}
-        </>
+      <div className="border-t border-gray-200 my-1" />
+      {onOpenAdmin && (
+        <MenuItem
+          label="Manage in admin panel..."
+          onClick={() => run(() => onOpenAdmin(template))}
+        />
       )}
       {template.id && (
         <MenuItem

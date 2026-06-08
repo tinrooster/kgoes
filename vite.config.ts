@@ -5,7 +5,12 @@ import path from 'path'
 import os from 'os'
 import { readFileSync } from 'fs'
 import { execSync } from 'child_process'
-import { KGO_ES_DESCRIPTION, KGO_ES_NAME, KGO_ES_PAGE_TITLE } from './src/branding'
+import {
+  KGO_ES_DESCRIPTION,
+  KGO_ES_NAME,
+  KGO_ES_PAGE_TITLE,
+  KGO_ES_PWA_THEME_COLOR,
+} from './src/branding'
 
 // Use a repo-specific temp cache dir to avoid stale cross-project Vite transforms.
 const cacheDir = path.join(os.tmpdir(), 'vite-kgoes-trackit-v2')
@@ -60,9 +65,10 @@ export default defineConfig({
         name: KGO_ES_PAGE_TITLE,
         short_name: KGO_ES_NAME,
         description: KGO_ES_DESCRIPTION,
-        theme_color: '#0f172a',
-        background_color: '#0f172a',
+        theme_color: KGO_ES_PWA_THEME_COLOR,
+        background_color: KGO_ES_PWA_THEME_COLOR,
         display: 'standalone',
+        display_override: ['window-controls-overlay', 'standalone'],
         scope: '/',
         start_url: '/',
         icons: [

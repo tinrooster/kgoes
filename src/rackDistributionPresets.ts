@@ -21,6 +21,7 @@ import {
   jackFieldTemplateForPorts,
 } from "./rackJackFieldDevice";
 import { layoutRackPositions, sortRacksByLabel, sortRacksForLayout } from "./rackLayout";
+import type { DistributionPlan } from "./distributionPlan";
 import type {
   DeviceData,
   RackCrossLink,
@@ -82,6 +83,8 @@ export interface TowerDatacomHubApplyOptions {
   jackLabelMaster?: string;
   /** @deprecated Use jackDestLabelTemplate */
   jackLabelSatellite?: string;
+  /** When set, stored on the elevation page and sent to trackIT for proposals / numbering. */
+  distributionPlan?: DistributionPlan;
 }
 
 export type JackFieldPlacementPlan = {
@@ -200,6 +203,7 @@ function slotOverlapsAccessory(
   heightU: number,
   face: "front" | "rear",
   ignoreAccessoryIds: Set<string>,
+  placementHeights: Map<string, number> = new Map(),
 ): boolean {
   const rack = page.racks.find((r) => r.id === rackId);
   if (!rack) return true;
@@ -213,8 +217,9 @@ function slotOverlapsAccessory(
   }
   for (const p of page.placements) {
     if (p.rackId !== rackId || p.face !== face || p.mountedOnShelfId) continue;
-    const pTop = p.uPosition;
-    if (p.uPosition <= newTop && pTop <= newTop) return true;
+    const pHeight = placementHeights.get(p.id) ?? 1;
+    const pTop = p.uPosition + pHeight - 1;
+    if (p.uPosition <= newTop && uPosition <= pTop) return true;
   }
   return false;
 }
@@ -263,9 +268,10 @@ export function applyTowerDatacomHubPreset(
   const master = page.racks.find((r) => r.id === masterId);
   if (!master) throw new Error("Master rack not found on this page");
 
-  const jackPorts = options.jackFieldPorts ?? 24;
+  const plan = options.distributionPlan;
+  const jackPorts = (plan?.jackFields.portsPerPanel ?? options.jackFieldPorts ?? 12) as JackFieldPorts;
   const { heightU: jackHeightU } = jackFieldSpec(jackPorts);
-  const jackBottomU = options.jackFieldBottomU ?? 41;
+  const jackBottomU = plan?.jackFields.bottomU ?? options.jackFieldBottomU ?? 30;
   const designationPrefix = (options.designationPrefix ?? "RACK").trim().toUpperCase() || "RACK";
   const trunkPrefix = options.trunkLabelPrefix ?? "Datacom";
   const sourceLabel =
@@ -323,33 +329,55 @@ export function applyTowerDatacomHubPreset(
   const masterRack = racks.find((r) => r.id === masterId)!;
   let workingPage: RackElevationPage = { ...page, racks, accessories, crossLinks, placements };
 
+  const stackPanels =
+    plan?.jackFields.panelCount != null && plan.jackFields.panelCount > 1;
+
   if (!jackTemplate) {
     result.jacksSkipped += racks.length;
   } else {
-    for (const rack of racks) {
+    const jackPlacementHeights = (rackId: string): Map<string, number> => {
+      const heights = new Map<string, number>();
+      for (const p of workingPage.placements) {
+        if (p.rackId !== rackId || p.face !== "front") continue;
+        heights.set(
+          p.id,
+          p.distributionPresetRole === "jack-field" ? jackHeightU : 1,
+        );
+      }
+      return heights;
+    };
+
+    const placeJackAt = (
+      rack: RackData,
+      uPosition: number,
+      label: string,
+      panelIndex?: number,
+    ): boolean => {
       const isMaster = rack.id === masterId;
-      const label = formatJackFieldLabel({
-        isMaster,
-        jackFieldPorts: jackPorts,
-        sourceLabel,
-        rack,
-        designationPrefix,
-        destLabelTemplate,
-      });
       const designation = resolveRackDesignation(rack, designationPrefix);
-
-      if (jackBottomU + jackHeightU - 1 > rack.heightU) {
-        result.jacksSkipped += 1;
-        continue;
-      }
+      if (uPosition + jackHeightU - 1 > rack.heightU) return false;
       if (
-        slotOverlapsAccessory(workingPage, rack.id, jackBottomU, jackHeightU, "front", new Set())
-        || slotOverlapsPlacement(workingPage, rack.id, jackBottomU, jackHeightU, "front", new Map(), new Set())
+        slotOverlapsAccessory(
+          workingPage,
+          rack.id,
+          uPosition,
+          jackHeightU,
+          "front",
+          new Set(),
+          jackPlacementHeights(rack.id),
+        )
+        || slotOverlapsPlacement(
+          workingPage,
+          rack.id,
+          uPosition,
+          jackHeightU,
+          "front",
+          jackPlacementHeights(rack.id),
+          new Set(),
+        )
       ) {
-        result.jacksSkipped += 1;
-        continue;
+        return false;
       }
-
       const deviceNodeId = ids.deviceNode();
       const deviceData = buildJackFieldDeviceData(jackTemplate, {
         label,
@@ -360,18 +388,16 @@ export function applyTowerDatacomHubPreset(
         sourceLabel,
         destDesignation: isMaster ? undefined : designation,
       });
-
-      const placementId = ids.placement();
       const placement: RackDevicePlacement = {
-        id: placementId,
+        id: ids.placement(),
         rackId: rack.id,
         deviceNodeId,
-        uPosition: jackBottomU,
+        uPosition,
         face: "front",
         distributionPresetId: presetId,
         distributionPresetRole: "jack-field",
+        distributionPresetPanelIndex: panelIndex,
       };
-
       placements.push(placement);
       jackFields.push({
         deviceNodeId,
@@ -379,14 +405,91 @@ export function applyTowerDatacomHubPreset(
         placement: {
           rackId: rack.id,
           deviceNodeId,
-          uPosition: jackBottomU,
+          uPosition,
           face: "front",
           distributionPresetId: presetId,
           distributionPresetRole: "jack-field",
+          distributionPresetPanelIndex: panelIndex,
         },
       });
       workingPage = { ...workingPage, placements };
-      result.jacksAdded += 1;
+      return true;
+    };
+
+    for (const rack of racks) {
+      const isMaster = rack.id === masterId;
+
+      if (isMaster && stackPanels && plan) {
+        const panelCount = plan.jackFields.panelCount ?? 1;
+        const spare = plan.jackFields.sparePanelIndex;
+        const blankUAfter = plan.jackFields.blankUAfterPanel ?? 0;
+        let placed = 0;
+        let stackOffsetU = 0;
+        const placeBlankSpacer = (uPosition: number, _panelIndex: number): boolean => {
+          if (blankUAfter <= 0) return false;
+          if (uPosition + blankUAfter - 1 > rack.heightU) return false;
+          if (
+            slotOverlapsAccessory(
+              workingPage,
+              rack.id,
+              uPosition,
+              blankUAfter,
+              "front",
+              new Set(),
+              jackPlacementHeights(rack.id),
+            )
+            || slotOverlapsPlacement(
+              workingPage,
+              rack.id,
+              uPosition,
+              blankUAfter,
+              "front",
+              jackPlacementHeights(rack.id),
+              new Set(),
+            )
+          ) {
+            return false;
+          }
+          accessories.push({
+            id: ids.accessory(),
+            rackId: rack.id,
+            type: "blank-panel",
+            uPosition,
+            heightU: blankUAfter,
+            face: "front",
+            distributionPresetId: presetId,
+            distributionPresetRole: "blank-fill",
+          });
+          workingPage = { ...workingPage, accessories };
+          return true;
+        };
+
+        for (let panelIndex = 1; panelIndex <= panelCount; panelIndex += 1) {
+          if (spare != null && panelIndex === spare) continue;
+          const uPosition = jackBottomU + stackOffsetU;
+          const label = `${sourceLabel} · EJF ${panelIndex}`;
+          if (placeJackAt(rack, uPosition, label, panelIndex)) placed += 1;
+          stackOffsetU += jackHeightU;
+          if (blankUAfter > 0) {
+            placeBlankSpacer(jackBottomU + stackOffsetU, panelIndex);
+            stackOffsetU += blankUAfter;
+          }
+        }
+        if (placed > 0) result.jacksAdded += placed;
+        else result.jacksSkipped += 1;
+        continue;
+      }
+
+      const label = formatJackFieldLabel({
+        isMaster,
+        jackFieldPorts: jackPorts,
+        sourceLabel,
+        rack,
+        designationPrefix,
+        destLabelTemplate,
+      });
+      if (placeJackAt(rack, jackBottomU, label)) result.jacksAdded += 1;
+      else result.jacksSkipped += 1;
     }
   }
 

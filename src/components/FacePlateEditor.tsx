@@ -178,6 +178,7 @@ export default function FacePlateEditor({ nodeId, deviceData, onSave, onClose }:
     deviceLabelPos: { x: number; y: number; fontSize: number };
   };
   const historyRef = useRef<{ stack: Snapshot[]; index: number }>({ stack: [], index: -1 });
+  const MAX_FACE_PLATE_HISTORY = 20;
 
   const pushUndo = useCallback(() => {
     const h = historyRef.current;
@@ -187,7 +188,12 @@ export default function FacePlateEditor({ nodeId, deviceData, onSave, onClose }:
       labels: labels.map((l) => ({ ...l })),
       deviceLabelPos: { ...deviceLabelPos },
     });
-    h.index = h.stack.length - 1;
+    if (h.stack.length > MAX_FACE_PLATE_HISTORY) {
+      h.stack.shift();
+      h.index = h.stack.length - 1;
+    } else {
+      h.index = h.stack.length - 1;
+    }
   }, [positions, labels, deviceLabelPos]);
 
   const handleUndo = useCallback(() => {

@@ -6,6 +6,8 @@ import { SIGNAL_LABELS, SIGNAL_COLORS, type SignalType } from "../types";
 import type { DeviceTemplate, CustomTemplateGroup, OwnedGearFile, OwnedGearItem, SchematicNode, DeviceData } from "../types";
 import { useSchematicStore, CATEGORY_ORDER_DEFAULT } from "../store";
 import { useSidebarStore } from "../sidebarStore";
+import WorkspacePanelDragHandle from "./WorkspacePanelDragHandle";
+import { useWorkspacePanelDragHandle } from "../workspacePanelContext";
 import { scoreTemplate } from "../templateSearch";
 import { inventoryKeyFromDeviceData, inventoryKeyFromTemplate } from "../inventoryKey";
 import DeviceCreatorPicker from "./DeviceCreatorPicker";
@@ -13,8 +15,6 @@ import ImportDevicesDialog from "./ImportDevicesDialog";
 import DeviceLibraryTemplateContextMenu, {
   type LibraryTemplateMenuState,
 } from "./DeviceLibraryTemplateContextMenu";
-import LoginDialog from "./LoginDialog";
-import { isCloudPortalEnabled } from "../deployMode";
 import { templateKey } from "../deviceTemplateActions";
 import { mergeDeviceLibraryTemplates, bundledTemplateKeys, isPureUserTemplate } from "../deviceLibraryMerge";
 import { useUiChromeStore } from "../uiChromeStore";
@@ -1089,7 +1089,6 @@ function OwnedGearTab({ query }: { query: string }) {
 }
 
 export default function DeviceLibrary() {
-  const cloudPortal = isCloudPortalEnabled();
   const customTemplates = useSchematicStore((s) => s.customTemplates);
   const ownedGear = useSchematicStore((s) => s.ownedGear);
   const removeCustomTemplate = useSchematicStore((s) => s.removeCustomTemplate);
@@ -1109,11 +1108,19 @@ export default function DeviceLibrary() {
   const openDeviceAdmin = useUiChromeStore((s) => s.openDeviceAdmin);
   const hiddenLibraryTemplateIds = useSchematicStore((s) => s.hiddenLibraryTemplateIds);
   const [templateMenu, setTemplateMenu] = useState<LibraryTemplateMenuState | null>(null);
-  const [showLoginDialog, setShowLoginDialog] = useState(false);
   const leftExpanded = useSidebarStore((s) => s.leftExpanded);
   const setLeftExpanded = useSidebarStore((s) => s.setLeftExpanded);
   const libraryBrowseMode = useSidebarStore((s) => s.libraryBrowseMode);
+  const devicesDockSide =
+    useSidebarStore((s) => s.panelLayouts.devices?.edge) === "right" ? "right" : "left";
+  const expandChevron = devicesDockSide === "left" ? "chevR" : "chevL";
+  const collapseChevron = devicesDockSide === "left" ? "chevL" : "chevR";
+  const dockBorderStyle =
+    devicesDockSide === "left"
+      ? { borderRight: "1px solid var(--ti-border)" }
+      : { borderLeft: "1px solid var(--ti-border)" };
   const collapsed = !leftExpanded;
+  const workspaceDrag = useWorkspacePanelDragHandle();
   const [leftTab, setLeftTab] = useState<"devices" | "layers">("devices");
   const [sourceFilter, setSourceFilter] = useState<"all" | "trackit" | "local">("all");
   const [templates, setTemplates] = useState(getBundledTemplates);
@@ -1335,12 +1342,15 @@ export default function DeviceLibrary() {
     return (
       <div style={{
         width: 44, flexShrink: 0,
-        borderRight: "1px solid var(--ti-border)",
+        ...dockBorderStyle,
         background: "var(--color-bg)",
         display: "flex", flexDirection: "column", alignItems: "center",
-        height: "100%", paddingTop: 10, gap: 8,
+        height: "100%", minHeight: 0, maxHeight: "100%", paddingTop: 10, gap: 8,
       }}>
-        <TiIconButton icon="chevR" variant="ghost" size="sm" onClick={() => setLeftExpanded(true)} title="Expand library" />
+        <TiIconButton icon={expandChevron} variant="ghost" size="sm" onClick={() => setLeftExpanded(true)} title="Expand library" />
+        {workspaceDrag ? (
+          <WorkspacePanelDragHandle panelId="devices" onStartDrag={workspaceDrag.startDrag} />
+        ) : null}
         <div style={{ writingMode: "vertical-rl", fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ti-muted)", marginTop: 8 }}>
           {showOwnedGearPane ? "Library" : "Devices"}
         </div>
@@ -1353,17 +1363,17 @@ export default function DeviceLibrary() {
       style={{
         width: collapsed ? 44 : 264,
         flexShrink: 0,
-        borderRight: "1px solid var(--ti-border)",
+        ...dockBorderStyle,
         background: "var(--color-bg)",
         display: "flex", flexDirection: "column",
-        height: "100%", overflow: "hidden",
+        height: "100%", minHeight: 0, maxHeight: "100%", overflow: "hidden",
         transition: "width 150ms",
       }}
     >
       {/* Header — Devices | Layers seg tab + collapse */}
       {collapsed ? (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 10, gap: 8 }}>
-          <TiIconButton icon="chevR" variant="ghost" size="sm" onClick={() => setLeftExpanded(true)} title="Expand library" />
+          <TiIconButton icon={expandChevron} variant="ghost" size="sm" onClick={() => setLeftExpanded(true)} title="Expand library" />
           <div style={{ writingMode: "vertical-rl", fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ti-muted)", marginTop: 8 }}>Devices</div>
         </div>
       ) : (
@@ -1384,7 +1394,10 @@ export default function DeviceLibrary() {
               onClick={() => openDeviceAdmin({ tab: "manage" })}
             />
           )}
-          <TiIconButton icon="chevL" variant="ghost" size="sm" onClick={() => setLeftExpanded(false)} title="Collapse library" />
+          {workspaceDrag ? (
+            <WorkspacePanelDragHandle panelId="devices" onStartDrag={workspaceDrag.startDrag} />
+          ) : null}
+          <TiIconButton icon={collapseChevron} variant="ghost" size="sm" onClick={() => setLeftExpanded(false)} title="Collapse library" />
         </div>
       )}
 
@@ -1473,7 +1486,7 @@ export default function DeviceLibrary() {
 
       {/* Filters */}
       {libraryActiveTab === "devices" && (
-      <div className="px-2 pb-2 border-b border-[var(--color-border)]">
+      <div className="shrink-0 px-2 pb-2 border-b border-[var(--color-border)]">
         <div className="flex gap-1.5">
           <div className={`flex-1 min-w-0 flex items-center rounded border transition-colors ${
               filterPanel === "category"
@@ -1607,7 +1620,7 @@ export default function DeviceLibrary() {
       {libraryActiveTab === "owned" ? (
         <OwnedGearTab query={query} />
       ) : (
-      <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 8 }}>
         {browseUserLibraryOnly && (
           <CustomTemplatesSection
             customTemplates={filteredCustom}
@@ -1775,12 +1788,8 @@ export default function DeviceLibrary() {
         menu={templateMenu}
         onClose={() => setTemplateMenu(null)}
         groups={customTemplateGroups}
-        onOpenAdmin={cloudPortal ? (template) => openAdminPanel(template) : undefined}
-        onLoginRequired={cloudPortal ? () => setShowLoginDialog(true) : undefined}
+        onOpenAdmin={(template) => openAdminPanel(template)}
       />
-      {cloudPortal && (
-        <LoginDialog open={showLoginDialog} onClose={() => setShowLoginDialog(false)} />
-      )}
     </div>
   );
 }

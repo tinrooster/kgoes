@@ -163,6 +163,7 @@ export default function TrackItNumberingPanel({
     <SidebarPanelShell widthClass="w-[19.5rem]" mobile={mobile} className="!bg-[var(--ti-surface)] !border-[var(--ti-border)]">
       <SidebarPanelHeader
         title="Cable numbering"
+        workspacePanelId="trackItNumbers"
         onCollapse={() => (mobile ? onClose?.() : setRightExpanded(false))}
         closeMode={!!mobile}
         collapseTitle="Collapse numbering"
