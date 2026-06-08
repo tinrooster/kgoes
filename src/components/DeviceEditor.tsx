@@ -43,7 +43,16 @@ import {
   SerialPortConfigEditor,
 } from "./RfMetadataEditor";
 import type { FacePlateLayout } from "../types";
-import { AUX_FIELD_GROUPS, normalizeAuxRows, resolveAuxiliaryLine, trimTrailingEmpty } from "../auxiliaryData";
+import {
+  AUX_FIELD_GROUPS,
+  auxPositionLabel,
+  auxPositionTitle,
+  cycleAuxPosition,
+  normalizeAuxRows,
+  resolveAuxiliaryLine,
+  rowPosition,
+  trimTrailingEmpty,
+} from "../auxiliaryData";
 import { deriveThermalBtuh } from "../thermal";
 import type { MountingClass } from "../rackMount";
 import {
@@ -59,7 +68,9 @@ import {
   resolveMountingClass,
 } from "../rackMount";
 import { findTowerPlacementForDevice } from "../towerDraftPlacementLookup";
+import { resolvePlacementAzimuthDeg, resolvePlacementTowerFace } from "../towerDraftFaces";
 import TowerDeviceMountEditor from "./TowerDeviceMountEditor";
+import CollapsibleDetailSection, { summarizePortsHint } from "./CollapsibleDetailSection";
 
 const ALL_SIGNAL_TYPES = (Object.keys(SIGNAL_LABELS) as SignalType[]).sort(
   (a, b) => SIGNAL_LABELS[a].localeCompare(SIGNAL_LABELS[b]),
@@ -166,8 +177,15 @@ export default function DeviceEditor() {
   const patchDeviceData = useSchematicStore((s) => s.patchDeviceData);
   const pages = useSchematicStore((s) => s.pages);
   const measurementSystem = useSchematicStore((s) => s.measurementSystem);
+  const trackItTowerContext = useSchematicStore((s) => s.trackItTowerContext);
   const trackItLocations = useSchematicStore((s) => s.trackItLocations);
   const locationListId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!editingNodeId) return;
+    dialogRef.current?.focus({ preventScroll: true });
+  }, [editingNodeId]);
 
   const node = nodes.find((n) => n.id === editingNodeId && n.type === "device") as DeviceNode | undefined;
 
@@ -877,6 +895,69 @@ export default function DeviceEditor() {
     return { dirtyVsPreset, dirtyVsTemplate };
   }, [templateId, ports, hiddenPorts, color, templatePresets, customTemplates, label, manufacturer, modelNumber, referenceUrl, category, hostname, powerDrawW, powerCapacityW, voltage, thermalBtuh, poeBudgetW, poeDrawW, unitCost, heightMm, widthMm, depthMm, weightKg, isVenueProvided]);
 
+  const towerMountHint = useMemo(() => {
+    if (!towerPlacementCtx || !node) return "";
+    const pl = towerPlacementCtx.placement;
+    const data = node.data as DeviceData;
+    const parts: string[] = [`${Math.round(pl.mountHeightFtAgl)} ft AGL`];
+    const az = resolvePlacementAzimuthDeg(pl, data, trackItTowerContext);
+    if (az != null) parts.push(`${Math.round(az)}°`);
+    else {
+      const face = resolvePlacementTowerFace(pl, data, trackItTowerContext);
+      if (face) parts.push(face);
+    }
+    return parts.join(" · ");
+  }, [towerPlacementCtx, node, trackItTowerContext]);
+
+  const deviceDetailsHint = useMemo(() => {
+    const parts: string[] = [];
+    const typeLabel = deviceType.trim() || node?.data.deviceType;
+    if (typeLabel) parts.push(typeLabel);
+    const mfgModel = [manufacturer.trim(), modelNumber.trim()].filter(Boolean).join(" ");
+    if (mfgModel) parts.push(mfgModel);
+    else if (node?.data.model?.trim()) parts.push(node.data.model.trim());
+    if (category.trim()) parts.push(category.trim());
+    const installBits = [designation.trim(), deviceTypeCode.trim()].filter(Boolean);
+    if (installBits.length > 0) parts.push(installBits.join(" "));
+    if (managementIp.trim()) parts.push(managementIp.trim());
+    return parts.length > 0 ? parts.join(" · ") : "Type, manufacturer, installation";
+  }, [
+    deviceType,
+    manufacturer,
+    modelNumber,
+    category,
+    designation,
+    deviceTypeCode,
+    managementIp,
+    node?.data.deviceType,
+    node?.data.model,
+  ]);
+
+  const rackMoreHint = useMemo(() => {
+    const parts: string[] = [];
+    if (rackHeightU != null) parts.push(`${rackHeightU}U`);
+    if (mountingClass && mountingClass !== "rack-full") {
+      parts.push(mountingClass.replace(/-/g, " "));
+    }
+    if (hostname.trim()) parts.push(hostname.trim());
+    if (powerDrawW != null) parts.push(`${powerDrawW}W`);
+    return parts.length > 0 ? parts.join(" · ") : "Rack, network, power";
+  }, [rackHeightU, mountingClass, hostname, powerDrawW]);
+
+  const towerDetailMode = !!towerPlacementCtx;
+
+  const dialogTitle = useMemo(() => {
+    if (!node) return "";
+    return (
+      label.trim() ||
+      shortName.trim() ||
+      modelNumber.trim() ||
+      node.data.model ||
+      node.data.deviceType ||
+      "Unnamed device"
+    );
+  }, [label, shortName, modelNumber, node]);
+
   if (!editingNodeId || !node) return null;
 
   const drift = getTemplateDrift(node.data, customTemplates);
@@ -887,20 +968,36 @@ export default function DeviceEditor() {
   const passthroughPorts = ports.filter((p) => p.direction === "passthrough");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }} onKeyDownCapture={onCtrlEnter}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+      data-allow-scroll
+      onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}
+      onKeyDownCapture={onCtrlEnter}
+      onWheel={(e) => e.stopPropagation()}
+    >
       <div
-        className={`bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg shadow-2xl max-h-[85vh] flex flex-col ${
+        ref={dialogRef}
+        tabIndex={-1}
+        data-allow-scroll
+        className={`bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg shadow-2xl max-h-[85vh] flex flex-col outline-none ${
           towerPlacementCtx ? "w-[600px]" : "w-[560px]"
         }`}
       >
         {/* Header */}
-        <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-[var(--color-text-heading)]">
-            {towerPlacementCtx ? "Tower equipment · device properties" : "Device Properties"}
-          </h2>
+        <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-[var(--color-text-heading)] truncate">
+              {towerPlacementCtx ? dialogTitle : "Device Properties"}
+            </h2>
+            {towerPlacementCtx && (
+              <p className="text-[11px] text-[var(--color-text-muted)] truncate mt-0.5">
+                {towerMountHint ? `Tower equipment · ${towerMountHint}` : "Tower equipment · device properties"}
+              </p>
+            )}
+          </div>
           <button
             onClick={close}
-            className="text-[var(--color-text-muted)] hover:text-[var(--color-text-heading)] text-lg leading-none cursor-pointer"
+            className="text-[var(--color-text-muted)] hover:text-[var(--color-text-heading)] text-lg leading-none cursor-pointer shrink-0"
           >
             &times;
           </button>
@@ -921,27 +1018,32 @@ export default function DeviceEditor() {
           </div>
         )}
 
-        {towerPlacementCtx && (
-          <div
-            className="border-b border-[var(--color-border)] shrink-0 overflow-y-auto max-h-[min(52vh,520px)]"
-            style={{ background: "var(--ti-surface, var(--color-surface))" }}
-          >
-            <TowerDeviceMountEditor
-              page={towerPlacementCtx.page}
-              placementId={towerPlacementCtx.placement.id}
-              measurementSystem={measurementSystem}
-            />
-            <p
-              className="px-4 pb-3 text-[10px] text-[var(--color-text-muted)] border-t border-[var(--color-border)]"
-              style={{ margin: 0, paddingTop: 10 }}
-            >
-              Schematic device properties (ports, power, rack metadata) are below.
-            </p>
-          </div>
-        )}
-
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div
+          className={`flex-1 overflow-y-auto ${towerDetailMode ? "p-3 space-y-2" : "p-4 space-y-4"}`}
+        >
+          {towerPlacementCtx && (
+            <DeviceEditorTowerSection
+              towerMode
+              title="Mount on tower"
+              hint={towerMountHint}
+              defaultOpen
+            >
+              <TowerDeviceMountEditor
+                embedded
+                page={towerPlacementCtx.page}
+                placementId={towerPlacementCtx.placement.id}
+                measurementSystem={measurementSystem}
+              />
+            </DeviceEditorTowerSection>
+          )}
+
+          <DeviceEditorTowerSection
+            towerMode={towerDetailMode}
+            title="Device details"
+            hint={deviceDetailsHint}
+          >
+          <div className={towerDetailMode ? "space-y-4" : "contents"}>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Device Name">
               <input
@@ -1191,6 +1293,27 @@ export default function DeviceEditor() {
             </div>
           )}
 
+          {/* Hostname */}
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">Hostname:</span>
+            <input
+              className="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-0.5 text-xs outline-none focus:border-blue-500"
+              value={hostname}
+              onChange={(e) => setHostname(e.target.value)}
+              placeholder="e.g. nvx-room101"
+              onKeyDown={(e) => e.stopPropagation()}
+            />
+          </div>
+          </div>
+          </DeviceEditorTowerSection>
+
+          <DeviceEditorTowerSection
+            towerMode={towerDetailMode}
+            title="Ports"
+            hint={summarizePortsHint(ports)}
+          >
+          <div className={towerDetailMode ? "space-y-4" : "contents"}>
+
           {/* Port Visibility */}
           <PortVisibilitySection
             showAllPorts={showAllPorts}
@@ -1282,17 +1405,15 @@ export default function DeviceEditor() {
             />
           )}
 
-          {/* Hostname */}
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">Hostname:</span>
-            <input
-              className="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-0.5 text-xs outline-none focus:border-blue-500"
-              value={hostname}
-              onChange={(e) => setHostname(e.target.value)}
-              placeholder="e.g. nvx-room101"
-              onKeyDown={(e) => e.stopPropagation()}
-            />
           </div>
+          </DeviceEditorTowerSection>
+
+          <DeviceEditorTowerSection
+            towerMode={towerDetailMode}
+            title="Rack, power & more"
+            hint={rackMoreHint}
+          >
+          <div className={towerDetailMode ? "space-y-4" : "contents"}>
 
           {!towerPlacementCtx &&
             (deviceType.startsWith("rf-") ||
@@ -1691,7 +1812,7 @@ export default function DeviceEditor() {
             </summary>
             <div className="flex flex-col gap-1.5 pt-1 pl-2">
               <p className="text-[10px] text-[var(--color-text-muted)] -mb-0.5">
-                Up to 5 custom lines. Use the <span className="font-mono">+</span> button to insert a device field. Leave a line blank to add a separator. Toggle <span className="font-mono">H</span>/<span className="font-mono">F</span> to pin a row to the header or footer of the device.
+                Up to 5 custom lines. Use the <span className="font-mono">+</span> button to insert a device field. Leave a line blank to add a separator. Toggle <span className="font-mono">F</span>/<span className="font-mono">GH</span>/<span className="font-mono">—</span> for footer, global header, or hidden.
               </p>
               {(() => {
                 const previewDevice = {
@@ -1716,7 +1837,7 @@ export default function DeviceEditor() {
                 return [0, 1, 2, 3, 4].map((i) => {
                   const row = auxiliaryData[i] ?? { text: "", position: "footer" as const };
                   const text = row.text;
-                  const position = row.position ?? "footer";
+                  const position = rowPosition(row);
                   const hasToken = text.indexOf("{{") !== -1;
                   const preview = hasToken ? resolveAuxiliaryLine(text, previewDevice) : "";
                   const setRow = (next: Partial<AuxRow>) => {
@@ -1747,11 +1868,17 @@ export default function DeviceEditor() {
                         </button>
                         <button
                           type="button"
-                          title={position === "header" ? "Pinned to header — click to move to footer" : "Pinned to footer — click to move to header"}
-                          className={`px-2 py-1 text-[10px] font-semibold rounded border cursor-pointer shrink-0 w-7 ${position === "header" ? "bg-blue-500 border-blue-500 text-white" : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"}`}
-                          onClick={() => setRow({ position: position === "header" ? "footer" : "header" })}
+                          title={auxPositionTitle(position)}
+                          className={`px-1.5 py-1 text-[10px] font-semibold rounded border cursor-pointer shrink-0 min-w-7 ${
+                            position === "gheader"
+                              ? "bg-blue-500 border-blue-500 text-white"
+                              : position === "hidden"
+                                ? "bg-[var(--color-bg)] border-[var(--color-border)] text-[var(--color-text-muted)] italic"
+                                : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"
+                          }`}
+                          onClick={() => setRow({ position: cycleAuxPosition(position) })}
                         >
-                          {position === "header" ? "H" : "F"}
+                          {auxPositionLabel(position)}
                         </button>
                       </div>
                       {hasToken && (
@@ -1861,6 +1988,8 @@ export default function DeviceEditor() {
               </label>
             </div>
           </details>
+          </div>
+          </DeviceEditorTowerSection>
         </div>
 
         {/* Footer */}
@@ -1959,6 +2088,27 @@ export default function DeviceEditor() {
         />
       )}
     </div>
+  );
+}
+
+function DeviceEditorTowerSection({
+  towerMode,
+  title,
+  hint,
+  defaultOpen,
+  children,
+}: {
+  towerMode: boolean;
+  title: string;
+  hint?: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  if (!towerMode) return <>{children}</>;
+  return (
+    <CollapsibleDetailSection title={title} hint={hint} defaultOpen={defaultOpen}>
+      {children}
+    </CollapsibleDetailSection>
   );
 }
 

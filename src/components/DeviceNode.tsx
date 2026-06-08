@@ -10,6 +10,7 @@ import {
   headerBandHeight,
   HEADER_LABEL_ZONE_PX,
   HEADER_LABEL_ZONE_2_PX,
+  FOOTER_AUX_COLLAPSED_STRIP_PX,
 } from "../auxiliaryData";
 import type { AuxRow } from "../types";
 import { useDisplayLabel } from "../labelCaseUtils";
@@ -135,7 +136,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
       hiddenPinSignalTypes, templateHiddenStr, hideUnconnectedPorts, connectedHandles]);
 
   const headerAuxRows = useMemo(
-    () => rowsInSlot(data.auxiliaryData, "header"),
+    () => rowsInSlot(data.auxiliaryData, "gheader"),
     [data.auxiliaryData],
   );
   const footerAuxRows = useMemo(
@@ -168,8 +169,21 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
     });
   }, [id]);
 
+  const toggleFooterCollapsed = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    useSchematicStore.setState((s) => ({
+      nodes: s.nodes.map((n) => {
+        if (n.id !== id || n.type !== "device") return n;
+        const collapsed = (n.data as DeviceNodeType["data"]).footerAuxCollapsed ?? false;
+        return { ...n, data: { ...n.data, footerAuxCollapsed: !collapsed } };
+      }),
+    }));
+    useSchematicStore.getState().saveToLocalStorage();
+  }, [id]);
 
-  // Split ports by visual side (respects flip), not semantic direction.
+
+  // Split ports by visual side
   // When hideUnconnectedPorts is on, bidir ports with only one side connected
   // collapse into the appropriate column so the device gets smaller.
   // Passthrough ports go into their own list — they render as full-width rows with
@@ -392,7 +406,32 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
   /** Footer aux block — rows below the port area. Grid-rounded (20-multiple) so device
    *  bottom stays on the snap grid. Blank rows render as 6-px separator gaps. */
   function renderFooterAuxBlock(rows: AuxRow[]) {
-    if (rows.length === 0) return null;
+    const hasContent = rows.some((r) => r.text.trim());
+    if (!hasContent) return null;
+
+    const collapsed = data.footerAuxCollapsed ?? false;
+    const chevronBtn = (
+      <button
+        type="button"
+        title={collapsed ? "Expand footer" : "Collapse footer"}
+        className="h-4 w-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
+        onClick={toggleFooterCollapsed}
+      >
+        <span className={`text-[9px] transition-transform ${collapsed ? "" : "rotate-90"}`}>▶</span>
+      </button>
+    );
+
+    if (collapsed) {
+      return (
+        <div
+          className="auxiliaryData border-t border-[var(--color-border)] flex items-center justify-center"
+          style={{ height: FOOTER_AUX_COLLAPSED_STRIP_PX }}
+        >
+          {chevronBtn}
+        </div>
+      );
+    }
+
     const raw = 1 + rows.reduce((sum, r) => sum + auxRowHeight(r), 0);
     const totalPad = Math.ceil(raw / 20) * 20 - raw;
     const pt = Math.floor(totalPad / 2);
@@ -403,6 +442,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
         style={{ paddingTop: pt, paddingBottom: pb }}
       >
         {rows.map((row, i) => renderAuxRow(row, i))}
+        {chevronBtn}
       </div>
     );
   }

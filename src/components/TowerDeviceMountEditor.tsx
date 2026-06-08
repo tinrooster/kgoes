@@ -45,6 +45,8 @@ interface TowerDeviceMountEditorProps {
   page: TowerDraftPage;
   placementId: string;
   measurementSystem: MeasurementSystem;
+  /** Inside tower device dialog — trim chrome; parent supplies section header + hint. */
+  embedded?: boolean;
   showFullDeviceLink?: boolean;
   onOpenFullDeviceEditor?: () => void;
   onOpenTrackIt?: () => void;
@@ -98,6 +100,7 @@ export default function TowerDeviceMountEditor({
   page,
   placementId,
   measurementSystem,
+  embedded = false,
   showFullDeviceLink,
   onOpenFullDeviceEditor,
   onOpenTrackIt,
@@ -227,13 +230,14 @@ export default function TowerDeviceMountEditor({
   return (
     <div
       style={{
-        padding: 14,
+        padding: embedded ? 0 : 14,
         display: "flex",
         flexDirection: "column",
-        gap: 14,
+        gap: embedded ? 10 : 14,
         fontFamily: "var(--ti-font-sans)",
       }}
     >
+      {!embedded && (
       <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
         <div
           style={{
@@ -259,16 +263,22 @@ export default function TowerDeviceMountEditor({
           </div>
         </div>
       </div>
+      )}
 
       <div
         style={{
           borderRadius: 10,
-          border: `1px solid color-mix(in oklab, var(--ti-${tone}) 35%, transparent)`,
-          background: `color-mix(in oklab, var(--ti-${tone}) 10%, var(--ti-surface))`,
-          padding: 11,
+          border: embedded
+            ? "none"
+            : `1px solid color-mix(in oklab, var(--ti-${tone}) 35%, transparent)`,
+          background: embedded
+            ? "transparent"
+            : `color-mix(in oklab, var(--ti-${tone}) 10%, var(--ti-surface))`,
+          padding: embedded ? 0 : 11,
         }}
       >
-        <div style={sectionTitle}>Mount on tower</div>
+        {!embedded && <div style={sectionTitle}>Mount on tower</div>}
+        {!embedded && (
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10 }}>
           <span style={{ fontFamily: "var(--ti-font-mono)", fontSize: 26, fontWeight: 700, color: "var(--ti-ink)" }}>
             {Math.round(placement.mountHeightFtAgl)}
@@ -276,6 +286,7 @@ export default function TowerDeviceMountEditor({
           </span>
           <span style={{ fontSize: 12, color: "var(--ti-ink-2)" }}>AGL</span>
         </div>
+        )}
 
         <label style={{ display: "block", marginBottom: 10 }}>
           <div style={fieldLabel}>

@@ -4,7 +4,7 @@ import { PROFILE_LABEL_RAIL_W } from "./towerElevationReference";
 
 export const TOWER_DRAFT_TITLE_H = 40;
 /** Vertical gap between stacked profile callout labels. */
-export const PROFILE_LABEL_STACK_GAP = 32;
+export const PROFILE_LABEL_STACK_GAP = 38;
 /** Minimum vertical separation between mount point and label anchor. */
 export const PROFILE_LABEL_MIN_V_SEP = 20;
 /** offsetX within this range is treated as “on mast”. */

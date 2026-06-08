@@ -342,8 +342,14 @@ export function validateTemplate(body: unknown): ValidationResult {
       if (row.text.length > MAX_AUX_LINE_LENGTH) {
         return { ok: false, error: `auxiliaryData[${i}].text must be ${MAX_AUX_LINE_LENGTH} characters or fewer` };
       }
-      if (row.position != null && row.position !== "header" && row.position !== "footer") {
-        return { ok: false, error: `auxiliaryData[${i}].position must be 'header' or 'footer'` };
+      if (
+        row.position != null &&
+        row.position !== "header" &&
+        row.position !== "footer" &&
+        row.position !== "gheader" &&
+        row.position !== "hidden"
+      ) {
+        return { ok: false, error: `auxiliaryData[${i}].position must be 'footer', 'gheader', 'hidden', or legacy 'header'` };
       }
     }
   }

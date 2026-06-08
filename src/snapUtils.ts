@@ -61,7 +61,7 @@ function estimateDeviceHeight(node: SchematicNode): number {
   // Per-instance wrapLabel override is honored here; schematic-wide default is not threaded — React Flow's
   // measured height supersedes this estimate after the first render.
   const labelZone = data.wrapLabel ? HEADER_LABEL_ZONE_2_PX : HEADER_LABEL_ZONE_PX;
-  return 60 + portRows * 20 + totalAuxHeight(data.auxiliaryData, labelZone);
+  return 60 + portRows * 20 + totalAuxHeight(data.auxiliaryData, labelZone, data.footerAuxCollapsed);
 }
 
 function nodeRect(node: SchematicNode): Rect {
