@@ -31,7 +31,7 @@ export function resolveCatalogTowerHeightFtAgl(
 }
 
 function resolveFaceLayoutCapFt(
-  page: TowerDraftPage,
+  _page: TowerDraftPage,
   context?: TrackItTowerSiteContext | null,
 ): number | undefined {
   const cap = context?.faceLayoutHeightFtAgl;
