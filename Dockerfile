@@ -4,7 +4,13 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --legacy-peer-deps
 COPY . .
-RUN npm run build
+ARG GIT_COMMIT=unknown
+ARG CI_COMMIT_SHORT_SHA=
+ARG SOURCE_VERSION=
+RUN BUILD_COMMIT="$GIT_COMMIT"; \
+    [ "$BUILD_COMMIT" = "unknown" ] && [ -n "$CI_COMMIT_SHORT_SHA" ] && BUILD_COMMIT="$CI_COMMIT_SHORT_SHA" || true; \
+    [ "$BUILD_COMMIT" = "unknown" ] && [ -n "$SOURCE_VERSION" ] && BUILD_COMMIT="$SOURCE_VERSION" || true; \
+    GIT_COMMIT="$BUILD_COMMIT" npm run build
 
 # Production stage — Alpine nginx stack matches trackIT Studioshare runtime.
 FROM alpine:3.22 AS runtime

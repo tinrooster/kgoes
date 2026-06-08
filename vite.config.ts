@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 import os from 'os'
-import { readFileSync } from 'fs'
+import { readFileSync, writeFileSync } from 'fs'
 import { execSync } from 'child_process'
 import {
   KGO_ES_DESCRIPTION,
@@ -17,10 +17,34 @@ const cacheDir = path.join(os.tmpdir(), 'vite-kgoes-trackit-v2')
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
 
-let gitHash = 'unknown'
-try {
-  gitHash = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
-} catch { /* not a git repo or git not available */ }
+function resolveGitHash(): string {
+  const fromEnv =
+    process.env.GIT_COMMIT?.trim() ||
+    process.env.CI_COMMIT_SHORT_SHA?.trim() ||
+    process.env.SOURCE_VERSION?.trim() ||
+    ''
+  if (fromEnv && fromEnv !== 'unknown') return fromEnv
+  try {
+    return execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
+  } catch {
+    return 'unknown'
+  }
+}
+
+const gitHash = resolveGitHash()
+
+function buildInfoPayload(hash = gitHash) {
+  return {
+    version: pkg.version,
+    buildCommit: hash,
+    hash,
+  }
+}
+
+function writeBuildInfoJson(outDir: string, hash = gitHash) {
+  const target = path.join(outDir, 'build-info.json')
+  writeFileSync(target, `${JSON.stringify(buildInfoPayload(hash))}\n`, 'utf-8')
+}
 
 /** trackIT repo .env.local (envDir below) — IIS hostname e.g. http://ow-casf-trackit:5174/ */
 const devPublicHost = process.env.VITE_DEV_PUBLIC_HOST?.trim()
@@ -82,14 +106,15 @@ export default defineConfig({
     {
       name: 'kgoes-build-info',
       configureServer(server: ViteDevServer) {
-        server.middlewares.use('/__kgoes-build-info.json', (_req, res) => {
-          let hash = gitHash
-          try {
-            hash = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
-          } catch { /* ignore */ }
+        const serveBuildInfo = (_req: unknown, res: { setHeader: (k: string, v: string) => void; end: (body: string) => void }) => {
           res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify({ version: pkg.version, hash }))
-        })
+          res.end(JSON.stringify(buildInfoPayload(resolveGitHash())))
+        }
+        server.middlewares.use('/__kgoes-build-info.json', serveBuildInfo)
+        server.middlewares.use('/build-info.json', serveBuildInfo)
+      },
+      closeBundle() {
+        writeBuildInfoJson(path.resolve(__dirname, 'dist'))
       },
     },
   ],
