@@ -9,9 +9,11 @@ import { startTrackItBridge } from "./trackitBridge";
 import { setSchematicUndoStateListener } from "./schematicUndo";
 import { notifyTrackItParentUndoState } from "./trackitIntegration";
 import { applyPwaStandaloneShell, initPwaInstallCapture } from "./pwaInstall";
+import { ensureLatestProductionBuild } from "./productionBuildCheck";
 
 initPwaInstallCapture();
 applyPwaStandaloneShell();
+void ensureLatestProductionBuild();
 
 startTrackItBridge();
 setSchematicUndoStateListener(() => notifyTrackItParentUndoState());

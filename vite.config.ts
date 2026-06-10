@@ -114,7 +114,19 @@ export default defineConfig({
         server.middlewares.use('/build-info.json', serveBuildInfo)
       },
       closeBundle() {
-        writeBuildInfoJson(path.resolve(__dirname, 'dist'))
+        const outDir = path.resolve(__dirname, 'dist')
+        writeBuildInfoJson(outDir)
+        const indexPath = path.join(outDir, 'index.html')
+        try {
+          const html = readFileSync(indexPath, 'utf-8')
+          const hash = resolveGitHash()
+          const marker = `<!-- kgoes-build:${hash} -->`
+          if (!html.includes('kgoes-build:')) {
+            writeFileSync(indexPath, html.replace('<head>', `<head>\n    ${marker}`), 'utf-8')
+          }
+        } catch {
+          /* dist/index missing in partial builds */
+        }
       },
     },
   ],
