@@ -11,7 +11,6 @@ import { rowPosition } from "./auxiliaryData";
 import { autoLayoutAllFacePlateItems } from "./facePlateUtils";
 import { buildVjfGridLayout } from "./vjfLayout";
 import type { JackFieldPorts } from "./rackDistributionPresets";
-import { rowPosition } from "./auxiliaryData";
 import type {
   DeviceData,
   DeviceTemplate,

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useSchematicStore } from "../store";
 import WorkspaceSettingsSection from "./WorkspaceSettingsSection";
+import CollapsibleModuleSection from "./CollapsibleModuleSection";
 import { DEFAULT_SCROLL_CONFIG, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_PAGE_MODE } from "../types";
 import type { LabelCaseMode, PanMode, ScrollAction, ScrollConfig, StubLabelPageMode } from "../types";
 
@@ -168,13 +169,9 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
         {/* Body — scrollable */}
         <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
           {activeTab === "canvas" && (
-            <>
-              {/* Navigation */}
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2">
-                  Navigation
-                </div>
-                <div className="space-y-0.5">
+            <div className="space-y-2">
+              <CollapsibleModuleSection title="Navigation" persistKey="prefs:canvas:navigation" defaultOpen>
+              <div className="space-y-0.5">
                   {/* Configurable row */}
                   <div className="flex items-center justify-between py-1">
                     <span className="text-xs text-[var(--color-text)]">Left drag</span>
@@ -203,13 +200,9 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                     <span className="text-xs text-[var(--color-text-muted)] w-[140px] text-right">Pan canvas</span>
                   </div>
                 </div>
-              </div>
+              </CollapsibleModuleSection>
 
-              {/* Scroll Wheel */}
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2">
-                  Scroll Wheel
-                </div>
+              <CollapsibleModuleSection title="Scroll wheel" persistKey="prefs:canvas:scroll" defaultOpen>
                 <div className="space-y-0.5">
                   <ScrollRow
                     label="Scroll"
@@ -227,13 +220,9 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                     onChange={(v) => update({ ctrlScroll: v })}
                   />
                 </div>
-              </div>
+              </CollapsibleModuleSection>
 
-              {/* Sensitivity */}
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2">
-                  Sensitivity
-                </div>
+              <CollapsibleModuleSection title="Sensitivity" persistKey="prefs:canvas:sensitivity">
                 <div className="space-y-0.5">
                   <SensitivityRow
                     label="Zoom speed"
@@ -246,13 +235,9 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                     onChange={(v) => update({ panSpeed: v })}
                   />
                 </div>
-              </div>
+              </CollapsibleModuleSection>
 
-              {/* Trackpad */}
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2">
-                  Trackpad
-                </div>
+              <CollapsibleModuleSection title="Trackpad" persistKey="prefs:canvas:trackpad">
                 <label className="flex items-center justify-between py-1 cursor-pointer">
                   <span className="text-xs text-[var(--color-text)]">Auto-detect trackpad</span>
                   <input
@@ -265,13 +250,9 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                 <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
                   When off, all scroll input uses the scroll wheel settings above
                 </p>
-              </div>
+              </CollapsibleModuleSection>
 
-              {/* Edge Interaction */}
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2">
-                  Edge Interaction
-                </div>
+              <CollapsibleModuleSection title="Edge interaction" persistKey="prefs:canvas:edge">
                 <div className="flex items-center justify-between py-1">
                   <span className="text-xs text-[var(--color-text)]">Connection hitbox width</span>
                   <div className="flex items-center gap-2">
@@ -292,13 +273,9 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                 <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
                   Smaller = easier to create new connections without selecting existing ones
                 </p>
-              </div>
+              </CollapsibleModuleSection>
 
-              {/* Auto-Route */}
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2">
-                  Auto-Route
-                </div>
+              <CollapsibleModuleSection title="Auto-route" persistKey="prefs:canvas:autoroute">
                 <div className="flex items-center justify-between py-1">
                   <span className="text-xs text-[var(--color-text)]">When disabling auto-route</span>
                   <select
@@ -319,16 +296,13 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                 <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
                   Choose whether to keep auto-routed paths or revert to your previous routing
                 </p>
-              </div>
-            </>
+              </CollapsibleModuleSection>
+            </div>
           )}
 
           {activeTab === "display" && (
-            <>
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2">
-                  Units
-                </div>
+            <div className="space-y-2">
+              <CollapsibleModuleSection title="Units" persistKey="prefs:display:units" defaultOpen>
                 <div className="flex items-center justify-between py-1">
                   <span className="text-xs text-[var(--color-text)]">Measurement system</span>
                   <select
@@ -344,13 +318,9 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                   Tower elevations, room distances, and rack dimensions display in the selected system. trackIT stores
                   source heights in metres; imperial values are converted for display.
                 </p>
-              </div>
+              </CollapsibleModuleSection>
 
-              {/* Labels */}
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2">
-                  Labels
-                </div>
+              <CollapsibleModuleSection title="Labels" persistKey="prefs:display:labels" defaultOpen>
                 <div className="flex items-center justify-between py-1">
                   <span className="text-xs text-[var(--color-text)]">Display label case</span>
                   <select
@@ -391,13 +361,9 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                 <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
                   Allow long device labels to wrap onto a second line on the schematic and rack views, instead of truncating with an ellipsis.
                 </p>
-              </div>
+              </CollapsibleModuleSection>
 
-              {/* Stub labels */}
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2">
-                  Stub labels
-                </div>
+              <CollapsibleModuleSection title="Stub labels" persistKey="prefs:display:stub-labels">
                 <div className="flex items-center justify-between py-1">
                   <span className="text-xs text-[var(--color-text)]">Show port name on stub labels</span>
                   <input
@@ -437,13 +403,9 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                 <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
                   When to display the destination page on stub labels. Cross-page only suppresses the tag when both ends are on the same printed page.
                 </p>
-              </div>
+              </CollapsibleModuleSection>
 
-              {/* Costs */}
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2">
-                  Costs
-                </div>
+              <CollapsibleModuleSection title="Costs" persistKey="prefs:display:costs">
                 <div className="flex items-center justify-between py-1">
                   <span className="text-xs text-[var(--color-text)]">Currency</span>
                   <select
@@ -469,11 +431,20 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                 <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
                   Symbol used for cost fields in reports. All entered costs are assumed to be in this currency — no conversion is applied.
                 </p>
-              </div>
-            </>
+              </CollapsibleModuleSection>
+            </div>
           )}
 
-          {activeTab === "workspace" && <WorkspaceSettingsSection />}
+          {activeTab === "workspace" && (
+            <CollapsibleModuleSection
+              title="Sidebars & workspace"
+              hint="Devices, trackIT numbers, view options, presets"
+              persistKey="prefs:workspace"
+              defaultOpen
+            >
+              <WorkspaceSettingsSection />
+            </CollapsibleModuleSection>
+          )}
         </div>
 
         {/* Footer */}

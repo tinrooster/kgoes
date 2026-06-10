@@ -70,7 +70,7 @@ import {
 import { findTowerPlacementForDevice } from "../towerDraftPlacementLookup";
 import { resolvePlacementAzimuthDeg, resolvePlacementTowerFace } from "../towerDraftFaces";
 import TowerDeviceMountEditor from "./TowerDeviceMountEditor";
-import CollapsibleDetailSection, { summarizePortsHint } from "./CollapsibleDetailSection";
+import CollapsibleModuleSection, { summarizePortsHint } from "./CollapsibleModuleSection";
 
 const ALL_SIGNAL_TYPES = (Object.keys(SIGNAL_LABELS) as SignalType[]).sort(
   (a, b) => SIGNAL_LABELS[a].localeCompare(SIGNAL_LABELS[b]),
@@ -944,8 +944,6 @@ export default function DeviceEditor() {
     return parts.length > 0 ? parts.join(" · ") : "Rack, network, power";
   }, [rackHeightU, mountingClass, hostname, powerDrawW]);
 
-  const towerDetailMode = !!towerPlacementCtx;
-
   const dialogTitle = useMemo(() => {
     if (!node) return "";
     return (
@@ -1019,12 +1017,10 @@ export default function DeviceEditor() {
         )}
 
         {/* Body */}
-        <div
-          className={`flex-1 overflow-y-auto ${towerDetailMode ? "p-3 space-y-2" : "p-4 space-y-4"}`}
-        >
+        <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {towerPlacementCtx && (
-            <DeviceEditorTowerSection
-              towerMode
+            <DeviceEditorSection
+              sectionId="mount-tower"
               title="Mount on tower"
               hint={towerMountHint}
               defaultOpen
@@ -1035,15 +1031,15 @@ export default function DeviceEditor() {
                 placementId={towerPlacementCtx.placement.id}
                 measurementSystem={measurementSystem}
               />
-            </DeviceEditorTowerSection>
+            </DeviceEditorSection>
           )}
 
-          <DeviceEditorTowerSection
-            towerMode={towerDetailMode}
+          <DeviceEditorSection
+            sectionId="device-details"
             title="Device details"
             hint={deviceDetailsHint}
           >
-          <div className={towerDetailMode ? "space-y-4" : "contents"}>
+          <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Device Name">
               <input
@@ -1305,14 +1301,14 @@ export default function DeviceEditor() {
             />
           </div>
           </div>
-          </DeviceEditorTowerSection>
+          </DeviceEditorSection>
 
-          <DeviceEditorTowerSection
-            towerMode={towerDetailMode}
+          <DeviceEditorSection
+            sectionId="ports"
             title="Ports"
             hint={summarizePortsHint(ports)}
           >
-          <div className={towerDetailMode ? "space-y-4" : "contents"}>
+          <div className="space-y-4">
 
           {/* Port Visibility */}
           <PortVisibilitySection
@@ -1406,14 +1402,14 @@ export default function DeviceEditor() {
           )}
 
           </div>
-          </DeviceEditorTowerSection>
+          </DeviceEditorSection>
 
-          <DeviceEditorTowerSection
-            towerMode={towerDetailMode}
+          <DeviceEditorSection
+            sectionId="rack-power-more"
             title="Rack, power & more"
             hint={rackMoreHint}
           >
-          <div className={towerDetailMode ? "space-y-4" : "contents"}>
+          <div className="space-y-4">
 
           {!towerPlacementCtx &&
             (deviceType.startsWith("rf-") ||
@@ -1989,7 +1985,7 @@ export default function DeviceEditor() {
             </div>
           </details>
           </div>
-          </DeviceEditorTowerSection>
+          </DeviceEditorSection>
         </div>
 
         {/* Footer */}
@@ -2091,24 +2087,28 @@ export default function DeviceEditor() {
   );
 }
 
-function DeviceEditorTowerSection({
-  towerMode,
+function DeviceEditorSection({
+  sectionId,
   title,
   hint,
   defaultOpen,
   children,
 }: {
-  towerMode: boolean;
+  sectionId: string;
   title: string;
   hint?: string;
   defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
-  if (!towerMode) return <>{children}</>;
   return (
-    <CollapsibleDetailSection title={title} hint={hint} defaultOpen={defaultOpen}>
+    <CollapsibleModuleSection
+      title={title}
+      hint={hint}
+      defaultOpen={defaultOpen}
+      persistKey={`device-editor:${sectionId}`}
+    >
       {children}
-    </CollapsibleDetailSection>
+    </CollapsibleModuleSection>
   );
 }
 

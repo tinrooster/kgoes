@@ -21,6 +21,7 @@ import {
 } from "../trackitAppLinks";
 import { TiButton } from "./ti/TiBase";
 import { SidebarPanelHeader, SidebarPanelShell, SidebarRail } from "./sidebarChrome";
+import CollapsibleModuleSection from "./CollapsibleModuleSection";
 
 const PROJECT_CLS_COLOR: Record<string, string> = {
   studio: "#3b82f6",
@@ -179,7 +180,13 @@ export default function TrackItNumberingPanel({
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+        <CollapsibleModuleSection
+          title="Auto-assign"
+          hint={unnumberedCount ? `${unnumberedCount} unnumbered` : "All numbered"}
+          persistKey="trackit-numbers:auto-assign"
+          defaultOpen
+        >
         <div
           style={{
             borderRadius: 11,
@@ -223,28 +230,21 @@ export default function TrackItNumberingPanel({
             </TiButton>
           </div>
         </div>
+        </CollapsibleModuleSection>
 
         {reserved.length === 0 ? (
-          <p style={{ fontSize: 12.5, color: "var(--ti-ink-2)", lineHeight: 1.5, margin: 0, fontFamily: "var(--ti-font-sans)" }}>
+          <p style={{ fontSize: 12.5, color: "var(--ti-ink-2)", lineHeight: 1.5, margin: 0, fontFamily: "var(--ti-font-sans)", padding: "0 4px" }}>
             Reserve blocks in trackIT Plant → Numbering. With KGO-ES open from a drawing, new reservations appear here
             automatically.
           </p>
         ) : (
-          <div>
-            <div
-              style={{
-                fontSize: 10.5,
-                fontWeight: 600,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                color: "var(--ti-muted)",
-                marginBottom: 8,
-                fontFamily: "var(--ti-font-sans)",
-              }}
-            >
-              Reserved blocks — click to activate
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <CollapsibleModuleSection
+            title="Reserved blocks"
+            hint={`${reserved.length} block${reserved.length === 1 ? "" : "s"} — click to activate`}
+            persistKey="trackit-numbers:reserved-blocks"
+            defaultOpen
+          >
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {reserved.map((block) => {
                 const key = blockKey(block);
                 const isActive = activeBlock && blockKey(activeBlock) === key;
@@ -300,33 +300,17 @@ export default function TrackItNumberingPanel({
                   </button>
                 );
               })}
-            </div>
           </div>
+          </CollapsibleModuleSection>
         )}
 
         {activeBlock?.status === "reserved" ? (
-          <div
-            style={{
-              borderRadius: 10,
-              border: "1px solid var(--ti-border)",
-              background: "var(--ti-surface-2)",
-              padding: 12,
-            }}
+          <CollapsibleModuleSection
+            title="Active block slots"
+            hint={formatBlockRange(activeBlock)}
+            persistKey="trackit-numbers:active-block"
           >
-            <div
-              style={{
-                fontSize: 10.5,
-                fontWeight: 600,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                color: "var(--ti-muted)",
-                marginBottom: 8,
-                fontFamily: "var(--ti-font-sans)",
-              }}
-            >
-              Active: {formatBlockRange(activeBlock)}
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
               {blockSlotNumbers(activeBlock.start, activeBlock.blockSize, activeBlock.offset).map((n) => {
                 const usedDraw = numbersUsedOnDrawing(edges, activeBlock).has(n);
                 const usedReg = numbersUsedInTrackIt(activeBlock).has(n);
@@ -362,32 +346,20 @@ export default function TrackItNumberingPanel({
                   </button>
                 );
               })}
-            </div>
           </div>
+          </CollapsibleModuleSection>
         ) : null}
 
-        <div
-          style={{
-            borderRadius: 10,
-            border: "1px solid var(--ti-border)",
-            padding: 12,
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-          }}
+        <CollapsibleModuleSection
+          title="Selection & manual #"
+          hint={
+            selectionCableIds.length > 0
+              ? selectionCableIds.map(formatCableNumber).join(", ")
+              : `${selectedEdges.length} connection${selectedEdges.length === 1 ? "" : "s"}`
+          }
+          persistKey="trackit-numbers:selection"
         >
-          <div
-            style={{
-              fontSize: 10.5,
-              fontWeight: 600,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: "var(--ti-muted)",
-              fontFamily: "var(--ti-font-sans)",
-            }}
-          >
-            Selection ({selectedEdges.length})
-          </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {selectionCableIds.length > 0 ? (
             <p data-mono style={{ fontSize: 11.5, margin: 0, color: "var(--ti-ink)", fontFamily: "var(--ti-font-mono)" }}>
               Cable ID: {selectionCableIds.map(formatCableNumber).join(", ")}
@@ -443,6 +415,7 @@ export default function TrackItNumberingPanel({
             Clear cable ID on selection
           </TiButton>
         </div>
+        </CollapsibleModuleSection>
 
         {isTrackItPopup ? (
           <TiButton variant="outline" fullWidth onClick={focusTrackIt}>

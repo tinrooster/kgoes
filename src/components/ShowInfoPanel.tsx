@@ -3,6 +3,7 @@ import { useSchematicStore } from "../store";
 import { useSidebarStore } from "../sidebarStore";
 import { SidebarPanelHeader, SidebarPanelShell, SidebarRail } from "./sidebarChrome";
 import TitleBlockDialog from "./TitleBlockDialog";
+import CollapsibleModuleSection from "./CollapsibleModuleSection";
 
 const FIELDS: { key: string; label: string; placeholder: string }[] = [
   { key: "showName", label: "Show / Project", placeholder: "e.g. Morning News Live" },
@@ -95,6 +96,13 @@ export default function ShowInfoPanel({ mobile, onClose }: { mobile?: boolean; o
 
       {/* Fields */}
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
+        <CollapsibleModuleSection
+          title="Project fields"
+          hint={titleBlock.showName?.trim() || titleBlock.drawingTitle?.trim() || "Show / drawing metadata"}
+          persistKey="show-info:project-fields"
+          defaultOpen
+        >
+        <div className="space-y-2">
         {FIELDS.map(({ key, label, placeholder }) => (
           <FieldInput
             key={key}
@@ -105,7 +113,25 @@ export default function ShowInfoPanel({ mobile, onClose }: { mobile?: boolean; o
           />
         ))}
 
-        {/* Custom fields */}
+        <button
+          onClick={() => setShowEditor(true)}
+          className="w-full mt-1 px-2 py-1.5 text-[10px] uppercase tracking-wider rounded bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
+        >
+          Customize Title Block...
+        </button>
+        </div>
+        </CollapsibleModuleSection>
+
+        <CollapsibleModuleSection
+          title="Custom fields"
+          hint={
+            titleBlock.customFields?.length
+              ? `${titleBlock.customFields.length} field${titleBlock.customFields.length === 1 ? "" : "s"}`
+              : "None"
+          }
+          persistKey="show-info:custom-fields"
+        >
+        <div className="space-y-2">
         {titleBlock.customFields?.map((cf) => (
           <div key={cf.id}>
             <div className="flex items-center gap-0.5 mb-0.5">
@@ -138,14 +164,8 @@ export default function ShowInfoPanel({ mobile, onClose }: { mobile?: boolean; o
         >
           + Add Field
         </button>
-
-        {/* Customize button */}
-        <button
-          onClick={() => setShowEditor(true)}
-          className="w-full mt-1 px-2 py-1.5 text-[10px] uppercase tracking-wider rounded bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
-        >
-          Customize Title Block...
-        </button>
+        </div>
+        </CollapsibleModuleSection>
       </div>
 
       {showEditor && <TitleBlockDialog onClose={() => setShowEditor(false)} />}
