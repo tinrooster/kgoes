@@ -970,7 +970,7 @@ export default function DeviceEditor() {
     <FloatingPanel
       panelRef={dialogRef}
       defaultWidth={towerPlacementCtx ? 600 : 560}
-      title={towerPlacementCtx ? dialogTitle : "Device Properties"}
+      title={dialogTitle}
       subtitle={
         towerPlacementCtx
           ? towerMountHint
