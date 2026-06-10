@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_PANEL_LAYOUTS,
+  LEGACY_CANVAS_TOOLBAR_FLOAT,
   normalizePanelLayouts,
   resolveInspectorPlacement,
   resolveSnapEdge,
@@ -39,6 +41,28 @@ describe("normalizePanelLayouts", () => {
       inspector: { edge: "float", floatX: 4000, floatY: 2000 },
     });
     expect(layouts.inspector.edge).toBe("right");
+  });
+
+  it("defaults canvas toolbar to the top edge", () => {
+    expect(DEFAULT_PANEL_LAYOUTS.canvasToolbar.edge).toBe("top");
+  });
+
+  it("migrates legacy floated canvas toolbar default to top edge", () => {
+    const layouts = normalizePanelLayouts({
+      canvasToolbar: {
+        edge: "float",
+        floatX: LEGACY_CANVAS_TOOLBAR_FLOAT.floatX,
+        floatY: LEGACY_CANVAS_TOOLBAR_FLOAT.floatY,
+      },
+    });
+    expect(layouts.canvasToolbar.edge).toBe("top");
+  });
+
+  it("keeps a user-moved floated canvas toolbar", () => {
+    const layouts = normalizePanelLayouts({
+      canvasToolbar: { edge: "float", floatX: 240, floatY: 120 },
+    });
+    expect(layouts.canvasToolbar.edge).toBe("float");
   });
 });
 

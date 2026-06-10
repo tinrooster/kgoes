@@ -5,7 +5,7 @@
  * Bottom-left: Zoom cluster (−, %, +, fit)
  */
 
-import { memo, useEffect, useState } from "react";
+import { memo, useRef, useState } from "react";
 import { useReactFlow, useViewport } from "@xyflow/react";
 import { useSchematicStore } from "../store";
 import { useSidebarStore } from "../sidebarStore";
@@ -16,7 +16,35 @@ import { activeReservedBlocks } from "../trackitNumberingUtils";
 import { isPersistedDrawingViewport } from "../drawingPageUtils";
 import { dispatchOpenViewportEditor } from "../drawingViewportEvents";
 import { useDrawingViewportActions } from "../hooks/useDrawingViewportActions";
+import { useCanvasToolbarOverflow } from "../hooks/useCanvasToolbarOverflow";
 import AlignmentMenu from "./AlignmentMenu";
+
+const QUICK_TOOLBAR_COMPACT_KEY = "kgo-es-quick-toolbar-compact";
+
+type CompactMode = "auto" | "compact" | "labeled";
+
+function loadCompactMode(): CompactMode {
+  try {
+    const saved = window.localStorage.getItem(QUICK_TOOLBAR_COMPACT_KEY);
+    if (saved === "1") return "compact";
+    if (saved === "0") return "labeled";
+    if (saved === "auto") return "auto";
+  } catch {
+    // localStorage is optional here; ignore read errors.
+  }
+  return "auto";
+}
+
+function saveCompactMode(mode: CompactMode): void {
+  try {
+    window.localStorage.setItem(
+      QUICK_TOOLBAR_COMPACT_KEY,
+      mode === "compact" ? "1" : mode === "labeled" ? "0" : "auto",
+    );
+  } catch {
+    // localStorage is optional here; ignore write errors.
+  }
+}
 
 function Chip({
   label, icon, active, badge, compact, disabled = false, onClick, title,
@@ -109,25 +137,25 @@ function ZoomBtn({
 }
 
 function KgoCanvasToolbar() {
-  const [compactQuickActions, setCompactQuickActions] = useState(false);
+  const [compactMode, setCompactMode] = useState<CompactMode>(loadCompactMode);
+  const toolbarRowRef = useRef<HTMLDivElement>(null);
+  const toolbarMeasureRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem("kgo-es-quick-toolbar-compact");
-      if (saved === "1") setCompactQuickActions(true);
-    } catch {
-      // localStorage is optional here; ignore read errors.
-    }
-  }, []);
+  const expandRightPanel = useSidebarStore((s) => s.expandRightPanel);
+  const toolbarEdge = useSidebarStore((s) => s.panelLayouts.canvasToolbar.edge);
+  const embedded = toolbarEdge === "top" || toolbarEdge === "bottom";
+  const floating = useWorkspacePanelFloating();
+  const workspaceDrag = useWorkspacePanelDragHandle();
+  const autoCompact = useCanvasToolbarOverflow(toolbarRowRef, toolbarMeasureRef, embedded || floating);
+  const compactQuickActions =
+    compactMode === "compact" ? true : compactMode === "labeled" ? false : autoCompact;
+  const autoCompactActive = compactMode === "auto" && autoCompact;
 
   const toggleCompactQuickActions = () => {
-    setCompactQuickActions((prev) => {
-      const next = !prev;
-      try {
-        window.localStorage.setItem("kgo-es-quick-toolbar-compact", next ? "1" : "0");
-      } catch {
-        // localStorage is optional here; ignore write errors.
-      }
+    setCompactMode((prev) => {
+      const next: CompactMode =
+        prev === "auto" ? (autoCompact ? "labeled" : "compact") : prev === "compact" ? "labeled" : "compact";
+      saveCompactMode(next);
       return next;
     });
   };
@@ -162,11 +190,6 @@ function KgoCanvasToolbar() {
     }).length;
   });
 
-  const expandRightPanel = useSidebarStore((s) => s.expandRightPanel);
-  const toolbarEdge = useSidebarStore((s) => s.panelLayouts.canvasToolbar.edge);
-  const embedded = toolbarEdge === "top" || toolbarEdge === "bottom";
-  const floating = useWorkspacePanelFloating();
-  const workspaceDrag = useWorkspacePanelDragHandle();
   const onOpenNumbering = () => {
     expandRightPanel("trackIt");
   };
@@ -238,15 +261,18 @@ function KgoCanvasToolbar() {
     <WorkspacePanelDragHandle panelId="canvasToolbar" onStartDrag={workspaceDrag.startDrag} />
   ) : null;
 
-  const quickActions = (
+  const renderQuickActions = (compact: boolean) => (
     <>
         <button
           type="button"
           title="Cable numbering — assign numbers from reserved ranges"
           onClick={onOpenNumbering}
           style={{
-            display: "inline-flex", alignItems: "center", gap: 7,
-            height: 30, padding: "0 11px",
+            display: "inline-flex", alignItems: "center", gap: compact ? 0 : 7,
+            justifyContent: "center",
+            height: 30,
+            width: compact ? 30 : undefined,
+            padding: compact ? 0 : "0 11px",
             borderRadius: 8,
             border: `1px solid ${unnumberedCount > 0 ? "color-mix(in oklab, var(--ti-warning) 45%, transparent)" : "var(--ti-border)"}`,
             background: unnumberedCount > 0 ? "var(--ti-warning-soft)" : "color-mix(in oklab, var(--ti-surface) 92%, transparent)",
@@ -260,7 +286,7 @@ function KgoCanvasToolbar() {
           }}
         >
           <span style={{ fontWeight: 700, color: "var(--ti-accent-ink)", fontFamily: "var(--ti-font-mono)" }}>#</span>
-          Numbering
+          {!compact && "Numbering"}
           {unnumberedCount > 0 && (
             <span style={{
               display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -270,6 +296,7 @@ function KgoCanvasToolbar() {
               color: "oklch(99% 0 0)",
               fontSize: 10.5, fontWeight: 700,
               fontFamily: "var(--ti-font-mono)",
+              marginLeft: compact ? 0 : undefined,
             }}>{unnumberedCount}</span>
           )}
         </button>
@@ -277,7 +304,7 @@ function KgoCanvasToolbar() {
         <Chip
           icon="signal"
           label="Auto-route"
-          compact={compactQuickActions}
+          compact={compact}
           active={autoRoute}
           onClick={toggleAutoRoute}
           title={
@@ -291,14 +318,14 @@ function KgoCanvasToolbar() {
         <Chip
           icon="eye"
           label="Hide unconnected"
-          compact={compactQuickActions}
+          compact={compact}
           active={hideUnconnectedPorts}
           onClick={() => setHideUnconnectedPorts(!hideUnconnectedPorts)}
         />
         <Chip
           icon="lock"
           label="Lock canvas"
-          compact={compactQuickActions}
+          compact={compact}
           active={!canvasInteractive}
           onClick={toggleCanvasInteractive}
           title={canvasInteractive ? "Canvas is interactive — click to unlock" : "Canvas is locked — click to unlock"}
@@ -306,8 +333,14 @@ function KgoCanvasToolbar() {
         <AlignmentMenu variant="toolbar" />
         <button
           type="button"
-          title={compactQuickActions ? "Show labeled quick actions" : "Show compact icon quick actions"}
-          aria-label={compactQuickActions ? "Disable compact quick actions" : "Enable compact quick actions"}
+          title={
+            autoCompactActive
+              ? "Icons auto-compact — click to pin labeled buttons"
+              : compact
+                ? "Show labeled quick actions"
+                : "Show compact icon quick actions"
+          }
+          aria-label={compact ? "Disable compact quick actions" : "Enable compact quick actions"}
           onClick={toggleCompactQuickActions}
           style={{
             display: "inline-flex",
@@ -315,10 +348,10 @@ function KgoCanvasToolbar() {
             justifyContent: "center",
             height: 30,
             minWidth: 30,
-            padding: compactQuickActions ? "0 9px" : "0 10px",
+            padding: compact ? "0 9px" : "0 10px",
             borderRadius: 9,
-            border: `1px solid ${compactQuickActions ? "var(--ti-accent)" : "var(--ti-border)"}`,
-            background: compactQuickActions
+            border: `1px solid ${compact ? "var(--ti-accent)" : "var(--ti-border)"}`,
+            background: compact
               ? "var(--ti-accent-soft)"
               : "color-mix(in oklab, var(--ti-surface) 92%, transparent)",
             backdropFilter: "blur(6px)",
@@ -326,20 +359,20 @@ function KgoCanvasToolbar() {
             boxShadow: "var(--ti-shadow-sm)",
             fontSize: 11,
             fontWeight: 600,
-            color: compactQuickActions ? "var(--ti-accent-ink)" : "var(--ti-ink-2)",
+            color: compact ? "var(--ti-accent-ink)" : "var(--ti-ink-2)",
             fontFamily: "var(--ti-font-sans)",
             cursor: "pointer",
             transition: "background 100ms, border-color 100ms, color 100ms",
           }}
         >
-          {compactQuickActions ? "I" : "Icons"}
+          {compact ? "I" : "Icons"}
         </button>
 
         <select
           value={viewportId}
           onChange={(e) => onViewportChange(e.target.value)}
           title="Jump to a saved viewport (overview, room, or custom)"
-          style={selectStyle}
+          style={{ ...selectStyle, maxWidth: compact ? 120 : 160 }}
         >
           {viewportOptions.map((v) => (
             <option key={v.id} value={v.id}>{v.label}</option>
@@ -398,12 +431,31 @@ function KgoCanvasToolbar() {
     </>
   );
 
+  const toolbarMeasureRow = (
+    <div
+      ref={toolbarMeasureRef}
+      aria-hidden
+      className="pointer-events-none absolute left-[-9999px] top-0 flex items-center gap-2 whitespace-nowrap"
+    >
+      {renderQuickActions(false)}
+      {embedded ? zoomCluster : null}
+    </div>
+  );
+
   if (embedded) {
     return (
-      <div data-print-hide data-workspace-panel="canvasToolbar" className="flex flex-wrap items-center gap-2">
-        {dragHandle}
-        {quickActions}
-        {zoomCluster}
+      <div data-print-hide data-workspace-panel="canvasToolbar" className="relative min-w-0 w-full">
+        {toolbarMeasureRow}
+        <div
+          ref={toolbarRowRef}
+          className="flex min-w-0 w-full flex-nowrap items-center gap-2 overflow-hidden"
+        >
+          {dragHandle}
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+            {renderQuickActions(compactQuickActions)}
+          </div>
+          <div className="ml-auto shrink-0">{zoomCluster}</div>
+        </div>
       </div>
     );
   }
@@ -412,6 +464,7 @@ function KgoCanvasToolbar() {
     <div
       data-print-hide
       data-workspace-panel="canvasToolbar"
+      className="relative"
       style={{
         position: floating ? "relative" : "absolute",
         left: floating ? undefined : 14,
@@ -423,6 +476,7 @@ function KgoCanvasToolbar() {
         maxWidth: floating ? 520 : undefined,
       }}
     >
+      {toolbarMeasureRow}
       {(floating || workspaceDrag) && (
         <div className="flex items-center gap-1 px-1 py-0.5 border-b border-[var(--ti-border)] bg-[var(--color-surface)] rounded-t-lg">
           {dragHandle}
@@ -431,8 +485,11 @@ function KgoCanvasToolbar() {
           </span>
         </div>
       )}
-      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", padding: floating ? "0 8px" : 0 }}>
-        {quickActions}
+      <div
+        ref={toolbarRowRef}
+        style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap", overflow: "hidden", padding: floating ? "0 8px" : 0 }}
+      >
+        {renderQuickActions(compactQuickActions)}
       </div>
       <div style={{ padding: floating ? "0 8px 8px" : undefined, alignSelf: floating ? "flex-start" : undefined, position: floating ? "relative" : "absolute", left: floating ? undefined : 14, bottom: floating ? undefined : 14 }}>
         {zoomCluster}

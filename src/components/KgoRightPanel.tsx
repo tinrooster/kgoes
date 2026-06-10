@@ -392,7 +392,7 @@ function EdgeInspector({ edgeId }: { edgeId: string }) {
 // ─── KgoRightPanel ────────────────────────────────────────────────────────────
 
 function KgoRightPanel() {
-  const rightOpen = useSidebarStore((s) => s.rightInspectorOpen ?? true);
+  const rightOpen = useSidebarStore((s) => s.rightInspectorOpen ?? false);
   const setRightOpen = useSidebarStore((s) => s.setRightInspectorOpen);
   const inspectorDockSide =
     useSidebarStore((s) => s.panelLayouts.inspector?.edge) === "left" ? "left" : "right";

@@ -34,11 +34,15 @@ function WorkspacePanelFrame({
   children: ReactNode;
 }) {
   if (!floating) {
+    const dockedClass =
+      id === "canvasToolbar"
+        ? "flex min-h-0 max-h-full min-w-0 w-full flex-1 flex-col overflow-hidden"
+        : "flex h-full min-h-0 max-h-full shrink-0 flex-col overflow-hidden";
     return (
       <div
         data-workspace-panel={id}
         data-workspace-docked="true"
-        className="flex h-full min-h-0 max-h-full shrink-0 flex-col overflow-hidden"
+        className={dockedClass}
       >
         {children}
       </div>
@@ -172,7 +176,7 @@ export default function SchematicWorkspaceLayout({
 
           <div className="flex flex-col flex-1 min-w-0 min-h-0">
             {dockedTop.length > 0 && (
-              <div data-print-hide className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 flex flex-wrap gap-2 items-center">
+              <div data-print-hide className="flex min-w-0 w-full shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5">
                 {dockedTop.map((id) => (
                   <WorkspacePanelFrame key={id} id={id} floating={false} layout={panelLayouts[id]}>
                     {renderPanel(id)}

@@ -1061,7 +1061,6 @@ export default function DeviceEditor() {
               sectionId="mount-tower"
               title="Mount on tower"
               hint={towerMountHint}
-              defaultOpen
             >
               <TowerDeviceMountEditor
                 embedded
@@ -2247,7 +2246,6 @@ function PortVisibilitySection({
       title="Port visibility"
       depth={1}
       tint="sand"
-      defaultOpen
       persistKey="device-editor:ports:visibility"
     >
       <div className="space-y-3">
@@ -2395,7 +2393,6 @@ function PortSection({
       title={title}
       depth={1}
       tint="sand"
-      defaultOpen
       persistKey={`device-editor:ports:${direction}`}
       headerActions={
         <>

@@ -35,8 +35,11 @@ export const DEFAULT_PANEL_LAYOUTS: Record<WorkspacePanelId, WorkspacePanelLayou
   colors: { edge: "right", floatX: 144, floatY: 120 },
   cadTools: { edge: "right", floatX: 160, floatY: 136 },
   inspector: { edge: "right", floatX: 200, floatY: 72 },
-  canvasToolbar: { edge: "float", floatX: 14, floatY: 14 },
+  canvasToolbar: { edge: "top", floatX: 14, floatY: 14 },
 };
+
+/** Legacy default before toolbar docked to top edge. */
+export const LEGACY_CANVAS_TOOLBAR_FLOAT = { floatX: 14, floatY: 14 };
 
 export const SNAP_EDGE_PX = 52;
 
@@ -49,6 +52,14 @@ function sanitizeLayout(id: WorkspacePanelId, layout: WorkspacePanelLayout): Wor
   }
   if (id === "inspector" && (layout.edge === "top" || layout.edge === "bottom")) {
     return { ...layout, edge: "right" };
+  }
+  if (
+    id === "canvasToolbar" &&
+    layout.edge === "float" &&
+    layout.floatX === LEGACY_CANVAS_TOOLBAR_FLOAT.floatX &&
+    layout.floatY === LEGACY_CANVAS_TOOLBAR_FLOAT.floatY
+  ) {
+    return { ...layout, edge: "top" };
   }
   return layout;
 }

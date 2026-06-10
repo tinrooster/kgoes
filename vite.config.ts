@@ -22,12 +22,16 @@ function resolveGitHash(): string {
     process.env.GIT_COMMIT?.trim() ||
     process.env.CI_COMMIT_SHORT_SHA?.trim() ||
     process.env.SOURCE_VERSION?.trim() ||
+    process.env.BUILD_ID?.trim() ||
+    process.env.CI_PIPELINE_IID?.trim() ||
     ''
   if (fromEnv && fromEnv !== 'unknown') return fromEnv
   try {
     return execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
   } catch {
-    return 'unknown'
+    // Launch Docker builds often omit .git — still need a unique id per image so
+    // productionBuildCheck can bust stale PWA shells after redeploy.
+    return `b${Date.now().toString(36)}`
   }
 }
 
@@ -78,6 +82,9 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,svg,png,ttf,json}'],
         globIgnores: [
+          // Network-only: precached index.html keeps users on old hashed bundles after deploy.
+          '**/index.html',
+          '**/build-info.json',
           '**/deviceLibrary.fallback.json',
           '**/og-image.png',
           '**/github-social.png',

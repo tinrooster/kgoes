@@ -1629,7 +1629,6 @@ export default function DeviceLibrary() {
             ownedQuantityMap={ownedQuantityMap}
             onAddToOwned={handleAddToOwned}
             onTemplateContextMenu={handleTemplateContextMenu}
-            defaultOpen
           />
         )}
 
@@ -1723,7 +1722,7 @@ export default function DeviceLibrary() {
                 label="Favorites"
                 templates={favoritesList}
                 query={query}
-                defaultOpen={true}
+                defaultOpen={false}
                 presetIds={presetIds}
                 favoriteSet={favoriteSet}
                 ownedQuantityMap={ownedQuantityMap}
@@ -1741,7 +1740,7 @@ export default function DeviceLibrary() {
                 ownedQuantityMap={ownedQuantityMap}
                 onAddToOwned={handleAddToOwned}
                 onTemplateContextMenu={handleTemplateContextMenu}
-                defaultOpen={libraryBrowseMode === "userTemplatesOnly"}
+                defaultOpen={false}
               />
             )}
 

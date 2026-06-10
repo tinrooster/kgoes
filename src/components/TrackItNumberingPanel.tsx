@@ -185,7 +185,6 @@ export default function TrackItNumberingPanel({
           title="Auto-assign"
           hint={unnumberedCount ? `${unnumberedCount} unnumbered` : "All numbered"}
           persistKey="trackit-numbers:auto-assign"
-          defaultOpen
         >
         <div
           style={{
@@ -242,7 +241,6 @@ export default function TrackItNumberingPanel({
             title="Reserved blocks"
             hint={`${reserved.length} block${reserved.length === 1 ? "" : "s"} — click to activate`}
             persistKey="trackit-numbers:reserved-blocks"
-            defaultOpen
           >
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {reserved.map((block) => {

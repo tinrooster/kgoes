@@ -137,7 +137,7 @@ function loadSidebarPrefs(): SidebarPrefs {
     toolPaletteIconOnly: false,
     libraryBrowseMode: loadLibraryBrowseMode(),
     panelsVisible: { ...DEFAULT_PANELS_VISIBLE },
-    rightInspectorOpen: true,
+    rightInspectorOpen: false,
     rightPanelOrder: [...DEFAULT_RIGHT_PANEL_ORDER],
     panelLayouts: { ...DEFAULT_PANEL_LAYOUTS },
     ...trackItSessionDefaults(),

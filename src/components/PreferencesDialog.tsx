@@ -189,7 +189,7 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
         <div className="px-5 py-4 space-y-4">
           {activeTab === "canvas" && (
             <div className="space-y-2">
-              <CollapsibleModuleSection title="Navigation" persistKey="prefs:canvas:navigation" defaultOpen>
+              <CollapsibleModuleSection title="Navigation" persistKey="prefs:canvas:navigation">
               <div className="space-y-0.5">
                   {/* Configurable row */}
                   <div className="flex items-center justify-between py-1">
@@ -221,7 +221,7 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                 </div>
               </CollapsibleModuleSection>
 
-              <CollapsibleModuleSection title="Scroll wheel" persistKey="prefs:canvas:scroll" defaultOpen>
+              <CollapsibleModuleSection title="Scroll wheel" persistKey="prefs:canvas:scroll">
                 <div className="space-y-0.5">
                   <ScrollRow
                     label="Scroll"
@@ -321,7 +321,7 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
 
           {activeTab === "display" && (
             <div className="space-y-2">
-              <CollapsibleModuleSection title="Units" persistKey="prefs:display:units" defaultOpen>
+              <CollapsibleModuleSection title="Units" persistKey="prefs:display:units">
                 <div className="flex items-center justify-between py-1">
                   <span className="text-xs text-[var(--color-text)]">Measurement system</span>
                   <select
@@ -339,7 +339,7 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                 </p>
               </CollapsibleModuleSection>
 
-              <CollapsibleModuleSection title="Labels" persistKey="prefs:display:labels" defaultOpen>
+              <CollapsibleModuleSection title="Labels" persistKey="prefs:display:labels">
                 <div className="flex items-center justify-between py-1">
                   <span className="text-xs text-[var(--color-text)]">Display label case</span>
                   <select
@@ -459,7 +459,6 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
               title="Sidebars & workspace"
               hint="Devices, trackIT numbers, view options, presets"
               persistKey="prefs:workspace"
-              defaultOpen
             >
               <WorkspaceSettingsSection />
             </CollapsibleModuleSection>

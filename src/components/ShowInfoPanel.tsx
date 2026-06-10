@@ -100,7 +100,6 @@ export default function ShowInfoPanel({ mobile, onClose }: { mobile?: boolean; o
           title="Project fields"
           hint={titleBlock.showName?.trim() || titleBlock.drawingTitle?.trim() || "Show / drawing metadata"}
           persistKey="show-info:project-fields"
-          defaultOpen
         >
         <div className="space-y-2">
         {FIELDS.map(({ key, label, placeholder }) => (
