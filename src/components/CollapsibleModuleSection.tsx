@@ -1,10 +1,18 @@
-import { useCallback, useState, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import {
   readCollapsibleOpen,
   readCollapsiblePinned,
   writeCollapsibleOpen,
   writeCollapsiblePinned,
 } from "../ui/collapsibleSectionPersistence";
+import {
+  collapsibleSectionSurfaceStyle,
+  sectionTintFromPersistKey,
+  type CollapsibleSectionDepth,
+  type SectionTint,
+} from "../ui/collapsibleSectionSurface";
+
+export type { CollapsibleSectionDepth, SectionTint } from "../ui/collapsibleSectionSurface";
 
 export interface CollapsibleModuleSectionProps {
   title: string;
@@ -15,6 +23,12 @@ export interface CollapsibleModuleSectionProps {
   /** When set, open/pinned state is restored per browser. */
   persistKey?: string;
   id?: string;
+  /** 0 = top-level module section; 1–2 = nested sub-sections with indent and lighter shade. */
+  depth?: CollapsibleSectionDepth;
+  /** Actions aligned right in the header (e.g. + Add). */
+  headerActions?: ReactNode;
+  /** Pastel fill family; defaults from persistKey hash or slate at depth 1+. */
+  tint?: SectionTint;
 }
 
 function PinIcon({ filled }: { filled: boolean }) {
@@ -43,9 +57,19 @@ function resolveInitialOpen(persistKey: string | undefined, defaultOpen: boolean
   return defaultOpen;
 }
 
+function resolveTint(
+  explicit: SectionTint | undefined,
+  persistKey: string | undefined,
+  depth: CollapsibleSectionDepth,
+): SectionTint {
+  if (explicit) return explicit;
+  if (depth > 0) return "slate";
+  return sectionTintFromPersistKey(persistKey);
+}
+
 /**
  * Standard rollup section for ES module panels (device editor, trackIT numbering, preferences).
- * Title + optional hint when collapsed; pin keeps the section expanded across sessions.
+ * Light pastel fill per section; pin keeps the section expanded across sessions.
  */
 export default function CollapsibleModuleSection({
   title,
@@ -55,7 +79,16 @@ export default function CollapsibleModuleSection({
   className = "",
   persistKey,
   id,
+  depth = 0,
+  headerActions,
+  tint: tintProp,
 }: CollapsibleModuleSectionProps) {
+  const tint = resolveTint(tintProp, persistKey, depth);
+  const surface = useMemo(
+    () => collapsibleSectionSurfaceStyle(tint, depth),
+    [tint, depth],
+  );
+
   const [open, setOpen] = useState(() => resolveInitialOpen(persistKey, defaultOpen));
   const [pinned, setPinned] = useState(() =>
     persistKey ? readCollapsiblePinned(persistKey) : false,
@@ -84,10 +117,13 @@ export default function CollapsibleModuleSection({
     if (next) setOpenPersisted(true);
   };
 
+  const showPin = persistKey && depth === 0;
+
   return (
     <div
       id={id}
-      className={`rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] overflow-hidden ${className}`}
+      className={`${surface.wrapperClass} ${className}`}
+      style={surface.wrapper}
     >
       <div
         role="button"
@@ -99,7 +135,8 @@ export default function CollapsibleModuleSection({
             handleHeaderClick();
           }
         }}
-        className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-[var(--color-surface)] transition-colors cursor-pointer"
+        className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors cursor-pointer hover:brightness-[0.98]"
+        style={surface.header}
         aria-expanded={open}
       >
         <span
@@ -108,9 +145,7 @@ export default function CollapsibleModuleSection({
         >
           ▶
         </span>
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-heading)] shrink-0">
-          {title}
-        </span>
+        <span className={`${surface.titleClass} shrink-0`}>{title}</span>
         {!open && hint ? (
           <span className="text-[11px] text-[var(--color-text-muted)] truncate min-w-0 flex-1 text-right font-normal normal-case tracking-normal">
             {hint}
@@ -118,14 +153,23 @@ export default function CollapsibleModuleSection({
         ) : (
           <span className="flex-1 min-w-0" />
         )}
-        {persistKey ? (
+        {headerActions ? (
+          <span
+            className="shrink-0 flex items-center gap-2"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            {headerActions}
+          </span>
+        ) : null}
+        {showPin ? (
           <button
             type="button"
             onClick={handlePinClick}
             className={`shrink-0 rounded p-1 transition-colors cursor-pointer ${
               pinned
-                ? "text-[var(--color-accent,#2563eb)] bg-[var(--color-surface)]"
-                : "text-[var(--color-text-muted)] hover:text-[var(--color-text-heading)] hover:bg-[var(--color-surface)]"
+                ? "text-[var(--color-accent,#2563eb)] bg-[color-mix(in_oklab,var(--color-bg)_85%,transparent)]"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text-heading)] hover:bg-[color-mix(in_oklab,var(--color-bg)_70%,transparent)]"
             }`}
             title={pinned ? "Unpin section (allow collapse)" : "Pin section open"}
             aria-label={pinned ? "Unpin section" : "Pin section open"}
@@ -136,7 +180,9 @@ export default function CollapsibleModuleSection({
         ) : null}
       </div>
       {open ? (
-        <div className="border-t border-[var(--color-border)] px-3 py-3">{children}</div>
+        <div className={surface.bodyClass} style={surface.body}>
+          {children}
+        </div>
       ) : null}
     </div>
   );

@@ -71,6 +71,8 @@ import { findTowerPlacementForDevice } from "../towerDraftPlacementLookup";
 import { resolvePlacementAzimuthDeg, resolvePlacementTowerFace } from "../towerDraftFaces";
 import TowerDeviceMountEditor from "./TowerDeviceMountEditor";
 import CollapsibleModuleSection, { summarizePortsHint } from "./CollapsibleModuleSection";
+import FloatingPanel from "./FloatingPanel";
+import type { SectionTint } from "../ui/collapsibleSectionSurface";
 
 const ALL_SIGNAL_TYPES = (Object.keys(SIGNAL_LABELS) as SignalType[]).sort(
   (a, b) => SIGNAL_LABELS[a].localeCompare(SIGNAL_LABELS[b]),
@@ -224,7 +226,6 @@ export default function DeviceEditor() {
   // Port visibility local state
   const [showAllPorts, setShowAllPorts] = useState(false);
   const [hiddenPorts, setHiddenPorts] = useState<string[]>([]);
-  const [portVisOpen, setPortVisOpen] = useState(false);
 
   // DHCP server config
   const [dhcpServer, setDhcpServer] = useState<DhcpServerConfig | undefined>(undefined);
@@ -351,7 +352,6 @@ export default function DeviceEditor() {
     );
     setShowAllPorts(node.data.showAllPorts ?? false);
     setHiddenPorts(node.data.hiddenPorts ?? []);
-    setPortVisOpen(false);
     setDhcpServer(node.data.dhcpServer ? { ...node.data.dhcpServer } : undefined);
     setPowerDrawW(node.data.powerDrawW);
     setPowerCapacityW(node.data.powerCapacityW);
@@ -966,44 +966,83 @@ export default function DeviceEditor() {
   const passthroughPorts = ports.filter((p) => p.direction === "passthrough");
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
-      data-allow-scroll
-      onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}
+    <>
+    <FloatingPanel
+      panelRef={dialogRef}
+      defaultWidth={towerPlacementCtx ? 600 : 560}
+      title={towerPlacementCtx ? dialogTitle : "Device Properties"}
+      subtitle={
+        towerPlacementCtx
+          ? towerMountHint
+            ? `Tower equipment · ${towerMountHint}`
+            : "Tower equipment · device properties"
+          : undefined
+      }
+      onClose={close}
+      onBackdropClick={close}
       onKeyDownCapture={onCtrlEnter}
-      onWheel={(e) => e.stopPropagation()}
-    >
-      <div
-        ref={dialogRef}
-        tabIndex={-1}
-        data-allow-scroll
-        className={`bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg shadow-2xl max-h-[85vh] flex flex-col outline-none ${
-          towerPlacementCtx ? "w-[600px]" : "w-[560px]"
-        }`}
-      >
-        {/* Header */}
-        <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-[var(--color-text-heading)] truncate">
-              {towerPlacementCtx ? dialogTitle : "Device Properties"}
-            </h2>
-            {towerPlacementCtx && (
-              <p className="text-[11px] text-[var(--color-text-muted)] truncate mt-0.5">
-                {towerMountHint ? `Tower equipment · ${towerMountHint}` : "Tower equipment · device properties"}
-              </p>
-            )}
-          </div>
+      footer={
+        <div className="px-4 py-3 flex items-center gap-2">
+          <button
+            onClick={handleSaveAsTemplate}
+            className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
+            title="Save this device configuration as a reusable user template"
+          >
+            Save as User Template
+          </button>
+          {templateId && customTemplates.some((t) => t.id === templateId) ? (
+            <button
+              onClick={handleUpdateUserTemplate}
+              className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
+              title="Overwrite the saved user template with this configuration"
+            >
+              Update User Template
+            </button>
+          ) : templateId ? (
+            <button
+              onClick={handleSaveAsPreset}
+              className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
+              title="Set this configuration as the project default for this template"
+            >
+              Save as Preset
+            </button>
+          ) : null}
+          {hasPreset && dirtyVsPreset && (
+            <button
+              onClick={handleRevertToPreset}
+              className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
+              title="Reset ports and visibility to the project preset"
+            >
+              Revert to Preset
+            </button>
+          )}
+          {dirtyVsTemplate && (
+            <button
+              onClick={handleRevertToTemplate}
+              className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
+              title="Reset ports and visibility to the original template defaults"
+            >
+              Revert to Template
+            </button>
+          )}
+          <div className="flex-1" />
           <button
             onClick={close}
-            className="text-[var(--color-text-muted)] hover:text-[var(--color-text-heading)] text-lg leading-none cursor-pointer shrink-0"
+            className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
           >
-            &times;
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            className="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors cursor-pointer"
+          >
+            Apply
           </button>
         </div>
-
-        {/* Template-drift notice */}
+      }
+    >
         {drift && (
-          <div className="px-4 py-2 border-b border-[var(--color-border)] bg-blue-50 dark:bg-blue-900/20 flex items-center justify-between gap-2">
+          <div className="mx-3 mt-3 px-4 py-2 border border-[var(--color-border)] rounded-md bg-blue-50 dark:bg-blue-900/20 flex items-center justify-between gap-2">
             <span className="text-xs text-blue-900 dark:text-blue-200">
               Template updated — v{drift.deviceVersion} → v{drift.currentVersion} available
             </span>
@@ -1016,8 +1055,7 @@ export default function DeviceEditor() {
           </div>
         )}
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        <div className="p-3 space-y-2">
           {towerPlacementCtx && (
             <DeviceEditorSection
               sectionId="mount-tower"
@@ -1321,8 +1359,6 @@ export default function DeviceEditor() {
             nodes={nodes}
             templateHiddenSignals={templateHiddenSignals}
             setTemplateHiddenSignals={setTemplateHiddenSignals}
-            open={portVisOpen}
-            setOpen={setPortVisOpen}
           />
 
           <PortSection
@@ -1987,66 +2023,7 @@ export default function DeviceEditor() {
           </div>
           </DeviceEditorSection>
         </div>
-
-        {/* Footer */}
-        <div className="px-4 py-3 border-t border-[var(--color-border)] flex items-center gap-2">
-          <button
-            onClick={handleSaveAsTemplate}
-            className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
-            title="Save this device configuration as a reusable user template"
-          >
-            Save as User Template
-          </button>
-          {templateId && customTemplates.some((t) => t.id === templateId) ? (
-            <button
-              onClick={handleUpdateUserTemplate}
-              className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
-              title="Overwrite the saved user template with this configuration"
-            >
-              Update User Template
-            </button>
-          ) : templateId ? (
-            <button
-              onClick={handleSaveAsPreset}
-              className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
-              title="Set this configuration as the project default for this template"
-            >
-              Save as Preset
-            </button>
-          ) : null}
-          {hasPreset && dirtyVsPreset && (
-            <button
-              onClick={handleRevertToPreset}
-              className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
-              title="Reset ports and visibility to the project preset"
-            >
-              Revert to Preset
-            </button>
-          )}
-          {dirtyVsTemplate && (
-            <button
-              onClick={handleRevertToTemplate}
-              className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
-              title="Reset ports and visibility to the original template defaults"
-            >
-              Revert to Template
-            </button>
-          )}
-          <div className="flex-1" />
-          <button
-            onClick={close}
-            className="px-3 py-1.5 text-xs rounded bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-text-heading)] border border-[var(--color-border)] transition-colors cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            className="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors cursor-pointer"
-          >
-            Apply
-          </button>
-        </div>
-      </div>
+    </FloatingPanel>
       {showFacePlateEditor && node && (
         <FacePlateEditor
           nodeId={editingNodeId!}
@@ -2083,7 +2060,7 @@ export default function DeviceEditor() {
           }}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -2100,12 +2077,20 @@ function DeviceEditorSection({
   defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
+  const sectionTint: Record<string, SectionTint> = {
+    "mount-tower": "sky",
+    "device-details": "slate",
+    ports: "sand",
+    "rack-power-more": "sage",
+  };
+
   return (
     <CollapsibleModuleSection
       title={title}
       hint={hint}
       defaultOpen={defaultOpen}
       persistKey={`device-editor:${sectionId}`}
+      tint={sectionTint[sectionId]}
     >
       {children}
     </CollapsibleModuleSection>
@@ -2227,8 +2212,6 @@ function PortVisibilitySection({
   nodes,
   templateHiddenSignals,
   setTemplateHiddenSignals,
-  open,
-  setOpen,
 }: {
   showAllPorts: boolean;
   setShowAllPorts: (v: boolean) => void;
@@ -2239,8 +2222,6 @@ function PortVisibilitySection({
   nodes: import("../types").SchematicNode[];
   templateHiddenSignals: Record<string, SignalType[]>;
   setTemplateHiddenSignals: (templateId: string, hidden: SignalType[]) => void;
-  open: boolean;
-  setOpen: (v: boolean) => void;
 }) {
   const templateId = node?.data.templateId;
   const modelLabel = node?.data.model;
@@ -2262,16 +2243,14 @@ function PortVisibilitySection({
   const namedPorts = ports.filter((p) => p.label.trim());
 
   return (
-    <div>
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer transition-colors"
-      >
-        <span>{open ? "▾" : "▸"}</span>
-        <span>Port Visibility</span>
-      </button>
-      {open && (
-        <div className="mt-2 space-y-3 pl-3">
+    <CollapsibleModuleSection
+      title="Port visibility"
+      depth={1}
+      tint="sand"
+      defaultOpen
+      persistKey="device-editor:ports:visibility"
+    >
+      <div className="space-y-3">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -2333,9 +2312,8 @@ function PortVisibilitySection({
               </div>
             </div>
           )}
-        </div>
-      )}
-    </div>
+      </div>
+    </CollapsibleModuleSection>
   );
 }
 
@@ -2413,31 +2391,37 @@ function PortSection({
   let runningIndex = 0;
 
   return (
-    <div
-      ref={sectionRef}
-      onDragOver={handleSectionDragOver}
-      onDrop={handleSectionDrop}
-      onDragLeave={handleSectionDragLeave}
-    >
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)]">
-          {title}
-        </span>
-        <div className="flex items-center gap-2">
+    <CollapsibleModuleSection
+      title={title}
+      depth={1}
+      tint="sand"
+      defaultOpen
+      persistKey={`device-editor:ports:${direction}`}
+      headerActions={
+        <>
           <button
+            type="button"
             onClick={() => setShowBulkAdd(!showBulkAdd)}
             className="text-[10px] text-blue-600 hover:text-blue-500 cursor-pointer"
           >
             + Bulk Add
           </button>
           <button
+            type="button"
             onClick={onAdd}
             className="text-[10px] text-blue-600 hover:text-blue-500 cursor-pointer"
           >
             + Add
           </button>
-        </div>
-      </div>
+        </>
+      }
+    >
+    <div
+      ref={sectionRef}
+      onDragOver={handleSectionDragOver}
+      onDrop={handleSectionDrop}
+      onDragLeave={handleSectionDragLeave}
+    >
 
       {showBulkAdd && (
         <BulkAddForm
@@ -2498,6 +2482,7 @@ function PortSection({
         })}
       </div>
     </div>
+    </CollapsibleModuleSection>
   );
 }
 

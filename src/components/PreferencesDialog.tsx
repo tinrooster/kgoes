@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useSchematicStore } from "../store";
 import WorkspaceSettingsSection from "./WorkspaceSettingsSection";
 import CollapsibleModuleSection from "./CollapsibleModuleSection";
+import FloatingPanel from "./FloatingPanel";
 import { DEFAULT_SCROLL_CONFIG, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_PAGE_MODE } from "../types";
 import type { LabelCaseMode, PanMode, ScrollAction, ScrollConfig, StubLabelPageMode } from "../types";
 
@@ -128,32 +129,18 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
     stubLabelPageMode === DEFAULT_STUB_LABEL_PAGE_MODE;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white border border-[var(--color-border)] rounded-lg shadow-2xl w-[420px] flex flex-col max-h-[calc(100vh-4rem)]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--color-border)] shrink-0">
-          <span className="text-sm font-semibold text-[var(--color-text-heading)]">
-            Preferences
-          </span>
-          <button
-            onClick={onClose}
-            className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] text-lg leading-none cursor-pointer"
-          >
-            &times;
-          </button>
-        </div>
-
-        {/* Tab strip */}
-        <div className="flex border-b border-[var(--color-border)] px-5 shrink-0">
+    <FloatingPanel
+      title="Preferences"
+      defaultWidth={420}
+      maxHeight="calc(100vh - 4rem)"
+      onClose={onClose}
+      onBackdropClick={onClose}
+      toolbar={
+        <div className="flex px-5">
           {(Object.keys(TAB_LABELS) as PrefTab[]).map((tab) => (
             <button
               key={tab}
+              type="button"
               onClick={() => setActiveTab(tab)}
               className={`px-3 py-2 text-xs font-medium -mb-px border-b-2 transition-colors cursor-pointer ${
                 activeTab === tab
@@ -165,9 +152,41 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
             </button>
           ))}
         </div>
-
-        {/* Body — scrollable */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
+      }
+      footer={
+        <div className="flex items-center justify-between px-5 py-3">
+          {!isDefault ? (
+            <button
+              type="button"
+              onClick={() => {
+                setScrollConfig({ ...DEFAULT_SCROLL_CONFIG });
+                setEdgeHitboxSize(10);
+                localStorage.removeItem(AUTOROUTE_PREF_KEY);
+                setAutoRoutePref("ask");
+                setLabelCase("as-typed");
+                setCurrency("USD");
+                setPanMode("select-first");
+                setStubLabelShowPort(DEFAULT_STUB_LABEL_SHOW_PORT);
+                setStubLabelPageMode(DEFAULT_STUB_LABEL_PAGE_MODE);
+              }}
+              className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
+            >
+              Reset to defaults
+            </button>
+          ) : (
+            <span />
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors cursor-pointer"
+          >
+            Close
+          </button>
+        </div>
+      }
+    >
+        <div className="px-5 py-4 space-y-4">
           {activeTab === "canvas" && (
             <div className="space-y-2">
               <CollapsibleModuleSection title="Navigation" persistKey="prefs:canvas:navigation" defaultOpen>
@@ -446,37 +465,6 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
             </CollapsibleModuleSection>
           )}
         </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-3 border-t border-[var(--color-border)] shrink-0">
-          {!isDefault ? (
-            <button
-              onClick={() => {
-                setScrollConfig({ ...DEFAULT_SCROLL_CONFIG });
-                setEdgeHitboxSize(10);
-                localStorage.removeItem(AUTOROUTE_PREF_KEY);
-                setAutoRoutePref("ask");
-                setLabelCase("as-typed");
-                setCurrency("USD");
-                setPanMode("select-first");
-                setStubLabelShowPort(DEFAULT_STUB_LABEL_SHOW_PORT);
-                setStubLabelPageMode(DEFAULT_STUB_LABEL_PAGE_MODE);
-              }}
-              className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
-            >
-              Reset to defaults
-            </button>
-          ) : (
-            <span />
-          )}
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors cursor-pointer"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
+    </FloatingPanel>
   );
 }
