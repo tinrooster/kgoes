@@ -35,6 +35,7 @@ import EdgeContextMenu from "./components/EdgeContextMenu";
 import IncompatibleConnectionDialog from "./components/IncompatibleConnectionDialog";
 import DeviceSwapDialog from "./components/DeviceSwapDialog";
 import MobileGate from "./components/MobileGate";
+import KgoEsModuleSplash, { isKgoEsSplashAcknowledged } from "./components/KgoEsModuleSplash";
 import ToastContainer from "./components/ToastContainer";
 import AppDialogHost from "./components/AppDialogHost";
 import BetaBanner from "./components/BetaBanner";
@@ -1806,6 +1807,9 @@ export default function App() {
   const syncDrawerOpen = useSyncDrawerStore((s) => s.open);
   const setSyncDrawerOpen = useSyncDrawerStore((s) => s.setOpen);
   const [viewportEditorOpen, setViewportEditorOpen] = useState(false);
+  const [splashAck, setSplashAck] = useState(
+    () => isKgoEsSplashAcknowledged() || isTrackItPopupOpener(),
+  );
 
   useEffect(() => {
     const open = () => setViewportEditorOpen(true);
@@ -1871,6 +1875,10 @@ export default function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [undo, redo]);
+
+  if (!splashAck) {
+    return <KgoEsModuleSplash onContinue={() => setSplashAck(true)} />;
+  }
 
   return (
     <div className="flex flex-col h-full">
