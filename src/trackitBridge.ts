@@ -82,6 +82,7 @@ export type TrackItTowerFocusPayload = {
 
 type TrackItInboundMessage =
   | { type: "TRACKIT_LINK"; payload: TrackItLinkContext }
+  | { type: "TRACKIT_LOAD_DRAWING"; payload: SchematicFile }
   | { type: "TRACKIT_LOAD_SCHEMATIC"; payload: SchematicFile }
   | { type: "TRACKIT_NUMBERING_SYNC"; payload: TrackItNumberingSyncPayload }
   | { type: "TRACKIT_NUMBERING_SNAPSHOT"; payload: TrackItNumberingSnapshotPayload }
@@ -108,6 +109,7 @@ function isTrackItInbound(data: unknown): data is TrackItInboundMessage {
   const t = (data as { type?: string }).type;
   return (
     t === "TRACKIT_LINK" ||
+    t === "TRACKIT_LOAD_DRAWING" ||
     t === "TRACKIT_LOAD_SCHEMATIC" ||
     t === "TRACKIT_NUMBERING_SYNC" ||
     t === "TRACKIT_NUMBERING_SNAPSHOT" ||
@@ -302,7 +304,7 @@ export function startTrackItBridge(): void {
       return;
     }
 
-    if (event.data.type === "TRACKIT_LOAD_SCHEMATIC") {
+    if (event.data.type === "TRACKIT_LOAD_DRAWING" || event.data.type === "TRACKIT_LOAD_SCHEMATIC") {
       const file = event.data.payload;
       if (!file) return;
       const nodes = file.nodes ?? [];
@@ -359,7 +361,7 @@ export function startTrackItBridge(): void {
         trackItUnsavedChanges: false,
         trackItLastPushedAt: new Date().toISOString(),
       });
-      store.addToast("Schematic loaded from trackIT", "success");
+      store.addToast("Drawing loaded from trackIT", "success");
       window.setTimeout(() => {
         flushPendingTrackItFocusPage();
         maybeAutoOpenTowerDraftTab();
