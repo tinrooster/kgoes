@@ -67,3 +67,14 @@ export async function ensureLatestProductionBuild(): Promise<void> {
     /* offline or blocked */
   }
 }
+
+/** Re-check when the user returns to a tab that may have been open across a deploy. */
+export function watchForProductionBuildUpdates(): void {
+  if (import.meta.env.DEV) return;
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      void ensureLatestProductionBuild();
+    }
+  });
+}
