@@ -15,9 +15,14 @@ RUN BUILD_COMMIT="$GIT_COMMIT"; \
 # Production stage — Alpine nginx stack matches trackIT Studioshare runtime.
 FROM alpine:3.22 AS runtime
 
+# Bust Docker layer cache when Alpine security fixes ship (Wiz cicd-policy-vuln-critical).
+ARG ALPINE_SECURITY_REVISION=20260616
+
 RUN apk update \
+  && apk upgrade --no-cache libcrypto3 libssl3 libxml2 \
   && apk add --no-cache nginx socat \
-  && apk add --no-cache --upgrade libcrypto3 libssl3 libxml2 \
+  && apk info -v -e libcrypto3 | grep -q 'libcrypto3-3.5.7-r0' \
+  && apk info -v -e libssl3 | grep -q 'libssl3-3.5.7-r0' \
   && rm -rf /var/cache/apk/* \
   && mkdir -p /tmp/nginx/client_body /tmp/nginx/proxy /tmp/nginx/fastcgi \
        /tmp/nginx/uwsgi /tmp/nginx/scgi /run/nginx /usr/share/nginx/html \
