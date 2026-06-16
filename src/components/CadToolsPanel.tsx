@@ -3,13 +3,12 @@ import { schematicFlowRef } from "../schematicFlowRef";
 import { useSchematicStore } from "../store";
 import { useSidebarStore } from "../sidebarStore";
 import {
-  insertCadDiagonalLine,
-  insertCadDimensionLine,
-  insertCadFenceFrame,
-  insertCadLeader,
-  insertCadNorthArrow,
-  insertCadScaleBar,
-} from "../towerSiteCadInsert";
+  promptInsertCadDimensionLine,
+  promptInsertCadFenceFrame,
+  promptInsertCadLeader,
+  promptInsertCadScaleBar,
+} from "../cadConfigurableInsert";
+import { insertCadDiagonalLine, insertCadNorthArrow } from "../towerSiteCadInsert";
 import ToolPalettePanel, { type ToolPaletteSection } from "./ToolPalettePanel";
 import { TiIcon } from "./ti/TiBase";
 
@@ -29,14 +28,13 @@ export default function CadToolsPanel({ mobile, onClose }: { mobile?: boolean; o
   const rightExpanded = useSidebarStore((s) => s.rightCadToolsExpanded);
   const setRightExpanded = useSidebarStore((s) => s.setRightCadToolsExpanded);
 
-  const run = (fn: (rf: NonNullable<typeof schematicFlowRef.current>) => void) => {
+  const run = (fn: (rf: NonNullable<typeof schematicFlowRef.current>) => void | Promise<void>) => {
     const rf = schematicFlowRef.current;
     if (!rf) {
       useSchematicStore.getState().addToast("Schematic canvas is still loading…", "info", 2500);
       return;
     }
-    fn(rf);
-    onClose?.();
+    void Promise.resolve(fn(rf)).then(() => onClose?.());
   };
 
   const unlockSelectedCad = () => {
@@ -73,23 +71,23 @@ export default function CadToolsPanel({ mobile, onClose }: { mobile?: boolean; o
       actions: [
         {
           id: "dimension",
-          label: "Dimension",
-          title: "Resizable dimension line at viewport center",
+          label: "Dimension…",
+          title: "Resizable dimension line — set label before insert",
           disabled,
           icon: (
             <CadIcon>
               <path {...iconStroke} d="M3 12h10M3 10v4M13 10v4" />
             </CadIcon>
           ),
-          onClick: () => run(insertCadDimensionLine),
+          onClick: () => run(promptInsertCadDimensionLine),
         },
         {
           id: "callout",
-          label: "Callout",
-          title: "Leader with editable label",
+          label: "Callout…",
+          title: "Leader callout — set text before insert",
           disabled,
           icon: <TiIcon name="flag" size={14} />,
-          onClick: () => run(insertCadLeader),
+          onClick: () => run(promptInsertCadLeader),
         },
       ],
     },
@@ -106,19 +104,19 @@ export default function CadToolsPanel({ mobile, onClose }: { mobile?: boolean; o
               <path {...iconStroke} d="M8 3v10M8 3l-3 3M8 3l3 3" />
             </CadIcon>
           ),
-          onClick: () => run(insertCadNorthArrow),
+          onClick: () => run((rf) => { insertCadNorthArrow(rf); }),
         },
         {
           id: "scale",
-          label: "Scale",
-          title: "100′ scale bar",
+          label: "Scale…",
+          title: "Graphic scale — set distance or range before insert",
           disabled,
           icon: (
             <CadIcon>
               <path {...iconStroke} d="M2 10h12M2 8v4M14 8v4" />
             </CadIcon>
           ),
-          onClick: () => run(insertCadScaleBar),
+          onClick: () => run(promptInsertCadScaleBar),
         },
       ],
     },
@@ -127,15 +125,15 @@ export default function CadToolsPanel({ mobile, onClose }: { mobile?: boolean; o
       actions: [
         {
           id: "fence",
-          label: "Fence",
-          title: "Dashed compound / fence frame",
+          label: "Fence…",
+          title: "Dashed compound outline — set size before insert",
           disabled,
           icon: (
             <CadIcon>
               <rect {...iconStroke} x="3" y="4" width="10" height="8" strokeDasharray="2 2" />
             </CadIcon>
           ),
-          onClick: () => run(insertCadFenceFrame),
+          onClick: () => run(promptInsertCadFenceFrame),
         },
         {
           id: "diagonal",
@@ -146,7 +144,7 @@ export default function CadToolsPanel({ mobile, onClose }: { mobile?: boolean; o
               <path {...iconStroke} d="M4 12L12 4" />
             </CadIcon>
           ),
-          onClick: () => run(insertCadDiagonalLine),
+          onClick: () => run((rf) => { insertCadDiagonalLine(rf); }),
         },
       ],
     },

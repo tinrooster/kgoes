@@ -76,6 +76,8 @@ export interface SidebarPrefs {
   rightShowInfoExpanded: boolean;
   rightColorsExpanded: boolean;
   rightCadToolsExpanded: boolean;
+  /** Docked canvas toolbar — false = collapsed rail on first open. */
+  canvasToolbarExpanded: boolean;
   /** Compact icon buttons for tool-palette sidebars (CAD tools, etc.) */
   toolPaletteIconOnly: boolean;
   libraryBrowseMode: LibraryBrowseMode;
@@ -134,6 +136,7 @@ function loadSidebarPrefs(): SidebarPrefs {
     rightShowInfoExpanded: false,
     rightColorsExpanded: false,
     rightCadToolsExpanded: false,
+    canvasToolbarExpanded: false,
     toolPaletteIconOnly: false,
     libraryBrowseMode: loadLibraryBrowseMode(),
     panelsVisible: { ...DEFAULT_PANELS_VISIBLE },
@@ -146,16 +149,28 @@ function loadSidebarPrefs(): SidebarPrefs {
     const raw = localStorage.getItem(SIDEBAR_PREFS_KEY);
     if (!raw) return defaults;
     const parsed = JSON.parse(raw) as Partial<SidebarPrefs>;
+    let panelLayouts = normalizePanelLayouts(parsed.panelLayouts);
+    const firstToolbarPrefs =
+      parsed.canvasToolbarExpanded === undefined &&
+      (!parsed.panelLayouts?.canvasToolbar ||
+        parsed.panelLayouts.canvasToolbar.edge === "float");
+    if (firstToolbarPrefs) {
+      panelLayouts = {
+        ...panelLayouts,
+        canvasToolbar: { ...panelLayouts.canvasToolbar, edge: "top" },
+      };
+    }
     return {
       ...defaults,
       ...parsed,
+      canvasToolbarExpanded: parsed.canvasToolbarExpanded ?? false,
       libraryBrowseMode: loadLibraryBrowseMode(),
       panelsVisible: {
         ...DEFAULT_PANELS_VISIBLE,
         ...(parsed.panelsVisible ?? {}),
       },
       rightPanelOrder: normalizeRightPanelOrder(parsed.rightPanelOrder),
-      panelLayouts: normalizePanelLayouts(parsed.panelLayouts),
+      panelLayouts,
     };
   } catch {
     return defaults;
@@ -201,6 +216,7 @@ interface SidebarState extends SidebarPrefs {
   setRightShowInfoExpanded: (v: boolean) => void;
   setRightColorsExpanded: (v: boolean) => void;
   setRightCadToolsExpanded: (v: boolean) => void;
+  setCanvasToolbarExpanded: (v: boolean) => void;
   setToolPaletteIconOnly: (v: boolean) => void;
   toggleToolPaletteIconOnly: () => void;
   setLibraryBrowseMode: (mode: LibraryBrowseMode) => void;
@@ -255,6 +271,7 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
       rightShowInfoExpanded: s.rightShowInfoExpanded,
       rightColorsExpanded: s.rightColorsExpanded,
       rightCadToolsExpanded: s.rightCadToolsExpanded,
+      canvasToolbarExpanded: s.canvasToolbarExpanded,
       toolPaletteIconOnly: s.toolPaletteIconOnly,
     };
   },
@@ -306,6 +323,11 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
   setRightCadToolsExpanded: (rightCadToolsExpanded) => {
     set({ rightCadToolsExpanded });
     persistSidebar({ ...get(), rightCadToolsExpanded });
+  },
+
+  setCanvasToolbarExpanded: (canvasToolbarExpanded) => {
+    set({ canvasToolbarExpanded });
+    persistSidebar({ ...get(), canvasToolbarExpanded });
   },
 
   setToolPaletteIconOnly: (toolPaletteIconOnly) => {

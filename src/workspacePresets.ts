@@ -35,6 +35,7 @@ export type WorkspaceLayoutSnapshot = {
   rightShowInfoExpanded: boolean;
   rightColorsExpanded: boolean;
   rightCadToolsExpanded: boolean;
+  canvasToolbarExpanded: boolean;
   toolPaletteIconOnly: boolean;
 };
 
@@ -79,13 +80,14 @@ export function emptyWorkspaceSnapshot(): WorkspaceLayoutSnapshot {
     },
     rightPanelOrder: [...DEFAULT_RIGHT_PANEL_ORDER],
     panelLayouts: { ...DEFAULT_PANEL_LAYOUTS },
-    rightInspectorOpen: true,
+    rightInspectorOpen: false,
     leftExpanded: false,
     rightViewOptionsExpanded: false,
     rightTrackItExpanded: false,
     rightShowInfoExpanded: false,
     rightColorsExpanded: false,
     rightCadToolsExpanded: false,
+    canvasToolbarExpanded: false,
     toolPaletteIconOnly: false,
   };
 }

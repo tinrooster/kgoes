@@ -212,16 +212,21 @@ export function insertCadDimensionLine(
 }
 
 /** Dashed fence / compound outline. */
-export function insertCadFenceFrame(rf: ReactFlowInstance): boolean {
+export function insertCadFenceFrame(
+  rf: ReactFlowInstance,
+  size?: { width?: number; height?: number },
+): boolean {
   const store = useSchematicStore.getState();
   store.pushSnapshot();
   const c = viewportFlowCenter(rf);
+  const width = Math.max(80, size?.width ?? 360);
+  const height = Math.max(80, size?.height ?? 240);
   placeCadAnnotations([
     {
-      x: c.x - 180,
-      y: c.y - 120,
-      width: 360,
-      height: 240,
+      x: c.x - width / 2,
+      y: c.y - height / 2,
+      width,
+      height,
       data: { shape: "frame-dashed", borderColor: "#64748b" },
     },
   ]);

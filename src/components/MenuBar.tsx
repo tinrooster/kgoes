@@ -33,15 +33,13 @@ import { useTheme } from "../hooks/useTheme";
 import { isTrackItDrawingLinked, saveToTrackItParent } from "../trackitIntegration";
 import { isCloudPortalEnabled } from "../deployMode";
 import { computeTrackItSyncStatus } from "../trackitSyncStatus";
-import { insertTowerElevation, insertTowerSitePlan } from "../towerSiteInsert";
 import {
-  insertCadDiagonalLine,
-  insertCadDimensionLine,
-  insertCadFenceFrame,
-  insertCadLeader,
-  insertCadNorthArrow,
-  insertCadScaleBar,
-} from "../towerSiteCadInsert";
+  promptInsertCadDimensionLine,
+  promptInsertCadFenceFrame,
+  promptInsertCadLeader,
+  promptInsertCadScaleBar,
+} from "../cadConfigurableInsert";
+import { insertCadDiagonalLine, insertCadNorthArrow } from "../towerSiteCadInsert";
 import TrackItModeBadge from "./TrackItModeBadge";
 import AlignmentMenu from "./AlignmentMenu";
 import DrawingProjectDropdown from "./DrawingProjectDropdown";
@@ -828,30 +826,22 @@ export default function MenuBar() {
       },
     ],
     Insert: [
-      { type: "caption", label: "Mountaintop / tower" },
-      {
-        type: "item",
-        label: "Tower elevation layout…",
-        title: "Stack lattice bays, platforms, lights, and access notes at the viewport center",
-        onClick: () => insertTowerElevation(reactFlowInstance),
-      },
-      {
-        type: "item",
-        label: "Site plan layout…",
-        title: "Shelter, gate, generator pad, transformer, cable tray, and tower base",
-        onClick: () => insertTowerSitePlan(reactFlowInstance),
-      },
-      { type: "separator" },
       { type: "caption", label: "CAD markup" },
       {
         type: "item",
         label: "Dimension…",
-        onClick: () => insertCadDimensionLine(reactFlowInstance),
+        title: "Resizable dimension line — set label before insert",
+        onClick: () => {
+          if (reactFlowInstance) void promptInsertCadDimensionLine(reactFlowInstance);
+        },
       },
       {
         type: "item",
         label: "Callout…",
-        onClick: () => insertCadLeader(reactFlowInstance),
+        title: "Leader callout — set text before insert",
+        onClick: () => {
+          if (reactFlowInstance) void promptInsertCadLeader(reactFlowInstance);
+        },
       },
       {
         type: "item",
@@ -861,12 +851,18 @@ export default function MenuBar() {
       {
         type: "item",
         label: "Scale bar…",
-        onClick: () => insertCadScaleBar(reactFlowInstance),
+        title: "Graphic scale — set distance or range before insert",
+        onClick: () => {
+          if (reactFlowInstance) void promptInsertCadScaleBar(reactFlowInstance);
+        },
       },
       {
         type: "item",
         label: "Site fence (dashed)…",
-        onClick: () => insertCadFenceFrame(reactFlowInstance),
+        title: "Compound outline — set size before insert",
+        onClick: () => {
+          if (reactFlowInstance) void promptInsertCadFenceFrame(reactFlowInstance);
+        },
       },
       { type: "item", label: "Line (horizontal)", onClick: () => addAnnotation("hline") },
       { type: "item", label: "Line (vertical)", onClick: () => addAnnotation("vline") },

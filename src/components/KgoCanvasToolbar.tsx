@@ -18,6 +18,7 @@ import { dispatchOpenViewportEditor } from "../drawingViewportEvents";
 import { useDrawingViewportActions } from "../hooks/useDrawingViewportActions";
 import { useCanvasToolbarOverflow } from "../hooks/useCanvasToolbarOverflow";
 import AlignmentMenu from "./AlignmentMenu";
+import { SidebarRailChevron } from "./sidebarChrome";
 
 const QUICK_TOOLBAR_COMPACT_KEY = "kgo-es-quick-toolbar-compact";
 
@@ -142,6 +143,8 @@ function KgoCanvasToolbar() {
   const toolbarMeasureRef = useRef<HTMLDivElement>(null);
 
   const expandRightPanel = useSidebarStore((s) => s.expandRightPanel);
+  const canvasToolbarExpanded = useSidebarStore((s) => s.canvasToolbarExpanded);
+  const setCanvasToolbarExpanded = useSidebarStore((s) => s.setCanvasToolbarExpanded);
   const toolbarEdge = useSidebarStore((s) => s.panelLayouts.canvasToolbar.edge);
   const embedded = toolbarEdge === "top" || toolbarEdge === "bottom";
   const floating = useWorkspacePanelFloating();
@@ -457,6 +460,26 @@ function KgoCanvasToolbar() {
   );
 
   if (embedded) {
+    if (!canvasToolbarExpanded) {
+      return (
+        <div data-print-hide data-workspace-panel="canvasToolbar" className="flex min-w-0 w-full items-center gap-2">
+          {dragHandle}
+          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
+            Canvas tools
+          </span>
+          <button
+            type="button"
+            className="ml-auto grid h-7 w-7 place-items-center rounded-md hover:bg-[var(--color-surface-hover)]"
+            title="Expand canvas toolbar"
+            aria-label="Expand canvas toolbar"
+            onClick={() => setCanvasToolbarExpanded(true)}
+          >
+            <SidebarRailChevron direction="expand" dockSide="right" />
+          </button>
+        </div>
+      );
+    }
+
     return (
       <div data-print-hide data-workspace-panel="canvasToolbar" className="relative min-w-0 w-full">
         {toolbarMeasureRow}
@@ -465,6 +488,15 @@ function KgoCanvasToolbar() {
           className="flex min-w-0 w-full flex-nowrap items-center gap-2 overflow-hidden"
         >
           {dragHandle}
+          <button
+            type="button"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-md hover:bg-[var(--color-surface-hover)]"
+            title="Collapse canvas toolbar"
+            aria-label="Collapse canvas toolbar"
+            onClick={() => setCanvasToolbarExpanded(false)}
+          >
+            <SidebarRailChevron direction="collapse" dockSide="right" />
+          </button>
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
             {renderQuickActions(compactQuickActions)}
           </div>
