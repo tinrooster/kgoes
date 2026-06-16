@@ -1,6 +1,14 @@
 import { useState } from 'react';
-import { ArrowRight } from 'lucide-react';
 import { KGO_ES_NAME } from '../branding';
+
+function ArrowRightIcon() {
+  return (
+    <svg className="h-4 w-4" aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M5 12h14" />
+      <path d="m13 6 6 6-6 6" />
+    </svg>
+  );
+}
 
 const SPLASH_ACK_KEY = 'kgo-es:splash-ack';
 
@@ -38,7 +46,7 @@ export default function KgoEsModuleSplash({ onContinue }: { onContinue: () => vo
           className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-sky-500 disabled:opacity-60"
         >
           Continue to {KGO_ES_NAME}
-          <ArrowRight className="h-4 w-4" aria-hidden />
+          <ArrowRightIcon />
         </button>
       </div>
     </div>

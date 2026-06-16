@@ -65,6 +65,8 @@ export default defineConfig({
   envDir: path.resolve(__dirname, '..'),
   // Resolve TypeScript sources before .js so stale emitted .js shadows can't silently win.
   resolve: {
+    // Avoid resolving react from trackIT parent node_modules (React 18) when building in the monorepo checkout.
+    dedupe: ['react', 'react-dom', 'react/jsx-runtime'],
     extensions: ['.mjs', '.mts', '.ts', '.tsx', '.js', '.jsx', '.json'],
   },
   plugins: [
