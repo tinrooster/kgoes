@@ -60,9 +60,7 @@ export function migrateGenericTowerGuideBands(page: TowerDraftPage): TowerDraftP
   const { guideBandsFt: _removed, ...elevationViewportRest } = page.elevationViewport ?? {};
   const elevationViewport =
     page.elevationViewport && viewportHasSutroLabels
-      ? Object.keys(elevationViewportRest).length > 0
-        ? elevationViewportRest
-        : undefined
+      ? { ...buildElevationViewportForHeight(height), ...elevationViewportRest }
       : page.elevationViewport;
 
   return {

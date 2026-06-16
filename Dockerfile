@@ -10,7 +10,7 @@ ARG GIT_COMMIT=unknown
 ARG CI_COMMIT_SHORT_SHA=
 ARG SOURCE_VERSION=
 # Bust studioshare-cache:kgoes when Launch omits commit build-args (remote cache can skip npm run build).
-ARG BUILD_CACHE_REV=20260616b
+ARG BUILD_CACHE_REV=20260616c
 RUN BUILD_COMMIT="$GIT_COMMIT"; \
     [ "$BUILD_COMMIT" = "unknown" ] && [ -n "$CI_COMMIT_SHORT_SHA" ] && BUILD_COMMIT="$CI_COMMIT_SHORT_SHA" || true; \
     [ "$BUILD_COMMIT" = "unknown" ] && [ -n "$SOURCE_VERSION" ] && BUILD_COMMIT="$SOURCE_VERSION" || true; \

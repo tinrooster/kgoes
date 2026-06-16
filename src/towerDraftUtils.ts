@@ -3,7 +3,6 @@ import type {
   TowerDraftLineStyle,
   TowerDraftPage,
   TowerDraftPlacement,
-  TowerDraftTowerType,
   TowerGuideBandFt,
 } from "./types";
 

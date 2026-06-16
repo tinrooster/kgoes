@@ -11,7 +11,6 @@ import { confirmDialog } from "../appDialogStore";
 import { openNewDrawingSetup } from "../drawingSetupStore";
 import { openTowerElevationSetup } from "../towerElevationSetupStore";
 import { dispatchSaveTowerViewport } from "../towerViewportEvents";
-import { dispatchSaveTowerViewport } from "../towerViewportEvents";
 
 interface ContextMenuState {
   pageId: string;
@@ -248,16 +247,6 @@ export default function PageTabs() {
   const openTowerViewport = () => {
     setAddMenuOpen(false);
     if (!resolveActiveTowerDraftPage(activePage, pages)) {
-      addToast("Open a tower elevation tab to save a viewport", "info");
-      return;
-    }
-    dispatchSaveTowerViewport();
-  };
-
-  const openTowerViewport = () => {
-    setAddMenuOpen(false);
-    const towerPage = pages.find((p) => p.id === activePage && p.type === "tower-draft");
-    if (!towerPage) {
       addToast("Open a tower elevation tab to save a viewport", "info");
       return;
     }

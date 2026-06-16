@@ -47,7 +47,10 @@ export function useTowerViewportActions() {
         handle.fitOverview();
         return;
       }
-      handle.applyViewport(preset.viewport);
+      handle.applyViewport({
+        zoom: preset.viewport.zoom,
+        pan: { x: preset.viewport.x, y: preset.viewport.y },
+      });
     },
     [towerPage],
   );
@@ -116,14 +119,17 @@ export function useTowerViewportActions() {
       const handle = getTowerViewportHandle(pageId);
       if (!handle) return;
       const vp = handle.getViewport();
+      const elevationView = handle.getElevationView();
+      const normalizedElevationView:
+        | "profile"
+        | "all-faces"
+        | "site" =
+        elevationView === "profile" || elevationView === "all-faces" || elevationView === "site"
+          ? elevationView
+          : "profile";
       updateTowerDraftViewport(pageId, id, {
         fit: "custom",
-        elevationView:
-          handle.getElevationView() === "profile" ||
-          handle.getElevationView() === "all-faces" ||
-          handle.getElevationView() === "site"
-            ? handle.getElevationView()
-            : "profile",
+        elevationView: normalizedElevationView,
         viewport: { x: vp.pan.x, y: vp.pan.y, zoom: vp.zoom },
       });
       setViewportId(id);
