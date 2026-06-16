@@ -31,7 +31,10 @@ function TowerDraftSummary({
   const nodes = useSchematicStore((s) => s.nodes);
   const useShortNames = useSchematicStore((s) => s.useShortNames);
   const trackItTowerContext = useSchematicStore((s) => s.trackItTowerContext);
-  const siteLabel = trackItTowerContext?.siteName?.trim() || "Tower site";
+  const siteLabel =
+    page.siteSetup?.details?.trim() ||
+    trackItTowerContext?.siteName?.trim() ||
+    "Tower site";
   const displayHeightFtAgl = resolveCatalogTowerHeightFtAgl(page, trackItTowerContext);
 
   const sorted = [...page.placements].sort((a, b) => b.mountHeightFtAgl - a.mountHeightFtAgl);
@@ -47,6 +50,18 @@ function TowerDraftSummary({
           {(page.towerType ?? "guyed").replace("_", " ")} · {page.placements.length} device
           {page.placements.length === 1 ? "" : "s"}
         </div>
+        {page.siteSetup?.latitude != null || page.siteSetup?.longitude != null ? (
+          <div style={{ fontSize: 10.5, color: "var(--ti-muted)", marginTop: 6, fontFamily: "var(--ti-font-mono)" }}>
+            {page.siteSetup.latitude != null ? page.siteSetup.latitude.toFixed(4) : "—"}
+            {", "}
+            {page.siteSetup.longitude != null ? page.siteSetup.longitude.toFixed(4) : "—"}
+          </div>
+        ) : null}
+        {page.siteSetup?.accessNotes ? (
+          <div style={{ fontSize: 10.5, color: "var(--ti-muted)", marginTop: 6, lineHeight: 1.4 }}>
+            <strong style={{ color: "var(--ti-ink-2)" }}>Access:</strong> {page.siteSetup.accessNotes}
+          </div>
+        ) : null}
       </div>
 
       <div

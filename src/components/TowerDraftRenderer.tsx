@@ -50,6 +50,7 @@ import {
   saveTowerDraftViewport,
   towerDraftViewportStorageKey,
 } from "../towerDraftViewportStorage";
+import { registerTowerViewportHandle } from "../towerViewportController";
 import type { TowerElevationView, TowerFace } from "../towerDraftFaces";
 import {
   activeViewFace,
@@ -351,6 +352,33 @@ export default function TowerDraftRenderer({
     contentOffsetY,
     panCenterX,
     pxPerFt,
+  ]);
+
+  useEffect(() => {
+    registerTowerViewportHandle(page.id, {
+      getViewport: () => ({ zoom: panZoom.zoom, pan: panZoom.viewOffset }),
+      applyViewport: (vp) => {
+        applyViewport(vp.zoom, vp.pan);
+        saveTowerDraftViewport(viewportStorageKey, { zoom: vp.zoom, pan: vp.pan });
+      },
+      fitOverview: () => {
+        if (tallTowerMode) applyTallTowerViewport();
+        else panZoom.fitAllView(viewBounds);
+      },
+      getElevationView: () => elevationView,
+    });
+    return () => registerTowerViewportHandle(page.id, null);
+  }, [
+    page.id,
+    elevationView,
+    panZoom.zoom,
+    panZoom.viewOffset,
+    applyViewport,
+    applyTallTowerViewport,
+    panZoom.fitAllView,
+    tallTowerMode,
+    viewBounds,
+    viewportStorageKey,
   ]);
 
   useEffect(() => {

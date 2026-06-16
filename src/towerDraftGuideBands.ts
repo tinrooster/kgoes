@@ -29,10 +29,9 @@ export function resolveTowerDraftGuideBands(
   context?: TrackItTowerSiteContext | null,
 ): TowerGuideBandFt[] {
   const pageBands = page.guideBandsFt ?? [];
+  /** trackIT pack context only — never page.elevationViewport (setup snapshot can carry stale L2–L6). */
   const ctxBands =
-    (page.elevationViewport?.guideBandsFt as TowerGuideBandFt[] | undefined) ??
-    (context?.elevationViewport?.guideBandsFt as TowerGuideBandFt[] | undefined) ??
-    [];
+    (context?.elevationViewport?.guideBandsFt as TowerGuideBandFt[] | undefined) ?? [];
   if (ctxBands.length > 0 && guideBandsStaleVsContext(pageBands, ctxBands)) {
     return ctxBands;
   }

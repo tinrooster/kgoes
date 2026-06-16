@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { isDrawingCanvasActive, LEGACY_SCHEMATIC_PAGE_ID, resolveActiveDrawingPage } from "../drawingPageUtils";
+import { isDrawingCanvasActive, isTowerCanvasActive, LEGACY_SCHEMATIC_PAGE_ID, resolveActiveDrawingPage, resolveActiveTowerDraftPage } from "../drawingPageUtils";
 import type { DrawingPage } from "../types";
 import { printPageTabLabel } from "../printPageLabels";
 import { useSchematicStore } from "../store";
@@ -10,6 +10,8 @@ import { TiIcon } from "./ti/TiBase";
 import { confirmDialog } from "../appDialogStore";
 import { openNewDrawingSetup } from "../drawingSetupStore";
 import { openTowerElevationSetup } from "../towerElevationSetupStore";
+import { dispatchSaveTowerViewport } from "../towerViewportEvents";
+import { dispatchSaveTowerViewport } from "../towerViewportEvents";
 
 interface ContextMenuState {
   pageId: string;
@@ -243,6 +245,27 @@ export default function PageTabs() {
     window.dispatchEvent(new CustomEvent("kgo-es:save-drawing-viewport"));
   };
 
+  const openTowerViewport = () => {
+    setAddMenuOpen(false);
+    if (!resolveActiveTowerDraftPage(activePage, pages)) {
+      addToast("Open a tower elevation tab to save a viewport", "info");
+      return;
+    }
+    dispatchSaveTowerViewport();
+  };
+
+  const openTowerViewport = () => {
+    setAddMenuOpen(false);
+    const towerPage = pages.find((p) => p.id === activePage && p.type === "tower-draft");
+    if (!towerPage) {
+      addToast("Open a tower elevation tab to save a viewport", "info");
+      return;
+    }
+    dispatchSaveTowerViewport();
+  };
+
+  const isTowerDraftActive = pages.some((p) => p.id === activePage && p.type === "tower-draft");
+
   const usedSignalsStr = useSchematicStore((s) => {
     const types = new Set<SignalType>();
     s.edges.forEach((e) => {
@@ -402,6 +425,12 @@ export default function PageTabs() {
                   [
                     ...(isDrawingCanvasActive(activePage, pages)
                       ? [{ kind: "item" as const, label: "New viewport…", icon: "maximize", onClick: openDrawingViewport }]
+                      : []),
+                    ...(isTowerCanvasActive(activePage, pages)
+                      ? [{ kind: "item" as const, label: "New tower viewport…", icon: "maximize", onClick: openTowerViewport }]
+                      : []),
+                    ...(isTowerDraftActive
+                      ? [{ kind: "item" as const, label: "New viewport…", icon: "maximize", onClick: openTowerViewport }]
                       : []),
                     { kind: "item" as const, label: "New drawing…", icon: "signal", onClick: openDrawingPage },
                     { kind: "item" as const, label: "Rack elevation…", icon: "rack", onClick: openRackPage },

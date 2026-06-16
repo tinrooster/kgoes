@@ -3,11 +3,14 @@ import {
   buildGuideBandsForHeight,
   buildTowerDraftPageOptsFromSetup,
   clampTowerElevationHeightFt,
-  SUTRO_FORMAT_THRESHOLD_FT,
+  hasGenericSutroLevelGuideLabels,
+  migrateGenericTowerGuideBands,
+  TALL_TOWER_FORMAT_THRESHOLD_FT,
   TOWER_ELEVATION_HEIGHT_MAX_FT,
-  usesSutroStructuralFormatting,
+  usesTallTowerFormatting,
   validateTowerElevationSetup,
 } from "../towerElevationSetup";
+import type { TowerDraftPage } from "../types";
 
 describe("towerElevationSetup", () => {
   it("clamps height to 1200 ft maximum", () => {
@@ -15,22 +18,62 @@ describe("towerElevationSetup", () => {
     expect(clampTowerElevationHeightFt(180)).toBe(180);
   });
 
-  it("uses quartile guide bands for typical heights", () => {
-    const bands = buildGuideBandsForHeight(180);
-    expect(bands.some((b) => b.ftAgl === 180)).toBe(true);
-    expect(bands.some((b) => b.label?.includes("L6"))).toBe(false);
+  it("uses quartile guide bands for typical and tall heights", () => {
+    const bands180 = buildGuideBandsForHeight(180);
+    expect(bands180.some((b) => b.ftAgl === 180)).toBe(true);
+    expect(bands180.some((b) => b.label?.includes("L6"))).toBe(false);
+
+    const bands1000 = buildGuideBandsForHeight(1000);
+    expect(bands1000.some((b) => b.label?.includes("L6"))).toBe(false);
+    expect(bands1000.some((b) => b.ftAgl === 1000)).toBe(true);
   });
 
-  it("uses Sutro structural bands at 1000 ft without reference art", () => {
-    expect(usesSutroStructuralFormatting(1000)).toBe(true);
-    expect(usesSutroStructuralFormatting(SUTRO_FORMAT_THRESHOLD_FT - 1)).toBe(false);
+  it("enables tall-tower formatting at 1000 ft without Sutro level labels", () => {
+    expect(usesTallTowerFormatting(1000)).toBe(true);
+    expect(usesTallTowerFormatting(TALL_TOWER_FORMAT_THRESHOLD_FT - 1)).toBe(false);
 
     const opts = buildTowerDraftPageOptsFromSetup({ heightFtAgl: 1000 });
     expect(opts.profileVisual).toBe("generated_self_support");
     expect(opts.elevationReferenceImage).toBeUndefined();
-    expect(opts.guideBandsFt?.some((b) => b.label?.includes("L6"))).toBe(true);
+    expect(opts.guideBandsFt?.some((b) => b.label?.includes("L6"))).toBe(false);
+    expect(opts.elevationViewport?.guideBandsFt).toBeUndefined();
     expect(opts.faceLayoutHeightFtAgl).toBeGreaterThan(750);
     expect(opts.elevationViewport?.tallTowerMode).toBe(true);
+  });
+
+  it("migrates mistaken Sutro level labels on generic tall pages", () => {
+    const page: TowerDraftPage = {
+      id: "td",
+      label: "Tower",
+      type: "tower-draft",
+      towerHeightFtAgl: 1200,
+      guideBandsFt: [{ ftAgl: 936, label: "936′ · L6 — 6th level" }, { ftAgl: 0, label: "Base" }],
+      placements: [],
+      polylines: [],
+    };
+    expect(hasGenericSutroLevelGuideLabels(page.guideBandsFt)).toBe(true);
+    const next = migrateGenericTowerGuideBands(page);
+    expect(next.guideBandsFt?.some((b) => b.label?.includes("L6"))).toBe(false);
+    expect(next.guideBandsFt?.some((b) => b.ftAgl === 1200)).toBe(true);
+  });
+
+  it("migrates stale Sutro labels stored on elevationViewport", () => {
+    const page: TowerDraftPage = {
+      id: "td",
+      label: "Tower",
+      type: "tower-draft",
+      towerHeightFtAgl: 1200,
+      guideBandsFt: [{ ftAgl: 1200, label: "1200′" }, { ftAgl: 0, label: "Base" }],
+      elevationViewport: {
+        tallTowerMode: true,
+        guideBandsFt: [{ ftAgl: 936, label: "936′ · L6 — 6th level" }],
+      },
+      placements: [],
+      polylines: [],
+    };
+    const next = migrateGenericTowerGuideBands(page);
+    expect(next.elevationViewport?.guideBandsFt).toBeUndefined();
+    expect(next.elevationViewport?.tallTowerMode).toBe(true);
   });
 
   it("stores optional site metadata on the page", () => {

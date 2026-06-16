@@ -37,6 +37,7 @@ interface TowerDraftToolbarProps {
   hasBlueprintReference?: boolean;
   /** Any mountaintop reference underlay (silhouette or blueprint) on profile view. */
   hasProfileReference?: boolean;
+  onSiteSetup?: () => void;
 }
 
 function TwToolBtn({
@@ -45,16 +46,19 @@ function TwToolBtn({
   active,
   onClick,
   onDoubleClick,
+  title,
 }: {
   icon: string;
   label: string;
   active?: boolean;
   onClick: () => void;
   onDoubleClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  title?: string;
 }) {
   return (
     <button
       type="button"
+      title={title ?? label}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       style={{
@@ -104,6 +108,7 @@ export default function TowerDraftToolbar({
   onReferenceVariantChange,
   hasBlueprintReference = false,
   hasProfileReference = false,
+  onSiteSetup,
 }: TowerDraftToolbarProps) {
   const toggleDraw = () => {
     if (drawMode) {
@@ -281,6 +286,9 @@ export default function TowerDraftToolbar({
       )}
       {onExportCsv && <TwToolBtn icon="download" label="Export CSV" onClick={onExportCsv} />}
       {onPrint && <TwToolBtn icon="print" label="Print tab" onClick={onPrint} />}
+      {onSiteSetup && (
+        <TwToolBtn icon="settings" label="Site setup…" onClick={onSiteSetup} title="Edit tower height and site details" />
+      )}
 
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
         {mainView === "profile" ? (

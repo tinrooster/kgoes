@@ -996,6 +996,16 @@ export interface TowerDraftSiteSetup {
   details?: string;
 }
 
+/** Named saved pan/zoom on a tower elevation canvas. */
+export interface TowerDraftViewportPreset {
+  id: string;
+  label: string;
+  fit: "all" | "custom";
+  /** Sub-view this preset was saved from (defaults to profile). */
+  elevationView?: "profile" | "all-faces" | "site";
+  viewport?: { x: number; y: number; zoom: number };
+}
+
 /** Structured vertical tower elevation / section draft (ft-AGL axis). */
 export interface TowerDraftPage {
   id: string;
@@ -1006,6 +1016,8 @@ export interface TowerDraftPage {
   guideBandsFt: TowerGuideBandFt[];
   placements: TowerDraftPlacement[];
   polylines: TowerDraftPolyline[];
+  /** Saved pan/zoom presets for tall-tower navigation. */
+  viewports?: TowerDraftViewportPreset[];
   /** Optional site metadata from tower elevation setup (standalone ES). */
   siteSetup?: TowerDraftSiteSetup;
   /** Per-page viewport hints when not linked to trackIT tower context. */

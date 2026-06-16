@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  SUTRO_FORMAT_THRESHOLD_FT,
+  TALL_TOWER_FORMAT_THRESHOLD_FT,
   TOWER_ELEVATION_HEIGHT_DEFAULT_FT,
   TOWER_ELEVATION_HEIGHT_MAX_FT,
   TOWER_ELEVATION_HEIGHT_MIN_FT,
-  usesSutroStructuralFormatting,
+  usesTallTowerFormatting,
   validateTowerElevationSetup,
+  type TowerElevationSetupOptions,
 } from "../towerElevationSetup";
 import { useTowerElevationSetupStore } from "../towerElevationSetupStore";
 import FloatingPanel from "./FloatingPanel";
@@ -34,14 +35,15 @@ export default function TowerElevationSetupDialog() {
   const [error, setError] = useState<string | null>(null);
 
   const open = !!request && !!draft;
+  const isEdit = !!request?.pageId;
 
   useEffect(() => {
-    if (!open) return;
-    setHeightText(String(TOWER_ELEVATION_HEIGHT_DEFAULT_FT));
-    setLatText("");
-    setLonText("");
+    if (!open || !draft) return;
+    setHeightText(String(draft.heightFtAgl ?? TOWER_ELEVATION_HEIGHT_DEFAULT_FT));
+    setLatText(draft.latitude != null ? String(draft.latitude) : "");
+    setLonText(draft.longitude != null ? String(draft.longitude) : "");
     setError(null);
-  }, [open, request?.defaultLabel]);
+  }, [open, request?.pageId, request?.defaultLabel, draft?.heightFtAgl]);
 
   const heightPreview = useMemo(() => {
     const n = Number(heightText);
@@ -49,7 +51,7 @@ export default function TowerElevationSetupDialog() {
     return Math.round(Math.max(TOWER_ELEVATION_HEIGHT_MIN_FT, Math.min(TOWER_ELEVATION_HEIGHT_MAX_FT, n)));
   }, [heightText]);
 
-  const sutroFormat = heightPreview != null && usesSutroStructuralFormatting(heightPreview);
+  const tallFormat = heightPreview != null && usesTallTowerFormatting(heightPreview);
 
   if (!open || !draft) return null;
 
@@ -84,8 +86,12 @@ export default function TowerElevationSetupDialog() {
 
   return (
     <FloatingPanel
-      title="Tower elevation setup"
-      subtitle={`${request.defaultLabel} — set height and site details before the page is created.`}
+      title={isEdit ? "Tower site setup" : "Tower elevation setup"}
+      subtitle={
+        isEdit
+          ? `${request.defaultLabel} — edit height, coordinates, and site notes.`
+          : `${request.defaultLabel} — set height and site details before the page is created.`
+      }
       defaultWidth={420}
       minWidth={360}
       onClose={close}
@@ -104,7 +110,7 @@ export default function TowerElevationSetupDialog() {
             className="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-500"
             onClick={onConfirm}
           >
-            Create tower page
+            {isEdit ? "Save setup" : "Create tower page"}
           </button>
         </div>
       }
@@ -127,11 +133,11 @@ export default function TowerElevationSetupDialog() {
           />
           <p className="mt-1.5 text-[10px] text-[var(--color-text-muted)] leading-relaxed">
             Typical sites: 150–200′. Maximum {TOWER_ELEVATION_HEIGHT_MAX_FT}′.
-            {sutroFormat ? (
+            {tallFormat ? (
               <>
                 {" "}
-                At {SUTRO_FORMAT_THRESHOLD_FT}′ and above, structural L2–L6 guide bands and tall-tower
-                viewport apply with a generated self-support profile (no Sutro reference art).
+                At {TALL_TOWER_FORMAT_THRESHOLD_FT}′ and above, tall-tower viewport and a generated
+                self-support profile apply (quartile guide bands, no Sutro reference art).
               </>
             ) : null}
           </p>

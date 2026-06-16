@@ -22,6 +22,10 @@ import {
   hasBlueprintElevationAsset,
   type TowerElevationReferenceVariant,
 } from "../towerElevationReference";
+import { openTowerElevationSetupForPage } from "../towerElevationSetupStore";
+import TowerCanvasToolbar from "./TowerCanvasToolbar";
+import TowerViewportEditorDialog from "./TowerViewportEditorDialog";
+import { TOWER_VIEWPORT_EDITOR_EVENT } from "../towerViewportEvents";
 
 export default function TowerDraftPageView() {
   const activePage = useSchematicStore((s) => s.activePage);
@@ -55,6 +59,7 @@ export default function TowerDraftPageView() {
   const [leftOpen, setLeftOpen] = useState(true);
   const [inspOpen, setInspOpen] = useState(true);
   const [contextMenu, setContextMenu] = useState<TowerDraftContextMenuState | null>(null);
+  const [viewportEditorOpen, setViewportEditorOpen] = useState(false);
 
   const page = pages.find((p) => p.id === activePage);
   const pageId = page?.type === "tower-draft" ? page.id : null;
@@ -161,6 +166,12 @@ export default function TowerDraftPageView() {
     : undefined;
 
   useEffect(() => {
+    const open = () => setViewportEditorOpen(true);
+    window.addEventListener(TOWER_VIEWPORT_EDITOR_EVENT, open);
+    return () => window.removeEventListener(TOWER_VIEWPORT_EDITOR_EVENT, open);
+  }, []);
+
+  useEffect(() => {
     setMeasurementSystem(TOWER_ELEVATION_DISPLAY_SYSTEM);
     const prevOverflow = document.body.style.overflow;
     const prevHtmlOverflow = document.documentElement.style.overflow;
@@ -224,8 +235,10 @@ export default function TowerDraftPageView() {
         minHeight: 0,
         display: "flex",
         flexDirection: "column",
+        position: "relative",
       }}
     >
+      {mainView !== "site" ? <TowerCanvasToolbar /> : null}
       {mainView === "site" ? (
         <TowerDraftSitePlan
           embedded
@@ -338,6 +351,7 @@ export default function TowerDraftPageView() {
           onReferenceVariantChange={persistReferenceVariant}
           hasBlueprintReference={hasBlueprintReference}
           hasProfileReference={hasProfileReference}
+          onSiteSetup={() => openTowerElevationSetupForPage(page)}
         />
 
         <div
@@ -391,6 +405,10 @@ export default function TowerDraftPageView() {
         onSetPlacementFace={(placementId, face) => {
           updateTowerDraftPlacement(page.id, placementId, { towerFace: face });
         }}
+      />
+      <TowerViewportEditorDialog
+        open={viewportEditorOpen}
+        onClose={() => setViewportEditorOpen(false)}
       />
     </div>
   );

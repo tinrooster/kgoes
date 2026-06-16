@@ -54,6 +54,7 @@ import type {
   RackAccessory,
   TowerDraftPage,
   TowerDraftPlacement,
+  TowerDraftViewportPreset,
   DrawingPage,
   DrawingViewportPreset,
   RackElevationViewportPreset,
@@ -167,6 +168,7 @@ import {
   suggestTowerDraftFeedlinesForPage,
 } from "./towerDraftFeedlines";
 import { normalizeTowerDraftPages } from "./towerDraftPageNormalize";
+import { defaultTowerDraftViewports } from "./towerViewportUtils";
 import {
   blockSlotNumbers,
   formatCableNumber,
@@ -973,9 +975,21 @@ interface SchematicState {
         | "guideBandsFt"
         | "labelLayers"
         | "elevationReferenceVariant"
+        | "siteSetup"
+        | "elevationViewport"
+        | "faceLayoutHeightFtAgl"
+        | "profileVisual"
+        | "viewports"
       >
     >,
   ) => void;
+  addTowerDraftViewport: (pageId: string, preset: Omit<TowerDraftViewportPreset, "id">) => string;
+  updateTowerDraftViewport: (
+    pageId: string,
+    viewportId: string,
+    patch: Partial<TowerDraftViewportPreset>,
+  ) => void;
+  removeTowerDraftViewport: (pageId: string, viewportId: string) => void;
   addTowerDraftPlacement: (pageId: string, placement: Omit<TowerDraftPlacement, "id">) => string;
   updateTowerDraftPlacement: (pageId: string, placementId: string, patch: Partial<TowerDraftPlacement>) => void;
   removeTowerDraftPlacement: (pageId: string, placementId: string) => void;
@@ -1187,6 +1201,11 @@ function nextTowerDraftPolylineId(): string {
   return `tdpl-${++towerDraftPolylineIdCounter}`;
 }
 
+let towerDraftViewportIdCounter = 0;
+function nextTowerDraftViewportId(): string {
+  return `tdvp-${++towerDraftViewportIdCounter}`;
+}
+
 /** Shelf/throwdown gear in a U slot should mount on a shelf accessory, not as a full-width panel. */
 function reconcileShelfPlacementsForPages(
   pages: SchematicPage[],
@@ -1332,6 +1351,10 @@ function syncRackCounters(pages: SchematicPage[]) {
       for (const pl of page.polylines ?? []) {
         const tdpl = pl.id.match(/^tdpl-(\d+)$/);
         if (tdpl) towerDraftPolylineIdCounter = Math.max(towerDraftPolylineIdCounter, Number(tdpl[1]));
+      }
+      for (const vp of page.viewports ?? []) {
+        const tdvp = vp.id.match(/^tdvp-(\d+)$/);
+        if (tdvp) towerDraftViewportIdCounter = Math.max(towerDraftViewportIdCounter, Number(tdvp[1]));
       }
       continue;
     }
@@ -5657,6 +5680,54 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     pushUndo({ nodes: state.nodes, edges: state.edges });
     set({
       pages: mapTowerDraftPage(state.pages, pageId, (p) => ({ ...p, ...patch })),
+      undoSize: schematicUndoSize(),
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+  },
+
+  addTowerDraftViewport: (pageId, preset) => {
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    const id = nextTowerDraftViewportId();
+    const entry: TowerDraftViewportPreset = { ...preset, id };
+    set({
+      pages: mapTowerDraftPage(state.pages, pageId, (p) => ({
+        ...p,
+        viewports: [...(p.viewports ?? defaultTowerDraftViewports()), entry],
+      })),
+      undoSize: schematicUndoSize(),
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+    return id;
+  },
+
+  updateTowerDraftViewport: (pageId, viewportId, patch) => {
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    set({
+      pages: mapTowerDraftPage(state.pages, pageId, (p) => ({
+        ...p,
+        viewports: (p.viewports ?? defaultTowerDraftViewports()).map((v) =>
+          v.id === viewportId ? { ...v, ...patch } : v,
+        ),
+      })),
+      undoSize: schematicUndoSize(),
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+  },
+
+  removeTowerDraftViewport: (pageId, viewportId) => {
+    if (viewportId === "overview") return;
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    set({
+      pages: mapTowerDraftPage(state.pages, pageId, (p) => ({
+        ...p,
+        viewports: (p.viewports ?? defaultTowerDraftViewports()).filter((v) => v.id !== viewportId),
+      })),
       undoSize: schematicUndoSize(),
       redoSize: 0,
     });

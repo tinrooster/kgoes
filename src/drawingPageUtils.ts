@@ -10,6 +10,7 @@ import type {
   TowerDraftPage,
 } from "./types";
 import { defaultRackElevationViewports } from "./rackElevationViewportUtils";
+import { defaultTowerDraftViewports } from "./towerViewportUtils";
 import { computeSchematicContentBounds, type ContentBounds } from "./viewNavUtils";
 
 export const LEGACY_SCHEMATIC_PAGE_ID = "schematic";
@@ -22,6 +23,18 @@ export function isDrawingCanvasPage(page: SchematicPage | undefined): page is Dr
 export function isDrawingCanvasActive(activePage: string, pages: SchematicPage[]): boolean {
   if (activePage === LEGACY_SCHEMATIC_PAGE_ID) return true;
   return pages.some((p) => p.id === activePage && p.type === "drawing");
+}
+
+export function isTowerCanvasActive(activePage: string, pages: SchematicPage[]): boolean {
+  return pages.some((p) => p.id === activePage && p.type === "tower-draft");
+}
+
+export function resolveActiveTowerDraftPage(
+  activePage: string,
+  pages: SchematicPage[],
+): TowerDraftPage | null {
+  const page = pages.find((p) => p.id === activePage && p.type === "tower-draft");
+  return page?.type === "tower-draft" ? page : null;
 }
 
 /** Drawing page id whose in-memory graph should be flushed when leaving the canvas. */
@@ -182,6 +195,10 @@ export function normalizeSchematicPages(pages: SchematicPage[]): SchematicPage[]
         })),
         guideBandsFt: td.guideBandsFt ?? [],
         towerHeightFtAgl: td.towerHeightFtAgl ?? 200,
+        viewports:
+          Array.isArray(td.viewports) && td.viewports.length > 0
+            ? td.viewports
+            : defaultTowerDraftViewports(),
       };
     }
     return page;

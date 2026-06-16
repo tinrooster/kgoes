@@ -6,20 +6,11 @@ export const TOWER_ELEVATION_HEIGHT_DEFAULT_FT = 180;
 export const TOWER_ELEVATION_HEIGHT_MIN_FT = 50;
 export const TOWER_ELEVATION_HEIGHT_MAX_FT = 1200;
 
-/** At and above this height, use Sutro-style structural guide bands (generic tower body). */
-export const SUTRO_FORMAT_THRESHOLD_FT = 900;
+/** At and above this height, use tall-tower viewport + generated profile (not Sutro reference art). */
+export const TALL_TOWER_FORMAT_THRESHOLD_FT = 900;
 
-/** Sutro Tower L2–L6 ratios (977 ft reference) — scaled to user height without reference art. */
-const SUTRO_STRUCTURAL_LEVELS: { ratio: number; suffix: string }[] = [
-  { ratio: 762 / 977, suffix: "L6 — 6th level" },
-  { ratio: 630 / 977, suffix: "L5 — 5th level" },
-  { ratio: 558 / 977, suffix: "L4 — waist" },
-  { ratio: 372 / 977, suffix: "L3 — 3rd level" },
-  { ratio: 186 / 977, suffix: "L2 — 2nd level" },
-];
-
-const SUTRO_FACE_LAYOUT_RATIO = 762 / 977;
-const SUTRO_INITIAL_FOCUS_RATIO = 630 / 977;
+const TALL_FACE_LAYOUT_RATIO = 0.78;
+const TALL_INITIAL_FOCUS_RATIO = 0.65;
 
 export interface TowerElevationSetupOptions {
   heightFtAgl: number;
@@ -29,43 +20,68 @@ export interface TowerElevationSetupOptions {
   details?: string;
 }
 
+/** @deprecated Use TALL_TOWER_FORMAT_THRESHOLD_FT */
+export const SUTRO_FORMAT_THRESHOLD_FT = TALL_TOWER_FORMAT_THRESHOLD_FT;
+
 export function clampTowerElevationHeightFt(raw: number): number {
   if (!Number.isFinite(raw)) return TOWER_ELEVATION_HEIGHT_DEFAULT_FT;
   return Math.round(Math.max(TOWER_ELEVATION_HEIGHT_MIN_FT, Math.min(TOWER_ELEVATION_HEIGHT_MAX_FT, raw)));
 }
 
-export function usesSutroStructuralFormatting(heightFtAgl: number): boolean {
-  return clampTowerElevationHeightFt(heightFtAgl) >= SUTRO_FORMAT_THRESHOLD_FT;
+export function usesTallTowerFormatting(heightFtAgl: number): boolean {
+  return clampTowerElevationHeightFt(heightFtAgl) >= TALL_TOWER_FORMAT_THRESHOLD_FT;
 }
 
-export function buildSutroStructuralGuideBands(heightFtAgl: number): TowerGuideBandFt[] {
-  const h = clampTowerElevationHeightFt(heightFtAgl);
-  const bands: TowerGuideBandFt[] = SUTRO_STRUCTURAL_LEVELS.map(({ ratio, suffix }) => {
-    const ftAgl = Math.round(h * ratio);
-    return { ftAgl, label: `${ftAgl}′ · ${suffix}` };
-  });
-  bands.push({ ftAgl: 0, label: "Base" });
-  return bands.sort((a, b) => b.ftAgl - a.ftAgl);
+/** @deprecated Use usesTallTowerFormatting */
+export function usesSutroStructuralFormatting(heightFtAgl: number): boolean {
+  return usesTallTowerFormatting(heightFtAgl);
 }
 
 export function buildGuideBandsForHeight(heightFtAgl: number): TowerGuideBandFt[] {
-  const h = clampTowerElevationHeightFt(heightFtAgl);
-  if (usesSutroStructuralFormatting(h)) return buildSutroStructuralGuideBands(h);
-  return defaultGuideBands(h);
+  return defaultGuideBands(clampTowerElevationHeightFt(heightFtAgl));
+}
+
+/** True when guide-band labels use generic Sutro L2–L6 naming on a non-Sutro page. */
+export function hasGenericSutroLevelGuideLabels(bands: TowerGuideBandFt[] | undefined): boolean {
+  return (bands ?? []).some((b) => /\bL[2-6]\b/.test(b.label ?? ""));
+}
+
+/** Replace mistaken Sutro level labels with quartile bands for standalone tall towers. */
+export function migrateGenericTowerGuideBands(page: TowerDraftPage): TowerDraftPage {
+  const pageHasSutroLabels = hasGenericSutroLevelGuideLabels(page.guideBandsFt);
+  const viewportHasSutroLabels = hasGenericSutroLevelGuideLabels(
+    page.elevationViewport?.guideBandsFt as TowerGuideBandFt[] | undefined,
+  );
+  if (!pageHasSutroLabels && !viewportHasSutroLabels) return page;
+  if (page.elevationReferenceImage?.url?.trim()) return page;
+
+  const height = clampTowerElevationHeightFt(page.towerHeightFtAgl);
+  const guideBandsFt = buildGuideBandsForHeight(height);
+  const { guideBandsFt: _removed, ...elevationViewportRest } = page.elevationViewport ?? {};
+  const elevationViewport =
+    page.elevationViewport && viewportHasSutroLabels
+      ? Object.keys(elevationViewportRest).length > 0
+        ? elevationViewportRest
+        : undefined
+      : page.elevationViewport;
+
+  return {
+    ...page,
+    guideBandsFt: pageHasSutroLabels ? guideBandsFt : page.guideBandsFt,
+    elevationViewport,
+  };
 }
 
 export function buildElevationViewportForHeight(
   heightFtAgl: number,
-  guideBandsFt: TowerGuideBandFt[],
 ): NonNullable<TrackItTowerSiteContext["elevationViewport"]> {
   const h = clampTowerElevationHeightFt(heightFtAgl);
-  if (usesSutroStructuralFormatting(h)) {
+  if (usesTallTowerFormatting(h)) {
     return {
       tallTowerMode: true,
       defaultViewportSpanFt: 120,
-      initialFocusFtAgl: Math.round(h * SUTRO_INITIAL_FOCUS_RATIO),
+      initialFocusFtAgl: Math.round(h * TALL_INITIAL_FOCUS_RATIO),
       workingZoomRatio: 1,
-      guideBandsFt,
     };
   }
   if (h > 300) {
@@ -104,13 +120,23 @@ export function validateTowerElevationSetup(
   return { ok: true };
 }
 
-/** Map setup dialog values onto tower-draft page fields for `addTowerDraftPage`. */
+export function towerSetupOptionsFromPage(page: TowerDraftPage): TowerElevationSetupOptions {
+  return {
+    heightFtAgl: page.towerHeightFtAgl,
+    latitude: page.siteSetup?.latitude,
+    longitude: page.siteSetup?.longitude,
+    accessNotes: page.siteSetup?.accessNotes,
+    details: page.siteSetup?.details,
+  };
+}
+
+/** Map setup dialog values onto tower-draft page fields for create / update. */
 export function buildTowerDraftPageOptsFromSetup(
   setup: TowerElevationSetupOptions,
 ): Partial<Omit<TowerDraftPage, "id" | "label" | "type" | "placements" | "polylines">> {
   const heightFtAgl = clampTowerElevationHeightFt(setup.heightFtAgl);
   const guideBandsFt = buildGuideBandsForHeight(heightFtAgl);
-  const sutroFormat = usesSutroStructuralFormatting(heightFtAgl);
+  const tallFormat = usesTallTowerFormatting(heightFtAgl);
 
   const latitude = setup.latitude != null && Number.isFinite(setup.latitude) ? setup.latitude : undefined;
   const longitude =
@@ -128,13 +154,16 @@ export function buildTowerDraftPageOptsFromSetup(
     towerType: "self_support",
     guideBandsFt,
     siteSetup,
-    elevationViewport: buildElevationViewportForHeight(heightFtAgl, guideBandsFt),
-    ...(sutroFormat
+    elevationViewport: buildElevationViewportForHeight(heightFtAgl),
+    ...(tallFormat
       ? {
           profileVisual: "generated_self_support" as const,
-          faceLayoutHeightFtAgl: Math.round(heightFtAgl * SUTRO_FACE_LAYOUT_RATIO),
+          faceLayoutHeightFtAgl: Math.round(heightFtAgl * TALL_FACE_LAYOUT_RATIO),
         }
-      : {}),
+      : {
+          profileVisual: undefined,
+          faceLayoutHeightFtAgl: undefined,
+        }),
   };
 }
 
