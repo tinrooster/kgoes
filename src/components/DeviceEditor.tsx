@@ -42,9 +42,17 @@ import {
   housenameNeedsTypeSetup,
   resolveDeviceTypeCode,
   resolveRackCodeForDevice,
+  resolveMdfPanelTypeCode,
 } from "../housename";
 import { resolveDeviceRoomContext } from "../roomContext";
-import { isMdfDevice } from "../mdfDisplay";
+import { isMdfDevice, resolveMdfPairLabel } from "../mdfDisplay";
+import {
+  MdfDeviceEditorSection,
+  applyMdfLayoutToPorts,
+  isMdfMultiPairFromPorts,
+  mdfEditorStateFromDevice,
+  type MdfEditorState,
+} from "./MdfDeviceEditorSection";
 import {
   DB_PINOUT_CONNECTORS,
   DbPinoutEditor,
@@ -229,6 +237,8 @@ export default function DeviceEditor() {
   const [deviceTypeCode, setDeviceTypeCode] = useState("");
   const [designationLocked, setDesignationLocked] = useState(false);
   const recomputeHousenames = useSchematicStore((s) => s.recomputeHousenames);
+  const mdfSchematicDefault = useSchematicStore((s) => s.mdfDisplayMode);
+  const [mdfEditor, setMdfEditor] = useState<MdfEditorState | null>(null);
   const roomContext = useMemo(() => {
     if (!editingNodeId) return { roomId: undefined, roomLabel: "" };
     return resolveDeviceRoomContext(editingNodeId, nodes);
@@ -248,12 +258,22 @@ export default function DeviceEditor() {
     const typeCode = deviceTypeCode.trim() || resolveDeviceTypeCode(draftDevice);
     if (!rackCode && !typeCode) return "";
     if (isMdfDevice(draftDevice)) {
-      return composeHousename({
+      const deviceDataMap = new Map<string, DeviceData>();
+      for (const n of nodes) {
+        if (n.type === "device") deviceDataMap.set(n.id, n.data as DeviceData);
+      }
+      const ctx = editingNodeId ? findDeviceRackContext(editingNodeId, pages) : undefined;
+      const panelCode = editingNodeId
+        ? resolveMdfPanelTypeCode(editingNodeId, draftDevice, ctx, deviceDataMap)
+        : "MDA";
+      const base = composeHousename({
         rackCode,
         frameSlot,
-        typeCode: typeCode ?? "MDA",
+        typeCode: panelCode,
         expandTypeLabel: false,
-      }) + (mdfPairLabel.trim() ? ` ${mdfPairLabel.trim()}` : "");
+      });
+      const pair = mdfPairLabel.trim() || resolveMdfPairLabel(draftDevice);
+      return pair ? `${base} ${pair}`.trim() : base;
     }
     const deviceDataMap = new Map<string, DeviceData>();
     for (const n of nodes) {
@@ -390,6 +410,7 @@ export default function DeviceEditor() {
     setRackLocation(node.data.rackLocation ?? "");
     setFrameSlot(node.data.frameSlot ?? "");
     setMdfPairLabel(node.data.mdfPairLabel ?? "");
+    setMdfEditor(mdfEditorStateFromDevice(node.data));
     setDeviceTypeCode(node.data.deviceTypeCode ?? resolveDeviceTypeCode(node.data) ?? "");
     setManagementIp(node.data.managementIp ?? "");
     setVlanSummary(node.data.vlanSummary ?? "");
@@ -461,8 +482,30 @@ export default function DeviceEditor() {
     setAuxiliaryData(normalizeAuxRows(node.data.auxiliaryData));
     setSearchTermsRaw((node.data.searchTerms ?? []).join(", "));
     setRfInstallation(node.data.rfInstallation ? { ...node.data.rfInstallation } : undefined);
-  }, [node]);
+  }, [node, mdfSchematicDefault]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  const handleApplyMdfLayout = useCallback(() => {
+    if (!mdfEditor) return;
+    const rebuilt = applyMdfLayoutToPorts(
+      ports.map((p) => ({ ...p })) as Port[],
+      mdfEditor,
+    );
+    setPorts(
+      rebuilt.map((p) => ({
+        id: p.id,
+        label: p.label,
+        signalType: p.signalType,
+        direction: p.direction,
+        section: p.section,
+        connectorType: p.connectorType,
+        rearConnectorType: p.rearConnectorType,
+        frontConnectorType: p.frontConnectorType,
+        inheritsSignal: p.inheritsSignal,
+      })),
+    );
+    setRackHeightU(Math.max(1, mdfEditor.mdfRows));
+  }, [mdfEditor, ports]);
 
   const close = useCallback(() => {
     // Read live store state — a stale closure here would make handleSave
@@ -523,21 +566,31 @@ export default function DeviceEditor() {
 
     // Preserve existing metadata fields from the node
     const existing = node?.data;
+    const mdfActive = (deviceType.trim() || existing?.deviceType) === "mdf" && mdfEditor;
+    const effRackLocation = mdfActive ? mdfEditor.rackLocation.trim() : rackLocation.trim();
+    const effFrameSlot = mdfActive ? mdfEditor.frameSlot.trim() : frameSlot.trim();
+    const effDesignation = mdfActive ? mdfEditor.designation.trim() : designation.trim();
+    const effDesignationLocked = mdfActive ? mdfEditor.designationLocked : designationLocked;
+    const effShowInstallationBlock = mdfActive
+      ? mdfEditor.showInstallationBlock
+      : showInstallationBlock;
+    const effRackHeightUFromMdf = mdfActive ? mdfEditor.rackHeightU : rackHeightU;
+    const effMountingFromMdf = mdfActive ? mdfEditor.mountingClass : mountingClass;
     const throwdownDefaults = applyGenericThrowdownDimensionsIfMissing({
       label: label.trim() || "Untitled",
       deviceType: deviceType.trim() || "custom",
       ports: finalPorts,
-      mountingClass,
-      rackHeightU,
+      mountingClass: effMountingFromMdf,
+      rackHeightU: effRackHeightUFromMdf,
       heightMm,
       widthMm,
       depthMm,
     });
-    const effRackHeightU = rackHeightU ?? throwdownDefaults.rackHeightU;
+    const effRackHeightU = effRackHeightUFromMdf ?? throwdownDefaults.rackHeightU;
     const effHeightMm = heightMm ?? throwdownDefaults.heightMm;
     const effWidthMm = widthMm ?? throwdownDefaults.widthMm;
     const effDepthMm = depthMm ?? throwdownDefaults.depthMm;
-    const effMountingClass = mountingClass;
+    const effMountingClass = effMountingFromMdf;
     const data: DeviceData = {
       label: label.trim() || "Untitled",
       ...(shortName.trim() ? { shortName: shortName.trim() } : {}),
@@ -548,15 +601,29 @@ export default function DeviceEditor() {
       ports: finalPorts,
       ...(manufacturer.trim() ? { manufacturer: manufacturer.trim() } : {}),
       ...(modelNumber.trim() ? { modelNumber: modelNumber.trim() } : {}),
-      ...(designation.trim() ? { designation: designation.trim() } : {}),
-      ...(designationLocked ? { designationLocked: true } : { designationLocked: false }),
-      ...(rackLocation.trim() ? { rackLocation: rackLocation.trim() } : {}),
-      ...(frameSlot.trim() ? { frameSlot: frameSlot.trim() } : {}),
-      ...(mdfPairLabel.trim() ? { mdfPairLabel: mdfPairLabel.trim() } : {}),
+      ...(effDesignation ? { designation: effDesignation } : {}),
+      ...(effDesignationLocked ? { designationLocked: true } : { designationLocked: false }),
+      ...(effRackLocation ? { rackLocation: effRackLocation } : {}),
+      ...(effFrameSlot ? { frameSlot: effFrameSlot } : {}),
+      ...(mdfActive
+        ? {
+            ...(mdfEditor.mdfPairLabel.trim()
+              ? { mdfPairLabel: mdfEditor.mdfPairLabel.trim() }
+              : {}),
+            mdfRows: mdfEditor.mdfRows,
+            mdfPortsPerRow: mdfEditor.mdfPortsPerRow,
+            mdfSignalType: mdfEditor.mdfSignalType,
+            ...(mdfEditor.mdfDisplayMode !== "inherit"
+              ? { mdfDisplayMode: mdfEditor.mdfDisplayMode }
+              : {}),
+          }
+        : mdfPairLabel.trim()
+          ? { mdfPairLabel: mdfPairLabel.trim() }
+          : {}),
       ...(deviceTypeCode.trim() ? { deviceTypeCode: deviceTypeCode.trim() } : {}),
       ...(managementIp.trim() ? { managementIp: managementIp.trim() } : {}),
       ...(vlanSummary.trim() ? { vlanSummary: vlanSummary.trim() } : {}),
-      ...(showInstallationBlock !== undefined ? { showInstallationBlock } : {}),
+      ...(effShowInstallationBlock !== undefined ? { showInstallationBlock: effShowInstallationBlock } : {}),
       ...(referenceUrl.trim() ? { referenceUrl: referenceUrl.trim() } : {}),
       ...(category.trim() ? { category: category.trim() } : {}),
       ...(existing?.templateId ? { templateId: existing.templateId } : {}),
@@ -596,6 +663,9 @@ export default function DeviceEditor() {
       ...(() => { const t = searchTermsRaw.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 20); return t.length > 0 ? { searchTerms: t } : {}; })(),
       ...(rfInstallation ? { rfInstallation } : {}),
     };
+    if (mdfActive && mdfEditor.mdfDisplayMode === "inherit") {
+      delete data.mdfDisplayMode;
+    }
     const rackPatch = buildExplicitRackMetadata(effRackHeightU, effMountingClass, effHeightMm);
     const defKey = existing ? rackDeviceDefinitionKey({ ...existing, ...data }) : null;
     const rackChanged = rackMetadataChanged(existing, effRackHeightU, effMountingClass);
@@ -1049,6 +1119,9 @@ export default function DeviceEditor() {
   const outputs = ports.filter((p) => p.direction === "output");
   const bidir = ports.filter((p) => p.direction === "bidirectional");
   const passthroughPorts = ports.filter((p) => p.direction === "passthrough");
+  const isMdf = deviceType === "mdf";
+  const isPatchStyle = deviceType === "patch-panel" || isMdf;
+  const showIoSections = !isMdf || inputs.length > 0 || outputs.length > 0 || bidir.length > 0;
 
   return (
     <>
@@ -1156,6 +1229,20 @@ export default function DeviceEditor() {
             </DeviceEditorSection>
           )}
 
+          {isMdf && mdfEditor ? (
+            <div className="p-3">
+              <MdfDeviceEditorSection
+                state={mdfEditor}
+                onChange={(patch) => setMdfEditor((s) => (s ? { ...s, ...patch } : s))}
+                onApplyLayout={handleApplyMdfLayout}
+                housenamePreview={housenamePreview}
+                roomLabel={roomContext.roomLabel}
+                multiPair={isMdfMultiPairFromPorts(ports as Port[])}
+                schematicDefault={mdfSchematicDefault}
+              />
+            </div>
+          ) : (
+          <>
           <DeviceEditorSection
             sectionId="device-details"
             title="Device details"
@@ -1378,14 +1465,17 @@ export default function DeviceEditor() {
                   </p>
                 )}
               </Field>
-              {isMdfDevice({ ...node?.data, deviceType, deviceTypeCode } as DeviceData) ? (
-                <Field label="MDF pair label">
+              {isMdf ? (
+                <Field label="MDF pair label (inline)">
                   <input
                     className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs outline-none focus:border-blue-500 es-housename"
                     value={mdfPairLabel}
                     onChange={(e) => setMdfPairLabel(e.target.value)}
-                    placeholder="e.g. 1-29"
+                    placeholder="e.g. 1-29 (single-pair inline only)"
                   />
+                  <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">
+                    Panel code (MDA/MDB/…) comes from rack position top-down. Add passthrough ports below for multi-pair panels.
+                  </p>
                 </Field>
               ) : null}
               <Field label="Management IP">
@@ -1515,8 +1605,10 @@ export default function DeviceEditor() {
             setTemplateHiddenSignals={setTemplateHiddenSignals}
           />
 
+          {showIoSections ? (
+          <>
           <PortSection
-            title={deviceType === "patch-panel" ? "Rear" : "Inputs"}
+            title={isPatchStyle ? "Rear" : "Inputs"}
             direction="input"
             deviceType={deviceType}
             ports={inputs}
@@ -1534,7 +1626,7 @@ export default function DeviceEditor() {
           />
 
           <PortSection
-            title={deviceType === "patch-panel" ? "Front" : "Outputs"}
+            title={isPatchStyle ? "Front" : "Outputs"}
             direction="output"
             deviceType={deviceType}
             ports={outputs}
@@ -1551,7 +1643,7 @@ export default function DeviceEditor() {
             setHiddenPorts={setHiddenPorts}
           />
 
-          {(deviceType !== "patch-panel" || bidir.length > 0) && (
+          {(deviceType !== "patch-panel" && !isMdf || bidir.length > 0) && (
             <PortSection
               title="Bidirectional"
               direction="bidirectional"
@@ -1570,10 +1662,12 @@ export default function DeviceEditor() {
               setHiddenPorts={setHiddenPorts}
             />
           )}
+          </>
+          ) : null}
 
-          {(deviceType === "patch-panel" || deviceType === "wall-plate" || passthroughPorts.length > 0) && (
+          {(isPatchStyle || deviceType === "wall-plate" || passthroughPorts.length > 0) && (
             <PortSection
-              title="Passthrough Circuits"
+              title={isPatchStyle ? "Rear ⇔ Front (passthrough)" : "Passthrough Circuits"}
               direction="passthrough"
               deviceType={deviceType}
               ports={passthroughPorts}
@@ -2176,6 +2270,8 @@ export default function DeviceEditor() {
           </details>
           </div>
           </DeviceEditorSection>
+          </>
+          )}
         </div>
     </FloatingPanel>
       {showFacePlateEditor && node && (
@@ -2768,6 +2864,19 @@ function PortRow({
   const showIndicatorAfter =
     isLast && dropTarget?.direction === direction && dropTarget.index === index + 1;
 
+  const hasActiveOptional =
+    port.isMulticable ||
+    port.multiConnect ||
+    port.directAttach ||
+    port.section ||
+    port.notes ||
+    (port.rf && Object.keys(port.rf).length > 0) ||
+    showDbPinout ||
+    dbPinCount > 0 ||
+    (port.serial && Object.keys(port.serial).length > 0) ||
+    port.flipped ||
+    isDbConnector;
+
   return (
     <>
       {showIndicatorBefore && (
@@ -2777,10 +2886,11 @@ function PortRow({
         ref={rowRef}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
-        className={`flex items-center gap-1.5 group py-0.5 ${
+        className={`group py-0.5 ${
           isDragging ? "opacity-30" : ""
         } ${isHidden ? "opacity-50" : ""}`}
       >
+        <div className="flex items-center gap-1.5 min-w-0">
         {/* Drag handle */}
         <span
           draggable
@@ -2830,7 +2940,7 @@ function PortRow({
 
         {direction === "passthrough" ? (
           <select
-            className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-1 text-xs text-[var(--color-text-heading)] outline-none focus:border-blue-500 cursor-pointer"
+            className="shrink-0 bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-1 text-xs text-[var(--color-text-heading)] outline-none focus:border-blue-500 cursor-pointer"
             value={port.inheritsSignal ? "" : port.signalType}
             onChange={(e) => {
               const v = e.target.value;
@@ -2848,7 +2958,7 @@ function PortRow({
           </select>
         ) : (
           <select
-            className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-1 text-xs text-[var(--color-text-heading)] outline-none focus:border-blue-500 cursor-pointer"
+            className="shrink-0 bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-1 text-xs text-[var(--color-text-heading)] outline-none focus:border-blue-500 cursor-pointer"
             value={port.signalType}
             onChange={(e) => {
               const newSignal = e.target.value as SignalType;
@@ -2868,7 +2978,7 @@ function PortRow({
 
         {direction !== "passthrough" && (
           <select
-            className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1 py-1 text-[10px] text-[var(--color-text-heading)] outline-none focus:border-blue-500 cursor-pointer max-w-[80px]"
+            className="shrink-0 bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1 py-1 text-[10px] text-[var(--color-text-heading)] outline-none focus:border-blue-500 cursor-pointer max-w-[80px]"
             value={port.connectorType ?? DEFAULT_CONNECTOR[port.signalType]}
             onChange={(e) => {
               const ct = e.target.value as ConnectorType;
@@ -2925,12 +3035,26 @@ function PortRow({
           );
         })()}
 
+        <button
+          onClick={onRemove}
+          className="shrink-0 ml-auto text-red-400/80 hover:text-red-500 text-sm cursor-pointer px-0.5"
+          title="Remove port"
+        >
+          &times;
+        </button>
+        </div>
+
+        <div
+          className={`flex-wrap items-center gap-0.5 pl-8 pt-0.5 ${
+            hasActiveOptional ? "flex" : "hidden group-hover:flex"
+          }`}
+        >
         {/* Multicable trunk toggle */}
         <label
           className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 select-none ${
             port.isMulticable
               ? "bg-purple-100 text-purple-600"
-              : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
+              : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
           }`}
           title="Multicable trunk port"
         >
@@ -2960,7 +3084,7 @@ function PortRow({
           className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 select-none ${
             port.multiConnect
               ? "bg-amber-100 text-amber-700"
-              : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
+              : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
           }`}
           title="Multi-connect — port accepts multiple connections (SRT, wireless, custom signals)"
         >
@@ -2979,7 +3103,7 @@ function PortRow({
             className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 select-none ${
               port.directAttach
                 ? "bg-green-100 text-green-700"
-                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
             }`}
             title="Direct attach — plugs directly into device, no separate cable"
           >
@@ -2999,7 +3123,7 @@ function PortRow({
           className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 ${
             port.section
               ? "bg-blue-100 text-blue-600 hover:bg-blue-200"
-              : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
+              : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
           }`}
           title="Set section group"
         >
@@ -3012,7 +3136,7 @@ function PortRow({
           className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 ${
             port.notes
               ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
-              : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
+              : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
           }`}
           title={port.notes || "Add note"}
         >
@@ -3025,7 +3149,7 @@ function PortRow({
             className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 ${
               port.rf && Object.keys(port.rf).length > 0
                 ? "bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200"
-                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
             }`}
             title="RF / ASI / IF port metadata"
           >
@@ -3053,7 +3177,7 @@ function PortRow({
             className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 ${
               port.serial && Object.keys(port.serial).length > 0
                 ? "bg-slate-200 text-slate-800 hover:bg-slate-300"
-                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
             }`}
             title="Serial port configuration"
           >
@@ -3067,20 +3191,13 @@ function PortRow({
             className={`text-[9px] px-1 py-0.5 rounded cursor-pointer transition-colors shrink-0 ${
               port.flipped
                 ? "bg-purple-100 text-purple-700 hover:bg-purple-200"
-                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] opacity-0 group-hover:opacity-100"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
             }`}
             title="Flip port to opposite side"
           >
             ⇄
         </button>
-
-        <button
-          onClick={onRemove}
-          className="text-red-400/60 hover:text-red-500 text-sm cursor-pointer px-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-          title="Remove port"
-        >
-          &times;
-        </button>
+        </div>
       </div>
 
       {showSection && (

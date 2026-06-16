@@ -11,6 +11,9 @@ export const RACK_LAYOUT_H_SPACING = 320;
 /** Extra vertical gap between grid rows (px), below the tallest rack footprint. */
 export const RACK_LAYOUT_ROW_GAP = 48;
 
+/** Max racks per horizontal row before wrapping (auto layout). */
+export const RACK_AUTO_LAYOUT_MAX_PER_ROW = 8;
+
 const RACK_PAD_Y = 40;
 const LABEL_HEIGHT = 24;
 const PX_PER_U = 24;
@@ -54,6 +57,31 @@ export type RackLabelSortInput = RackLayoutInput & {
   designation?: string;
 };
 
+export type RackAutoLayoutInput = RackLabelSortInput & {
+  linkedRoomId?: string;
+  layoutRow?: number;
+  layoutOrder?: number;
+};
+
+/** Plant-style prefix from rack label (TD05 → TD, Rack 3 → RACK). */
+export function extractRackLabelPrefix(label: string): string {
+  const t = label.trim();
+  if (!t) return "";
+  if (/^rack\s+\d+$/i.test(t)) return "RACK";
+  const plant = t.match(/^([A-Za-z]{1,6})[\s_-]*\d/i);
+  if (plant) return plant[1].toUpperCase();
+  const letters = t.match(/^([A-Za-z]+)/);
+  return letters ? letters[1].toUpperCase() : t.toUpperCase();
+}
+
+/** Numeric suffix for sort (TD05 → 5, Rack 10 → 10). */
+export function rackNumericSuffix(label: string): number {
+  const fromLabel = rackDesignationFromLabel(label);
+  if (fromLabel) return parseInt(fromLabel, 10);
+  const any = label.match(/(\d+)/);
+  return any ? parseInt(any[1], 10) : Number.MAX_SAFE_INTEGER;
+}
+
 function rackNumericSortKey(rack: RackLabelSortInput): number {
   const fromDesignation = rack.designation?.match(/(\d+)/);
   if (fromDesignation) return parseInt(fromDesignation[1], 10);
@@ -70,6 +98,106 @@ export function sortRacksByLabel<T extends RackLabelSortInput>(racks: T[]): T[] 
     if (na !== nb) return na - nb;
     return a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" });
   });
+}
+
+/**
+ * Smart sort for auto side-by-side layout: explicit row, linked room, prefix, suffix, manual order.
+ */
+export function sortRacksForAutoLayout<T extends RackAutoLayoutInput>(racks: T[]): T[] {
+  return [...racks].sort((a, b) => {
+    const rowA = a.layoutRow ?? 0;
+    const rowB = b.layoutRow ?? 0;
+    if (rowA !== rowB) return rowA - rowB;
+
+    const prefixA = extractRackLabelPrefix(a.label);
+    const prefixB = extractRackLabelPrefix(b.label);
+    if (prefixA !== prefixB) return prefixA.localeCompare(prefixB);
+
+    const numA = rackNumericSuffix(a.label);
+    const numB = rackNumericSuffix(b.label);
+    if (numA !== numB) return numA - numB;
+
+    const roomA = a.linkedRoomId ?? "";
+    const roomB = b.linkedRoomId ?? "";
+    if (roomA !== roomB) return roomA.localeCompare(roomB);
+
+    const orderA = a.layoutOrder ?? 0;
+    const orderB = b.layoutOrder ?? 0;
+    if (orderA !== orderB) return orderA - orderB;
+
+    return a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" });
+  });
+}
+
+/** Group sorted racks into canvas rows (explicit layoutRow or max-per-row wrap). */
+export function groupRacksIntoLayoutRows<T extends RackAutoLayoutInput>(
+  sortedRacks: T[],
+  maxPerRow = RACK_AUTO_LAYOUT_MAX_PER_ROW,
+): T[][] {
+  if (sortedRacks.length === 0) return [];
+  const rows: T[][] = [];
+  let current: T[] = [];
+  let currentExplicitRow: number | undefined;
+
+  for (const rack of sortedRacks) {
+    const explicitRow = rack.layoutRow;
+    const needBreak =
+      current.length > 0
+      && (
+        (explicitRow != null && currentExplicitRow != null && explicitRow !== currentExplicitRow)
+        || (explicitRow != null && currentExplicitRow == null)
+        || (explicitRow == null && currentExplicitRow != null)
+        || current.length >= maxPerRow
+      );
+
+    if (needBreak) {
+      rows.push(current);
+      current = [];
+      currentExplicitRow = undefined;
+    }
+    current.push(rack);
+    if (explicitRow != null) currentExplicitRow = explicitRow;
+  }
+  if (current.length > 0) rows.push(current);
+  return rows;
+}
+
+export interface AutoLayoutRackPositionsOptions {
+  maxPerRow?: number;
+  maxHeightU?: number;
+  origin?: { x: number; y: number };
+  serpentineRows?: boolean;
+}
+
+/** Side-by-side auto layout with smart sort and row grouping. */
+export function layoutAutoRackPositions(
+  racks: RackAutoLayoutInput[],
+  options?: AutoLayoutRackPositionsOptions,
+): Map<string, { x: number; y: number }> {
+  const posById = new Map<string, { x: number; y: number }>();
+  if (racks.length === 0) return posById;
+
+  const sorted = sortRacksForAutoLayout(racks);
+  const rowBuckets = groupRacksIntoLayoutRows(sorted, options?.maxPerRow ?? RACK_AUTO_LAYOUT_MAX_PER_ROW);
+  const origin = options?.origin ?? RACK_LAYOUT_ORIGIN;
+  const maxHeightU = options?.maxHeightU ?? Math.max(...racks.map((r) => r.heightU), 1);
+  const rowStep = rackRowFootprintPx(maxHeightU) + RACK_LAYOUT_ROW_GAP;
+  const serpentineRows = options?.serpentineRows ?? false;
+
+  rowBuckets.forEach((rowRacks, rowIndex) => {
+    rowRacks.forEach((rack, colIndex) => {
+      let col = colIndex;
+      if (serpentineRows && rowIndex % 2 === 1) {
+        col = rowRacks.length - 1 - col;
+      }
+      posById.set(rack.id, {
+        x: origin.x + col * RACK_LAYOUT_H_SPACING,
+        y: origin.y + rowIndex * rowStep,
+      });
+    });
+  });
+
+  return posById;
 }
 
 /**

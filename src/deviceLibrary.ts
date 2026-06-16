@@ -60,6 +60,9 @@ import { templates as kgoMrUltrascan } from "./devices/kgo-mr-ultrascan";
 import { DEVICE_TYPE_TO_CATEGORY } from "./deviceTypeCategories";
 export { DEVICE_TYPE_TO_CATEGORY };
 
+/** MDF / main-distribution drawing elements (not rack devices). */
+export const MDF_ELEMENT_TEMPLATES: DeviceTemplate[] = [...mdf];
+
 export const DEVICE_TEMPLATES: DeviceTemplate[] = [
   ...sources,
   ...switching,

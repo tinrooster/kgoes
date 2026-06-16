@@ -21,7 +21,9 @@ import {
   resolveDeviceHeaderIp,
   resolveLiveDeviceHousename,
 } from "../housename";
-import { MdfInlineDevice, shouldRenderMdfInline } from "./MdfInlineDevice";
+import { MdfInlineDevice } from "./MdfInlineDevice";
+import { shouldRenderMdfInline, isMdfDevice } from "../mdfDisplay";
+import { displayMdfPortLabel } from "../mdfPortLabels";
 
 type ColumnItem =
   | { type: "port"; port: Port }
@@ -47,7 +49,10 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
   const useShortNames = useSchematicStore((s) => s.useShortNames);
   const wrapDeviceLabels = useSchematicStore((s) => s.wrapDeviceLabels);
   const showInstallationInfo = useSchematicStore((s) => s.showInstallationInfo);
-  const mdfDisplayInline = useSchematicStore((s) => s.mdfDisplayInline);
+  const mdfDisplayMode = useSchematicStore((s) => s.mdfDisplayMode);
+  const toggleDeviceMdfDisplayMode = useSchematicStore((s) => s.toggleDeviceMdfDisplayMode);
+  const effectiveMdfMode = data.mdfDisplayMode ?? mdfDisplayMode;
+  const isMdf = isMdfDevice(data);
   const pages = useSchematicStore((s) => s.pages);
   const nodes = useSchematicStore((s) => s.nodes);
   const resolvedLabel = useMemo(
@@ -147,8 +152,8 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
       }
       return true;
     });
-  }, [data.ports, data.showAllPorts, data.hiddenPorts,
-      hiddenPinSignalTypes, templateHiddenStr, hideUnconnectedPorts, connectedHandles]);
+  }, [data.ports, data.showAllPorts, data.hiddenPorts, data.deviceType,
+      hiddenPinSignalTypes, templateHiddenStr, hideUnconnectedPorts, mdfDisplayMode, connectedHandles]);
 
   const headerAuxRows = useMemo(
     () => rowsInSlot(data.auxiliaryData, "gheader"),
@@ -253,7 +258,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
     };
   };
 
-  const isPatchPanel = data.deviceType === "patch-panel";
+  const isPatchPanel = data.deviceType === "patch-panel" || data.deviceType === "mdf";
   const densePassthrough = passthroughPorts.length > 6;
   const passthroughRowClass = densePassthrough ? "h-7" : "h-5";
   const portHandleClass = densePassthrough
@@ -332,11 +337,14 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
   };
 
   /** Render a passthrough port as a full-width row with rear (left) and front (right) handles. */
-  const renderPassthroughPort = (port: Port) => {
+  const renderPassthroughPort = (port: Port, pairIndex: number) => {
     const rearId = `${port.id}-rear`;
     const frontId = `${port.id}-front`;
     const rearConnected = connectedHandles.has(rearId);
     const frontConnected = connectedHandles.has(frontId);
+    const portLabel = isMdf
+      ? displayMdfPortLabel(data, port, pairIndex)
+      : port.label;
     // For inheriting ports, pick up the connected edge's signal type reactively from
     // signalByHandle (derived from connectedEdgeSignalsStr selector). Prefer rear side;
     // fall back to front, then to the port's stored placeholder.
@@ -363,9 +371,9 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
         <span
           className={`text-[10px] truncate px-3 flex-1 text-center ${densePassthrough ? "leading-7" : "leading-5"}`}
           style={{ color: signalColor }}
-          title={`${displayLabel(port.label)} (${signalLabel}) — passthrough`}
+          title={`${displayLabel(portLabel)} (${signalLabel}) — passthrough`}
         >
-          ⇔ {displayLabel(port.label)}
+          ⇔ {displayLabel(portLabel)}
         </span>
         {/* Front handle — right edge, source (same reasoning as rear) */}
         <Handle
@@ -417,7 +425,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
     );
   }
 
-  if (shouldRenderMdfInline(data, mdfDisplayInline)) {
+  if (shouldRenderMdfInline(data, mdfDisplayMode)) {
     return (
       <MdfInlineDevice
         id={id}
@@ -427,6 +435,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
         housenameState={{ nodes, pages }}
         connectedHandles={connectedHandles}
         onEdit={() => setEditingNodeId(id)}
+        onToggleDisplay={() => toggleDeviceMdfDisplayMode(id)}
       />
     );
   }
@@ -518,13 +527,30 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
       : undefined;
     return (
       <div
-        className="px-3 border-b border-[var(--color-border)] rounded-t-lg flex flex-col"
+        className="px-3 border-b border-[var(--color-border)] rounded-t-lg flex flex-col relative"
         style={{
           backgroundColor: data.headerColor || "var(--color-surface)",
           paddingTop: pt,
           paddingBottom: pb,
         }}
       >
+        {isMdf ? (
+          <button
+            type="button"
+            className="absolute top-0.5 right-1 z-10 h-4 w-4 flex items-center justify-center rounded text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-black/5 cursor-pointer"
+            title={
+              effectiveMdfMode === "inline"
+                ? "Expand this MDF to panel view"
+                : "Collapse this MDF to inline view"
+            }
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleDeviceMdfDisplayMode(id);
+            }}
+          >
+            {effectiveMdfMode === "inline" ? "⊞" : "⊟"}
+          </button>
+        ) : null}
         <div
           className="flex items-center justify-center gap-1"
           style={{ height: labelZone }}
@@ -722,15 +748,20 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
               </span>
             </div>
           </div>
-          {passthroughItems.map((item, i) =>
-            item.type === "section" ? (
+          {passthroughItems.map((item, i) => {
+            if (item.type === "section") {
+              return (
               <div key={`psec-${i}`} className="flex justify-center items-end h-5 mx-1">
                 <span className="text-[9px] text-[var(--color-text-muted)] pb-0.5 truncate border-b border-[var(--color-border)]/30 w-full text-center">
                   {item.name}
                 </span>
               </div>
-            ) : renderPassthroughPort(item.port),
-          )}
+              );
+            }
+            const pairIndex =
+              passthroughPorts.findIndex((p) => p.id === item.port.id) + 1;
+            return renderPassthroughPort(item.port, pairIndex);
+          })}
         </div>
       )}
 

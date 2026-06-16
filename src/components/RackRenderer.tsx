@@ -35,6 +35,7 @@ import { getDevicesInRoom, proposeRackPlacements } from "../rackLink";
 import { routeRackCrossLink } from "../rackCrossLinkRoute";
 import { filterVisibleCrossLinks } from "../rackDistributionPresets";
 import { confirmDialog, promptDialog } from "../appDialogStore";
+import { removeRackPlacementWithRenumberPrompt } from "../rackPlacementActions";
 
 // ── Constants ──────────────────────────────────────────────────────
 
@@ -1372,14 +1373,17 @@ function EditRackInlineDialog({
   const [rackType, setRackType] = useState(rack.rackType);
   const [heightU, setHeightU] = useState(rack.heightU);
   const [depthMm, setDepthMm] = useState(rack.depthMm);
+  const [layoutRow, setLayoutRow] = useState(rack.layoutRow != null ? String(rack.layoutRow) : "");
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    const rowNum = layoutRow.trim() ? Math.max(1, Math.round(Number(layoutRow))) : undefined;
     onSave({
       label: label.trim() || rack.label,
       rackType,
       heightU: Math.max(2, Math.min(60, Math.round(heightU))),
       depthMm: Math.max(100, Math.min(2000, Math.round(depthMm))),
+      layoutRow: rowNum,
     });
   };
 
@@ -1436,6 +1440,18 @@ function EditRackInlineDialog({
             />
           </label>
         </div>
+        <label className="block mb-3">
+          <span className="text-neutral-600">Layout row (optional)</span>
+          <input
+            type="number"
+            className="mt-0.5 w-full border border-neutral-300 rounded px-2 py-1 outline-none focus:border-blue-400"
+            value={layoutRow}
+            min={1}
+            placeholder="Auto — same row as linked room / prefix"
+            onChange={(e) => setLayoutRow(e.target.value)}
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+        </label>
         <div className="flex justify-end gap-2">
           <button type="button" className="px-3 py-1 rounded border border-neutral-300 hover:bg-neutral-50" onClick={onClose}>Cancel</button>
           <button type="submit" className="px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700">Save</button>
@@ -2094,13 +2110,15 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
           if (dropTarget.rackId === original?.rackId) {
             updateRackPlacement(page.id, inRackDrag.id, { uPosition: clampedU, rackId: dropTarget.rackId, face: inRackDrag.face });
           } else {
-            removeRackPlacement(page.id, inRackDrag.id);
-            addRackPlacement(page.id, {
-              rackId: dropTarget.rackId,
-              deviceNodeId: inRackDrag.deviceNodeId!,
-              uPosition: clampedU,
-              face: inRackDrag.face,
-            });
+            void (async () => {
+              await removeRackPlacementWithRenumberPrompt(page.id, inRackDrag.id);
+              addRackPlacement(page.id, {
+                rackId: dropTarget.rackId,
+                deviceNodeId: inRackDrag.deviceNodeId!,
+                uPosition: clampedU,
+                face: inRackDrag.face,
+              });
+            })();
           }
         } else {
           // Accessory move — within or across racks
@@ -2109,8 +2127,9 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
       } else if (!hit) {
         if (inRackDrag.kind === "device") {
           const dd = inRackDrag.deviceNodeId ? deviceDataMap.get(inRackDrag.deviceNodeId) : undefined;
-          removeRackPlacement(page.id, inRackDrag.id);
-          addToast(`Removed ${dd?.label ?? "device"} from rack`, "info");
+          void removeRackPlacementWithRenumberPrompt(page.id, inRackDrag.id).then(() => {
+            addToast(`Removed ${dd?.label ?? "device"} from rack`, "info");
+          });
         }
         // Accessories don't unrack — dropping outside is a no-op (snap back)
       }
@@ -2298,8 +2317,9 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
         return;
       }
       if (selectedPlacementId) {
-        removeRackPlacement(page.id, selectedPlacementId);
-        setSelectedPlacementId(null);
+        void removeRackPlacementWithRenumberPrompt(page.id, selectedPlacementId).then(() => {
+          setSelectedPlacementId(null);
+        });
       }
     }
   }, [selectedPlacementId, selectedCrossLinkId, page.crossLinks, page.id, removeRackPlacement, deleteCrossLink]);
@@ -2842,7 +2862,7 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
           <button
             className="w-full text-left px-3 py-1.5 hover:bg-neutral-100 text-red-600"
             onClick={() => {
-              removeRackPlacement(page.id, rackContextMenu.placement.id);
+              void removeRackPlacementWithRenumberPrompt(page.id, rackContextMenu.placement.id);
               setRackContextMenu(null);
             }}
           >
@@ -2990,7 +3010,7 @@ export default function RackRenderer({ page }: { page: RackElevationPage }) {
           <button
             className="w-full text-left px-3 py-1.5 hover:bg-neutral-100 text-red-600"
             onClick={() => {
-              removeRackPlacement(page.id, shelfOccupantMenu.placement.id);
+              void removeRackPlacementWithRenumberPrompt(page.id, shelfOccupantMenu.placement.id);
               setShelfOccupantMenu(null);
             }}
           >

@@ -5,6 +5,7 @@ import { getBundledTemplates, fetchTemplates } from "../templateApi";
 import { SIGNAL_LABELS, SIGNAL_COLORS, type SignalType } from "../types";
 import type { DeviceTemplate, CustomTemplateGroup, OwnedGearFile, OwnedGearItem, SchematicNode, DeviceData } from "../types";
 import { useSchematicStore, CATEGORY_ORDER_DEFAULT } from "../store";
+import { MDF_ELEMENTS_CATEGORY } from "../mdfPortLabels";
 import { useSidebarStore } from "../sidebarStore";
 import WorkspacePanelDragHandle from "./WorkspacePanelDragHandle";
 import { useWorkspacePanelDragHandle } from "../workspacePanelContext";
@@ -141,6 +142,9 @@ function TemplateItem({
           {hasPreset && (
             <span style={{ fontSize: 8, color: "var(--ti-accent-ink)", background: "var(--ti-accent-soft)", borderRadius: 4, padding: "1px 4px", fontWeight: 600, flexShrink: 0 }}>preset</span>
           )}
+          {template.libraryKind === "element" || template.deviceType === "mdf" ? (
+            <span style={{ fontSize: 8, color: "var(--ti-muted)", background: "var(--ti-surface)", border: "1px solid var(--ti-border)", borderRadius: 4, padding: "1px 4px", fontWeight: 600, flexShrink: 0 }}>element</span>
+          ) : null}
         </div>
         {template.manufacturer && (
           <div style={{ fontSize: 10, color: "var(--ti-muted)", fontFamily: "var(--ti-font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -208,6 +212,10 @@ function CategorySection({
   const headerRef = useRef<HTMLDivElement>(null);
   const isOpen = query ? true : open;
   const isDraggable = categoryIndex !== undefined && onCategoryReorder && !query;
+
+  useEffect(() => {
+    if (defaultOpen) setOpen(true);
+  }, [defaultOpen]);
 
   if (templates.length === 0) return null;
 
@@ -1219,6 +1227,7 @@ export default function DeviceLibrary() {
       if (next.has(cat)) next.delete(cat); else next.add(cat);
       return next;
     });
+    setFilterPanel(null);
   }, []);
 
   const toggleBrand = useCallback((brand: string) => {
@@ -1238,6 +1247,12 @@ export default function DeviceLibrary() {
   }, []);
 
   const hasFilter = selectedCategories.size > 0 || selectedBrands.size > 0 || selectedSignalTypes.size > 0;
+  const query = search.trim();
+
+  /** TrackIT embed defaults to user templates only; filters/search reveal the full catalog. */
+  const browseUserLibraryOnly =
+    libraryBrowseMode === "userTemplatesOnly" && !query && !hasFilter;
+  const showBundledLibrary = !browseUserLibraryOnly;
 
   useEffect(() => {
     fetchTemplates().then(setTemplates).catch(() => console.warn("Using bundled device library (API unavailable)"));
@@ -1246,9 +1261,6 @@ export default function DeviceLibrary() {
   const handleAddToOwned = useCallback((template: DeviceTemplate) => {
     addOwnedGear(template, 1);
   }, [addOwnedGear]);
-
-  const query = search.trim();
-  const browseUserLibraryOnly = libraryBrowseMode === "userTemplatesOnly" && !query;
 
   const filteredCustom = useMemo(() => {
     let result = customTemplates.filter((t) => isPureUserTemplate(t, bundledKeys));
@@ -1301,11 +1313,35 @@ export default function DeviceLibrary() {
     return favs;
   }, [templates, customTemplates, hiddenIds, favoriteTemplates, customTemplateIds, libraryBrowseMode, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter, matchesSourceFilter]);
 
+  const mdfElementsList = useMemo(() => {
+    if (!showBundledLibrary) return [];
+    if (selectedCategories.size > 0 && !selectedCategories.has(MDF_ELEMENTS_CATEGORY)) return [];
+    let list = templates.filter((t) => t.deviceType === "mdf");
+    if (selectedBrands.size > 0) {
+      list = list.filter((t) => t.manufacturer && selectedBrands.has(t.manufacturer));
+    }
+    if (selectedSignalTypes.size > 0) list = list.filter(matchesSignalFilter);
+    list = list.filter(matchesSourceFilter);
+    if (query) list = list.filter((t) => scoreTemplate(t, query) > 0);
+    return list.sort((a, b) => a.label.localeCompare(b.label));
+  }, [
+    templates,
+    showBundledLibrary,
+    query,
+    selectedCategories,
+    selectedBrands,
+    selectedSignalTypes,
+    matchesSignalFilter,
+    matchesSourceFilter,
+  ]);
+
   const filteredCategories = useMemo(() => {
     const groups = new Map<string, DeviceTemplate[]>();
     for (const t of templates) {
       // Expansion cards are only selectable via the slot picker, not the library
       if (t.category === "Expansion Cards") continue;
+      // MDF elements have a dedicated pinned section
+      if (t.deviceType === "mdf" || t.category === MDF_ELEMENTS_CATEGORY) continue;
       // Apply active filters
       if (selectedCategories.size > 0 && (!t.category || !selectedCategories.has(t.category))) continue;
       if (selectedBrands.size > 0 && (!t.manufacturer || !selectedBrands.has(t.manufacturer))) continue;
@@ -1332,7 +1368,7 @@ export default function DeviceLibrary() {
   }, [templates, categoryOrder, selectedCategories, selectedBrands, selectedSignalTypes, matchesSignalFilter, matchesSourceFilter]);
 
   const totalResults = rankedResults?.length ??
-    (filteredCustom.length + filteredCategories.reduce((sum, c) => sum + c.templates.length, 0));
+    (mdfElementsList.length + filteredCustom.length + filteredCategories.reduce((sum, c) => sum + c.templates.length, 0));
   const ownedResults = useMemo(
     () => ownedGear.filter((item) => matchesOwnedGearQuery(item, query)).length,
     [ownedGear, query],
@@ -1555,8 +1591,19 @@ export default function DeviceLibrary() {
             )}
           </div>
         </div>
+        <p className="mt-1 text-[9px] leading-snug text-[var(--color-text-muted)]">
+          Optional filters — filled from the library catalog. Selecting a category shows matching devices below.
+        </p>
+        {browseUserLibraryOnly && (
+          <p className="mt-1 text-[9px] leading-snug text-amber-700">
+            Showing your user templates. Search or pick a category/brand/signal to browse the full library.
+          </p>
+        )}
         {filterPanel === "category" && (
           <div className="mt-1.5 max-h-28 overflow-y-auto flex flex-wrap gap-1">
+            {categoryOptions.length === 0 ? (
+              <span className="text-[10px] text-[var(--color-text-muted)] px-1">No categories match other filters.</span>
+            ) : null}
             {categoryOptions.map((c) => (
               <button
                 key={c}
@@ -1574,6 +1621,9 @@ export default function DeviceLibrary() {
         )}
         {filterPanel === "brand" && (
           <div className="mt-1.5 max-h-28 overflow-y-auto flex flex-wrap gap-1">
+            {brandOptions.length === 0 ? (
+              <span className="text-[10px] text-[var(--color-text-muted)] px-1">No brands in this selection (MDF elements are unbranded).</span>
+            ) : null}
             {brandOptions.map((m) => (
               <button
                 key={m}
@@ -1717,7 +1767,28 @@ export default function DeviceLibrary() {
           </>
         ) : (
           <>
-            {favoritesList.length > 0 && !browseUserLibraryOnly && (
+            {hasFilter && totalResults === 0 && (
+              <div className="text-xs text-[var(--color-text-muted)] text-center py-4 px-2">
+                No devices match the active filters. Clear Categories/Brands/Signals above, or search for &ldquo;mdf&rdquo;.
+              </div>
+            )}
+
+            {mdfElementsList.length > 0 && showBundledLibrary && (
+              <CategorySection
+                label={MDF_ELEMENTS_CATEGORY}
+                templates={mdfElementsList}
+                query={query}
+                defaultOpen
+                presetIds={presetIds}
+                favoriteSet={favoriteSet}
+                ownedQuantityMap={ownedQuantityMap}
+                onToggleFavorite={toggleFavoriteTemplate}
+                onAddToOwned={handleAddToOwned}
+                onTemplateContextMenu={handleTemplateContextMenu}
+              />
+            )}
+
+            {favoritesList.length > 0 && showBundledLibrary && (
               <CategorySection
                 label="Favorites"
                 templates={favoritesList}
@@ -1744,14 +1815,14 @@ export default function DeviceLibrary() {
               />
             )}
 
-            {(libraryBrowseMode !== "userTemplatesOnly" || query) &&
+            {(showBundledLibrary) &&
               filteredCategories.map((cat, i) => (
                 <CategorySection
                   key={cat.label}
                   label={cat.label}
                   templates={cat.templates}
                   query={query}
-                  defaultOpen={false}
+                  defaultOpen={hasFilter && selectedCategories.has(cat.label)}
                   presetIds={presetIds}
                   favoriteSet={favoriteSet}
                   ownedQuantityMap={ownedQuantityMap}

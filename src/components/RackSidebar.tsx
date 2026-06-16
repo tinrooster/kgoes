@@ -7,7 +7,7 @@ import { getRackMountSummary, shelfThrowdownDimensionsMissing } from "../rackMou
 import { aggregateRackStats, computeRackStats, formatStatsLine } from "../rackStats";
 import { getDevicesInRoom } from "../rackLink";
 import { resolveDeviceLabel } from "../displayName";
-import { nextRackPosition, sortRacksByLabel, inferGridColumns, rackLayoutReverseOrder } from "../rackLayout";
+import { nextRackPosition, sortRacksForAutoLayout, inferGridColumns, rackLayoutReverseOrder } from "../rackLayout";
 import { TiIcon } from "./ti/TiBase";
 import RackDistributionPresetDialog from "./RackDistributionPresetDialog";
 import { formatFillOrderPlainText, normalizeFillOrderSummary } from "../rackFillCatalog";
@@ -29,6 +29,8 @@ export default function RackSidebar({ page }: RackSidebarProps) {
   const updateRack = useSchematicStore((s) => s.updateRack);
   const moveRackToPage = useSchematicStore((s) => s.moveRackToPage);
   const layoutRacksOnPage = useSchematicStore((s) => s.layoutRacksOnPage);
+  const autoLayoutRacksOnPage = useSchematicStore((s) => s.autoLayoutRacksOnPage);
+  const reorderRacksLayout = useSchematicStore((s) => s.reorderRacksLayout);
   const updateRackElevationPage = useSchematicStore((s) => s.updateRackElevationPage);
   const requestRackFocus = useSchematicStore((s) => s.requestRackFocus);
   const selectedRackId = useSchematicStore((s) => s.selectedRackId);
@@ -80,7 +82,8 @@ export default function RackSidebar({ page }: RackSidebarProps) {
     [page.fillOrderSummary],
   );
 
-  const racksByLabel = useMemo(() => sortRacksByLabel(page.racks), [page.racks]);
+  const racksForList = useMemo(() => sortRacksForAutoLayout(page.racks), [page.racks]);
+  const [dragRackId, setDragRackId] = useState<string | null>(null);
 
   const setEditingNodeId = useSchematicStore((s) => s.setEditingNodeId);
   const setFacePlateEditNodeId = useSchematicStore((s) => s.setFacePlateEditNodeId);
@@ -423,6 +426,22 @@ export default function RackSidebar({ page }: RackSidebarProps) {
           </div>
           <label
             className="flex items-start gap-2 px-0.5 py-0.5 text-[11px] text-neutral-600 cursor-pointer leading-snug"
+            title="When on, racks auto-arrange side by side (room / prefix / layout row). Turn off to position racks manually."
+          >
+            <input
+              type="checkbox"
+              className="mt-0.5 shrink-0"
+              checked={page.rackLayoutMode !== "manual"}
+              onChange={(e) => {
+                const auto = e.target.checked;
+                updateRackElevationPage(page.id, { rackLayoutMode: auto ? "auto" : "manual" });
+                if (auto) autoLayoutRacksOnPage(page.id);
+              }}
+            />
+            <span>Auto layout (side by side)</span>
+          </label>
+          <label
+            className="flex items-start gap-2 px-0.5 py-0.5 text-[11px] text-neutral-600 cursor-pointer leading-snug"
             title="When laying out a multi-row grid, run the bottom row right-to-left (12→7 in a 2×6 site). Use Layout menu to apply grid."
           >
             <input
@@ -447,7 +466,7 @@ export default function RackSidebar({ page }: RackSidebarProps) {
             <span>Reverse bottom row order</span>
           </label>
           <p className="px-0.5 text-[10px] text-neutral-400 leading-snug">
-            Grid presets are in the <span className="font-medium">Layout</span> menu.
+            Drag racks in the list to reorder. Grid presets are in the <span className="font-medium">Layout</span> menu.
           </p>
         </div>
       )}
@@ -519,16 +538,41 @@ export default function RackSidebar({ page }: RackSidebarProps) {
           <div className="font-semibold text-neutral-500 mb-1 uppercase tracking-wider" style={{ fontSize: 9 }}>
             Racks ({page.racks.length})
           </div>
-          {racksByLabel.map((rack) => {
+          {racksForList.map((rack) => {
             const placementCount = page.placements.filter((p) => p.rackId === rack.id).length;
             const isEditing = editingRackId === rack.id;
             const isSelected = selectedRackId === rack.id;
             return (
               <div
                 key={rack.id}
-                className={`flex items-center justify-between py-0.5 px-1 -mx-1 rounded cursor-pointer group ${
+                draggable
+                onDragStart={(e) => {
+                  e.stopPropagation();
+                  setDragRackId(rack.id);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragEnd={() => setDragRackId(null)}
+                onDragOver={(e) => {
+                  if (!dragRackId || dragRackId === rack.id) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!dragRackId || dragRackId === rack.id) return;
+                  const order = [...racksForList];
+                  const fromIdx = order.findIndex((r) => r.id === dragRackId);
+                  const toIdx = order.findIndex((r) => r.id === rack.id);
+                  if (fromIdx < 0 || toIdx < 0) return;
+                  const [moved] = order.splice(fromIdx, 1);
+                  order.splice(toIdx, 0, moved);
+                  reorderRacksLayout(page.id, order.map((r) => r.id));
+                  setDragRackId(null);
+                }}
+                className={`flex items-center justify-between py-0.5 px-1 -mx-1 rounded cursor-grab group ${
                   isSelected ? "bg-blue-50 text-blue-900 ring-1 ring-blue-200" : "text-neutral-700 hover:bg-neutral-50"
-                }`}
+                } ${dragRackId === rack.id ? "opacity-50" : ""}`}
                 onClick={() => {
                   setSelectedRackId(rack.id);
                   requestRackFocus(page.id, rack.id);
@@ -861,19 +905,22 @@ function EditRackDialog({ pageId, rack, onClose }: { pageId: string; rack: RackD
   const [rackType, setRackType] = useState<RackType>(rack.rackType);
   const [heightU, setHeightU] = useState(rack.heightU);
   const [depthMm, setDepthMm] = useState(rack.depthMm);
+  const [layoutRow, setLayoutRow] = useState(rack.layoutRow != null ? String(rack.layoutRow) : "");
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     const cleanH = Math.max(2, Math.min(60, Math.round(heightU)));
     const cleanD = Math.max(100, Math.min(2000, Math.round(depthMm)));
+    const rowNum = layoutRow.trim() ? Math.max(1, Math.round(Number(layoutRow))) : undefined;
     updateRack(pageId, rack.id, {
       label: label.trim() || rack.label,
       rackType,
       heightU: cleanH,
       depthMm: cleanD,
+      layoutRow: rowNum,
     });
     onClose();
-  }, [pageId, rack.id, rack.label, label, rackType, heightU, depthMm, updateRack, onClose]);
+  }, [pageId, rack.id, rack.label, label, rackType, heightU, depthMm, layoutRow, updateRack, onClose]);
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
@@ -931,6 +978,19 @@ function EditRackDialog({ pageId, rack, onClose }: { pageId: string; rack: RackD
             />
           </label>
         </div>
+
+        <label className="block mb-3">
+          <span className="text-neutral-600">Layout row (optional)</span>
+          <input
+            type="number"
+            className="mt-0.5 w-full border border-neutral-300 rounded px-2 py-1 outline-none focus:border-blue-400"
+            value={layoutRow}
+            min={1}
+            placeholder="Auto"
+            onChange={(e) => setLayoutRow(e.target.value)}
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+        </label>
 
         <p className="text-neutral-400 text-[10px] mb-3">
           Reducing the U height does not delete devices already placed at higher U positions —

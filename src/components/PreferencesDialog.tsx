@@ -3,7 +3,7 @@ import { useSchematicStore } from "../store";
 import WorkspaceSettingsSection from "./WorkspaceSettingsSection";
 import CollapsibleModuleSection from "./CollapsibleModuleSection";
 import FloatingPanel from "./FloatingPanel";
-import { DEFAULT_SCROLL_CONFIG, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_PAGE_MODE } from "../types";
+import { DEFAULT_SCROLL_CONFIG, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_PAGE_MODE, DEFAULT_RACK_ELEVATION_SETTINGS } from "../types";
 import type { LabelCaseMode, PanMode, ScrollAction, ScrollConfig, StubLabelPageMode } from "../types";
 
 const AUTOROUTE_PREF_KEY = "easyschematic-autoroute-pref";
@@ -99,12 +99,16 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
   const setStubLabelShowRoom = useSchematicStore((s) => s.setStubLabelShowRoom);
   const stubLabelPageMode = useSchematicStore((s) => s.stubLabelPageMode);
   const setStubLabelPageMode = useSchematicStore((s) => s.setStubLabelPageMode);
+  const rackElevationSettings = useSchematicStore((s) => s.rackElevationSettings);
+  const setRackElevationSettings = useSchematicStore((s) => s.setRackElevationSettings);
   const useShortNames = useSchematicStore((s) => s.useShortNames);
   const setUseShortNames = useSchematicStore((s) => s.setUseShortNames);
   const measurementSystem = useSchematicStore((s) => s.measurementSystem);
   const setMeasurementSystem = useSchematicStore((s) => s.setMeasurementSystem);
   const wrapDeviceLabels = useSchematicStore((s) => s.wrapDeviceLabels);
   const setWrapDeviceLabels = useSchematicStore((s) => s.setWrapDeviceLabels);
+  const mdfDisplayMode = useSchematicStore((s) => s.mdfDisplayMode);
+  const setMdfDisplayMode = useSchematicStore((s) => s.setMdfDisplayMode);
   const [autoRoutePref, setAutoRoutePref] = useState(
     () => localStorage.getItem(AUTOROUTE_PREF_KEY) ?? "ask",
   );
@@ -382,6 +386,40 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
                 </p>
               </CollapsibleModuleSection>
 
+              <CollapsibleModuleSection title="MDF panels" persistKey="prefs:display:mdf">
+                <p className="text-xs text-[var(--color-text)] mb-2">
+                  How main-distribution (MDA/MDB/…) panels render on the drawing. Use
+                  <strong className="font-medium"> Panel</strong> while patching (all row-port pairs visible);
+                  switch to <strong className="font-medium"> Inline</strong> for a clean drawing (active pairs only).
+                </p>
+                <div
+                  className="inline-flex rounded-lg border border-[var(--color-border)] overflow-hidden"
+                  role="group"
+                  aria-label="MDF display mode"
+                >
+                  {(["panel", "inline"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setMdfDisplayMode(mode)}
+                      className={
+                        "px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer " +
+                        (mdfDisplayMode === mode
+                          ? "bg-[var(--ti-accent-soft)] text-[var(--ti-accent-ink)]"
+                          : "bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]")
+                      }
+                    >
+                      {mode === "panel" ? "A · Panel" : "B · Inline"}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-[var(--color-text-muted)] mt-2">
+                  <span className="font-medium text-[var(--color-text)]">Panel</span> — full device (e.g. TD08 MDA) with all row-port pairs (1-1 … 2-6) for wiring.
+                  {" "}
+                  <span className="font-medium text-[var(--color-text)]">Inline</span> — cable-break per active pair (e.g. TD08 MDB 2-14). Same toggle on the canvas toolbar.
+                </p>
+              </CollapsibleModuleSection>
+
               <CollapsibleModuleSection title="Stub labels" persistKey="prefs:display:stub-labels">
                 <div className="flex items-center justify-between py-1">
                   <span className="text-xs text-[var(--color-text)]">Show port name on stub labels</span>
@@ -455,13 +493,44 @@ export default function PreferencesDialog({ onClose }: { onClose: () => void }) 
           )}
 
           {activeTab === "workspace" && (
-            <CollapsibleModuleSection
-              title="Sidebars & workspace"
-              hint="Devices, trackIT numbers, view options, presets"
-              persistKey="prefs:workspace"
-            >
-              <WorkspaceSettingsSection />
-            </CollapsibleModuleSection>
+            <>
+              <CollapsibleModuleSection
+                title="Rack elevations"
+                hint="Default placement when dragging devices into equipment rooms"
+                persistKey="prefs:rack-elevation"
+              >
+                <div className="py-1">
+                  <label className="text-xs text-[var(--color-text)] block mb-1">
+                    Default placement U (bottom-up)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 text-xs outline-none"
+                    placeholder={`Auto (${Math.round((DEFAULT_RACK_ELEVATION_SETTINGS.defaultPlacementURatio ?? 36 / 42) * 42)} on 42U)`}
+                    value={rackElevationSettings?.defaultPlacementU ?? ""}
+                    onChange={(e) => {
+                      const raw = e.target.value.trim();
+                      setRackElevationSettings({
+                        defaultPlacementU: raw ? Math.max(1, Math.round(Number(raw))) : undefined,
+                      });
+                    }}
+                  />
+                  <p className="text-[10px] text-[var(--color-text-muted)] mt-1">
+                    Used when a device is dropped into a schematic equipment room linked to a rack.
+                    Leave blank to scale from rack height (default 36 on a 42U rack).
+                  </p>
+                </div>
+              </CollapsibleModuleSection>
+              <CollapsibleModuleSection
+                title="Sidebars & workspace"
+                hint="Devices, trackIT numbers, view options, presets"
+                persistKey="prefs:workspace"
+              >
+                <WorkspaceSettingsSection />
+              </CollapsibleModuleSection>
+            </>
           )}
         </div>
     </FloatingPanel>

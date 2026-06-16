@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { layoutRackPositions, rackLayoutReverseOrder } from "./rackLayout";
+import { layoutAutoRackPositions, layoutRackPositions, rackLayoutReverseOrder } from "./rackLayout";
 import { defaultRackElevationViewports } from "./rackElevationViewportUtils";
 import {
   applyRackFillOrderPreset,
@@ -70,6 +70,7 @@ import type {
   LineStyle,
   LabelCaseMode,
   DistanceSettings,
+  RackElevationSettings,
   PanMode,
   StubLabelPageMode,
   RfPathRole,
@@ -84,15 +85,17 @@ import {
   composeHousenameForDevice,
   findDeviceRackContext,
   findDuplicateDesignations,
+  rackHasHousenameSlotGaps,
   resolveDeviceTypeCode,
 } from "./housename";
+import { planDevicesLinkedRackSync } from "./rackLink";
 import {
   affectedDeviceIdsForRoom,
   composeDeviceRoomPatch,
 } from "./roomContext";
 import { defaultStubPlacement } from "./stubPlacement";
 import { getPortAbsolutePositions } from "./snapUtils";
-import { DEFAULT_SCROLL_CONFIG, DEFAULT_LABEL_CASE, DEFAULT_DISTANCE_SETTINGS, DEFAULT_PAN_MODE, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_SHOW_ROOM, DEFAULT_STUB_LABEL_PAGE_MODE } from "./types";
+import { DEFAULT_SCROLL_CONFIG, DEFAULT_LABEL_CASE, DEFAULT_DISTANCE_SETTINGS, DEFAULT_RACK_ELEVATION_SETTINGS, DEFAULT_PAN_MODE, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_SHOW_ROOM, DEFAULT_STUB_LABEL_PAGE_MODE } from "./types";
 import { distanceUnitFromMeasurementSystem, measurementSystemFromDistanceUnit, parseMeasurementSystem } from "./measurementUnits";
 import { pairKey } from "./roomDistance";
 import type { Orientation } from "./printConfig";
@@ -345,6 +348,7 @@ const TEMPLATE_META_KEY = "easyschematic-custom-template-meta";
 const CATEGORY_ORDER_KEY = "easyschematic-category-order";
 
 export const CATEGORY_ORDER_DEFAULT: string[] = [
+  "MDF Elements",
   "Sources",
   "Peripherals",
   "Switching",
@@ -722,6 +726,8 @@ interface SchematicState {
   setRoomDistance: (roomIdA: string, roomIdB: string, distance: number | undefined) => void;
   clearRoomDistance: (roomIdA: string, roomIdB: string) => void;
   setDistanceSettings: (partial: Partial<DistanceSettings>) => void;
+  rackElevationSettings: RackElevationSettings | undefined;
+  setRackElevationSettings: (partial: Partial<RackElevationSettings>) => void;
   setColorKeyEnabled: (v: boolean) => void;
   setColorKeyCorner: (c: "top-left" | "top-right" | "bottom-left" | "bottom-right") => void;
   setColorKeyColumns: (n: number) => void;
@@ -767,8 +773,11 @@ interface SchematicState {
   toggleRfPathRoleVisibility: (role: RfPathRole) => void;
   setHideUnconnectedPorts: (hide: boolean) => void;
   setShowInstallationInfo: (show: boolean) => void;
-  mdfDisplayInline: boolean;
-  setMdfDisplayInline: (inline: boolean) => void;
+  mdfDisplayMode: import("./types").MdfDisplayMode;
+  setMdfDisplayMode: (mode: import("./types").MdfDisplayMode) => void;
+  /** Per-device MDF panel / inline override (undefined = clear override). */
+  setDeviceMdfDisplayMode: (nodeId: string, mode: import("./types").MdfDisplayMode | undefined) => void;
+  toggleDeviceMdfDisplayMode: (nodeId: string) => void;
   showPortCounts: boolean;
   setShowPortCounts: (show: boolean) => void;
   setTemplateHiddenSignals: (templateId: string, hidden: SignalType[]) => void;
@@ -992,8 +1001,11 @@ interface SchematicState {
   /** Lay out all racks on an elevation page (single row or grid). */
   layoutRacksOnPage: (
     pageId: string,
-    options?: import("./rackLayout").LayoutRackPositionsOptions,
+    options?: import("./rackLayout").LayoutRackPositionsOptions & { useAutoLayout?: boolean },
   ) => void;
+  /** Smart side-by-side layout (respects rackLayoutMode). */
+  autoLayoutRacksOnPage: (pageId: string, options?: { skipUndo?: boolean }) => void;
+  reorderRacksLayout: (pageId: string, orderedRackIds: string[]) => void;
   addRackElevationViewport: (pageId: string, preset: Omit<RackElevationViewportPreset, "id">) => string;
   updateRackElevationViewport: (
     pageId: string,
@@ -1042,7 +1054,16 @@ interface SchematicState {
     presetId: string,
     options: TowerDatacomHubApplyOptions | RackFillOrderApplyOptions,
   ) => void;
-  updateRackElevationPage: (pageId: string, patch: Partial<Pick<RackElevationPage, "showTrunkCallouts" | "label" | "rackLayoutReverseOrder" | "rackLayoutSerpentine">>) => void;
+  updateRackElevationPage: (pageId: string, patch: Partial<Pick<RackElevationPage, "showTrunkCallouts" | "label" | "rackLayoutReverseOrder" | "rackLayoutSerpentine" | "rackLayoutMode">>) => void;
+  /** Clear housename slots in a rack and recompute letters (after user confirms renumber). */
+  renumberHousenameSlotsInRack: (pageId: string, rackId: string, typeCode?: string) => void;
+  /** After removing a placement, report whether A–Z slot gaps remain for confirm dialog. */
+  housenameGapAfterRemoval: (
+    pageId: string,
+    rackId: string,
+    removedTypeCode: string,
+  ) => boolean;
+  applyLinkedRackSyncForDevices: (deviceNodeIds: string[]) => void;
   /** Rebalance half-rack sides and clear stale placement flags after device rack metadata changes. */
   syncRackPlacementsForDevice: (deviceNodeId: string) => void;
 
@@ -1782,6 +1803,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   cableCosts: undefined,
   roomDistances: undefined,
   distanceSettings: undefined,
+  rackElevationSettings: undefined,
   titleBlock: { showName: "", venue: "", designer: "", engineer: "", date: "", drawingTitle: "", company: "", revision: "", logo: "", customFields: [] },
   titleBlockLayout: createDefaultLayout(),
   signalColors: undefined,
@@ -1794,7 +1816,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   hiddenRfPathRoles: "",
   hideUnconnectedPorts: false,
   showInstallationInfo: true,
-  mdfDisplayInline: false,
+  mdfDisplayMode: "panel",
   showPortCounts: false,
   templateHiddenSignals: {},
   showContainers: true,
@@ -2971,28 +2993,33 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       if (patch) patches.push({ nodeId, patch });
     }
 
-    if (patches.length === 0) return;
+    const syncIds = [...deviceIds];
 
-    const patchById = new Map(patches.map((p) => [p.nodeId, p.patch]));
-    const apply = () => {
-      set({
-        nodes: get().nodes.map((n) => {
-          const patch = patchById.get(n.id);
-          if (!patch || n.type !== "device") return n;
-          return { ...n, data: { ...n.data, ...patch } } as DeviceNode;
-        }),
-      });
-      get().saveToLocalStorage();
-    };
+    if (patches.length > 0) {
+      const patchById = new Map(patches.map((p) => [p.nodeId, p.patch]));
+      const apply = () => {
+        set({
+          nodes: get().nodes.map((n) => {
+            const patch = patchById.get(n.id);
+            if (!patch || n.type !== "device") return n;
+            return { ...n, data: { ...n.data, ...patch } } as DeviceNode;
+          }),
+        });
+        get().saveToLocalStorage();
+      };
 
-    if (options?.skipUndo) {
-      apply();
-      return;
+      if (options?.skipUndo) {
+        apply();
+      } else {
+        pushUndo({ nodes: state.nodes, edges: state.edges });
+        apply();
+        set({ undoSize: schematicUndoSize(), redoSize: 0 });
+      }
     }
 
-    pushUndo({ nodes: state.nodes, edges: state.edges });
-    apply();
-    set({ undoSize: schematicUndoSize(), redoSize: 0 });
+    if (syncIds.length > 0) {
+      get().applyLinkedRackSyncForDevices(syncIds);
+    }
   },
 
   convertPortsToPassthrough: (nodeId, inputPortId, outputPortId, newPort) => {
@@ -3632,6 +3659,9 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
     set({ nodes: updatedNodes, pages: updatedPages });
     get().saveToLocalStorage();
+    if (linkChanged && newLinkedRackPageId) {
+      get().autoLayoutRacksOnPage(newLinkedRackPageId, { skipUndo: true });
+    }
     if (linkChanged && newLinkedRackPageId && newLinkedRackId) {
       const hubPage = updatedPages.find((p) => p.id === newLinkedRackPageId && p.type === "rack-elevation") as
         | RackElevationPage
@@ -4414,6 +4444,23 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     set({ distanceSettings: merged });
     get().saveToLocalStorage();
   },
+  setRackElevationSettings: (partial) => {
+    const merged: RackElevationSettings = {
+      ...DEFAULT_RACK_ELEVATION_SETTINGS,
+      ...(get().rackElevationSettings ?? {}),
+      ...partial,
+    };
+    if (merged.defaultPlacementU != null) {
+      const u = Math.round(merged.defaultPlacementU);
+      merged.defaultPlacementU = Number.isFinite(u) && u >= 1 ? u : undefined;
+    }
+    if (merged.defaultPlacementURatio != null) {
+      const r = merged.defaultPlacementURatio;
+      merged.defaultPlacementURatio = Number.isFinite(r) && r > 0 && r <= 1 ? r : DEFAULT_RACK_ELEVATION_SETTINGS.defaultPlacementURatio;
+    }
+    set({ rackElevationSettings: merged });
+    get().saveToLocalStorage();
+  },
   setTitleBlock: (tb) => { set({ titleBlock: tb }); get().saveToLocalStorage(); },
   setTitleBlockLayout: (layout) => { set({ titleBlockLayout: layout }); get().saveToLocalStorage(); },
 
@@ -4475,9 +4522,37 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     get().saveToLocalStorage();
   },
 
-  setMdfDisplayInline: (inline) => {
-    set({ mdfDisplayInline: inline });
+  setMdfDisplayMode: (mode) => {
+    set({ mdfDisplayMode: mode });
     get().saveToLocalStorage();
+  },
+
+  setDeviceMdfDisplayMode: (nodeId, mode) => {
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    set({
+      nodes: state.nodes.map((n) => {
+        if (n.id !== nodeId || n.type !== "device") return n;
+        const data = { ...(n.data as DeviceData) };
+        if (mode === undefined) {
+          delete data.mdfDisplayMode;
+        } else {
+          data.mdfDisplayMode = mode;
+        }
+        return { ...n, data } as DeviceNode;
+      }),
+    });
+    get().saveToLocalStorage();
+  },
+
+  toggleDeviceMdfDisplayMode: (nodeId) => {
+    const state = get();
+    const node = state.nodes.find((n) => n.id === nodeId && n.type === "device");
+    if (!node) return;
+    const data = node.data as DeviceData;
+    const current = data.mdfDisplayMode ?? state.mdfDisplayMode;
+    const next = current === "inline" ? "panel" : "inline";
+    get().setDeviceMdfDisplayMode(nodeId, next);
   },
 
   setShowPortCounts: (show) => {
@@ -4859,11 +4934,15 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     pushUndo({ nodes: state.nodes, edges: state.edges });
     const id = nextRackId();
     const rack: RackData = { ...rackData, id };
+    const page = state.pages.find((p) => p.id === pageId && p.type === "rack-elevation") as RackElevationPage | undefined;
     set({
       pages: mapElevationPage(state.pages, pageId, (p) => ({ ...p, racks: [...p.racks, rack] })),
       undoSize: schematicUndoSize(), redoSize: 0,
     });
     get().saveToLocalStorage();
+    if (page && page.racks.length >= 1) {
+      get().autoLayoutRacksOnPage(pageId, { skipUndo: true });
+    }
     return id;
   },
 
@@ -4904,6 +4983,9 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     get().saveToLocalStorage();
     if ("designation" in patch || "label" in patch) {
       get().recomputeHousenames({ pageId, rackId }, { skipUndo: true });
+    }
+    if ("label" in patch || "linkedRoomId" in patch || "layoutRow" in patch || "layoutOrder" in patch) {
+      get().autoLayoutRacksOnPage(pageId, { skipUndo: true });
     }
   },
 
@@ -5034,11 +5116,22 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const page = state.pages.find((p) => p.id === pageId && p.type === "rack-elevation") as RackElevationPage | undefined;
     const placement = page?.placements.find((pl) => pl.id === placementId);
     const rackId = patch.rackId ?? placement?.rackId;
+    const rackChanged = !!(patch.rackId && placement?.rackId && patch.rackId !== placement.rackId);
     set({
       pages: mapElevationPage(state.pages, pageId, (p) => ({
         ...p,
         placements: p.placements.map((pl) => pl.id === placementId ? { ...pl, ...patch } : pl),
       })),
+      ...(rackChanged && placement
+        ? {
+            nodes: state.nodes.map((n) => {
+              if (n.id !== placement.deviceNodeId || n.type !== "device") return n;
+              const data = n.data as DeviceData;
+              if (!data.housenameSlot) return n;
+              return { ...n, data: { ...data, housenameSlot: undefined } } as DeviceNode;
+            }),
+          }
+        : {}),
     });
     get().saveToLocalStorage();
     if (rackId) {
@@ -5266,6 +5359,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
     set({ pages: updatedPages, nodes: updatedNodes, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
+    get().autoLayoutRacksOnPage(pageId, { skipUndo: true });
     const hubPage = updatedPages.find((p) => p.id === pageId && p.type === "rack-elevation") as
       | RackElevationPage
       | undefined;
@@ -5853,7 +5947,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     pushUndo({ nodes: state.nodes, edges: state.edges });
     const maxHeightU = page.racks.reduce((m, r) => Math.max(m, r.heightU), 0);
     const serpentineRows = options?.serpentineRows ?? rackLayoutReverseOrder(page);
-    const posById = layoutRackPositions(page.racks, { maxHeightU, serpentineRows, ...options });
+    const useAuto = options?.useAutoLayout === true || (options?.mode == null && page.rackLayoutMode !== "manual");
+    const posById = useAuto
+      ? layoutAutoRackPositions(page.racks, { maxHeightU, serpentineRows })
+      : layoutRackPositions(page.racks, { maxHeightU, serpentineRows, ...options });
     set({
       pages: mapElevationPage(state.pages, pageId, (p) => ({
         ...p,
@@ -5864,11 +5961,143 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...(options?.serpentineRows != null
           ? { rackLayoutReverseOrder: options.serpentineRows, rackLayoutSerpentine: undefined }
           : {}),
+        ...(useAuto ? { rackLayoutMode: "auto" as const } : {}),
       })),
       undoSize: schematicUndoSize(),
       redoSize: 0,
     });
     get().saveToLocalStorage();
+  },
+
+  autoLayoutRacksOnPage: (pageId, options) => {
+    const state = get();
+    const page = state.pages.find((p) => p.id === pageId && p.type === "rack-elevation") as RackElevationPage | undefined;
+    if (!page || page.racks.length < 1) return;
+    if (page.rackLayoutMode === "manual") return;
+    if (!options?.skipUndo) {
+      pushUndo({ nodes: state.nodes, edges: state.edges });
+    }
+    const maxHeightU = page.racks.reduce((m, r) => Math.max(m, r.heightU), 0);
+    const posById = layoutAutoRackPositions(page.racks, {
+      maxHeightU,
+      serpentineRows: rackLayoutReverseOrder(page),
+    });
+    set({
+      pages: mapElevationPage(state.pages, pageId, (p) => ({
+        ...p,
+        racks: p.racks.map((r) => {
+          const pos = posById.get(r.id);
+          return pos ? { ...r, position: pos } : r;
+        }),
+      })),
+      ...(options?.skipUndo ? {} : { undoSize: schematicUndoSize(), redoSize: 0 }),
+    });
+    get().saveToLocalStorage();
+  },
+
+  reorderRacksLayout: (pageId, orderedRackIds) => {
+    const state = get();
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    set({
+      pages: mapElevationPage(state.pages, pageId, (p) => ({
+        ...p,
+        racks: p.racks.map((r) => {
+          const idx = orderedRackIds.indexOf(r.id);
+          return idx >= 0 ? { ...r, layoutOrder: idx + 1 } : r;
+        }),
+      })),
+      undoSize: schematicUndoSize(),
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+    get().autoLayoutRacksOnPage(pageId, { skipUndo: true });
+  },
+
+  applyLinkedRackSyncForDevices: (deviceNodeIds) => {
+    const state = get();
+    const plans = planDevicesLinkedRackSync(
+      deviceNodeIds,
+      state.nodes,
+      state.pages,
+      state.rackElevationSettings,
+    );
+    if (plans.length === 0) return;
+
+    const removeIds = new Set(plans.flatMap((p) => p.removePlacementIds));
+    const newPlacements: RackDevicePlacement[] = plans.map((plan) => ({
+      id: nextPlacementId(),
+      rackId: plan.rackId,
+      deviceNodeId: plan.deviceNodeId,
+      uPosition: plan.uPosition,
+      face: plan.face,
+    }));
+
+    const clearSlotIds = new Set(
+      plans.filter((p) => p.clearHousenameSlot).map((p) => p.deviceNodeId),
+    );
+
+    set({
+      pages: state.pages.map((p): SchematicPage => {
+        if (p.type !== "rack-elevation") return p;
+        const elev = p as RackElevationPage;
+        const toAdd = newPlacements.filter((np) =>
+          plans.some((pl) => pl.pageId === elev.id && pl.deviceNodeId === np.deviceNodeId),
+        );
+        return {
+          ...elev,
+          placements: [
+            ...elev.placements.filter((pl) => !removeIds.has(pl.id)),
+            ...toAdd,
+          ],
+        };
+      }),
+      nodes: state.nodes.map((n) => {
+        if (n.type !== "device" || !clearSlotIds.has(n.id)) return n;
+        const data = n.data as DeviceData;
+        if (!data.housenameSlot) return n;
+        return { ...n, data: { ...data, housenameSlot: undefined } } as DeviceNode;
+      }),
+    });
+    get().saveToLocalStorage();
+
+    for (const plan of plans) {
+      if (!plan.skipHousenameRecompute) {
+        get().recomputeHousenames({ pageId: plan.pageId, rackId: plan.rackId }, { skipUndo: true });
+      }
+    }
+  },
+
+  housenameGapAfterRemoval: (pageId, rackId, removedTypeCode) => {
+    const state = get();
+    const page = state.pages.find((p) => p.id === pageId && p.type === "rack-elevation") as RackElevationPage | undefined;
+    if (!page) return false;
+    const deviceDataMap = new Map<string, DeviceData>();
+    for (const n of state.nodes) {
+      if (n.type === "device") deviceDataMap.set(n.id, n.data as DeviceData);
+    }
+    return rackHasHousenameSlotGaps(page, rackId, removedTypeCode, deviceDataMap);
+  },
+
+  renumberHousenameSlotsInRack: (pageId, rackId, typeCode) => {
+    const state = get();
+    const page = state.pages.find((p) => p.id === pageId && p.type === "rack-elevation") as RackElevationPage | undefined;
+    if (!page) return;
+    const normalizedType = typeCode?.trim().toUpperCase();
+    const deviceIds = new Set(affectedDeviceIdsForRack(page, rackId));
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    set({
+      nodes: state.nodes.map((n) => {
+        if (n.type !== "device" || !deviceIds.has(n.id)) return n;
+        const data = n.data as DeviceData;
+        if (normalizedType && resolveDeviceTypeCode(data) !== normalizedType) return n;
+        if (!data.housenameSlot) return n;
+        return { ...n, data: { ...data, housenameSlot: undefined } } as DeviceNode;
+      }),
+      undoSize: schematicUndoSize(),
+      redoSize: 0,
+    });
+    get().saveToLocalStorage();
+    get().recomputeHousenames({ pageId, rackId }, { skipUndo: true });
   },
 
   addRackElevationViewport: (pageId, preset) => {
@@ -6470,7 +6699,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       roomLayerOpacity: Object.keys(state.roomLayerOpacity).length > 0 ? state.roomLayerOpacity : undefined,
       hideUnconnectedPorts: state.hideUnconnectedPorts || undefined,
       showInstallationInfo: state.showInstallationInfo === false ? false : undefined,
-      mdfDisplayInline: state.mdfDisplayInline ? true : undefined,
+      mdfDisplayMode: state.mdfDisplayMode !== "panel" ? state.mdfDisplayMode : undefined,
       showPortCounts: state.showPortCounts || undefined,
       templateHiddenSignals: Object.keys(state.templateHiddenSignals).length > 0 ? state.templateHiddenSignals : undefined,
       templatePresets: Object.keys(state.templatePresets).length > 0 ? state.templatePresets : undefined,
@@ -6519,6 +6748,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       cableCosts: state.cableCosts && Object.keys(state.cableCosts).length > 0 ? state.cableCosts : undefined,
       roomDistances: state.roomDistances && Object.keys(state.roomDistances).length > 0 ? state.roomDistances : undefined,
       distanceSettings: state.distanceSettings,
+      rackElevationSettings: state.rackElevationSettings,
       siteLicensed: state.siteLicensed ?? undefined,
       siteNetwork: state.siteNetwork ?? undefined,
     };
@@ -6648,6 +6878,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         cableCosts: data.cableCosts ?? undefined,
         roomDistances: data.roomDistances ?? undefined,
         distanceSettings: data.distanceSettings ?? undefined,
+        rackElevationSettings: data.rackElevationSettings ?? undefined,
         trackItNumbering: data.trackItNumbering ?? null,
         trackItLocations: data.trackItLocations ?? null,
         activeTrackItReservationId:
@@ -6707,7 +6938,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       roomLayerOpacity: Object.keys(state.roomLayerOpacity).length > 0 ? state.roomLayerOpacity : undefined,
       hideUnconnectedPorts: state.hideUnconnectedPorts || undefined,
       showInstallationInfo: state.showInstallationInfo === false ? false : undefined,
-      mdfDisplayInline: state.mdfDisplayInline ? true : undefined,
+      mdfDisplayMode: state.mdfDisplayMode !== "panel" ? state.mdfDisplayMode : undefined,
       showPortCounts: state.showPortCounts || undefined,
       templateHiddenSignals: Object.keys(state.templateHiddenSignals).length > 0 ? state.templateHiddenSignals : undefined,
       templatePresets: Object.keys(state.templatePresets).length > 0 ? state.templatePresets : undefined,
@@ -6756,6 +6987,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       cableCosts: state.cableCosts && Object.keys(state.cableCosts).length > 0 ? state.cableCosts : undefined,
       roomDistances: state.roomDistances && Object.keys(state.roomDistances).length > 0 ? state.roomDistances : undefined,
       distanceSettings: state.distanceSettings,
+      rackElevationSettings: state.rackElevationSettings,
       trackItNumbering:
         state.trackItNumbering && state.trackItNumbering.blocks.length > 0
           ? state.trackItNumbering
@@ -7100,7 +7332,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       roomLayerOpacity: data.roomLayerOpacity ?? {},
       hideUnconnectedPorts: data.hideUnconnectedPorts ?? false,
       showInstallationInfo: data.showInstallationInfo ?? true,
-      mdfDisplayInline: data.mdfDisplayInline ?? false,
+      mdfDisplayMode: data.mdfDisplayMode
+        ?? (data.mdfDisplayInline ? "inline" : "panel"),
       showPortCounts: data.showPortCounts ?? false,
       templateHiddenSignals: data.templateHiddenSignals ?? {},
       templatePresets: data.templatePresets ?? {},
@@ -7144,6 +7377,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       cableCosts: data.cableCosts ?? undefined,
       roomDistances: data.roomDistances ?? undefined,
       distanceSettings: data.distanceSettings ?? undefined,
+      rackElevationSettings: data.rackElevationSettings ?? undefined,
       trackItNumbering: data.trackItNumbering ?? null,
       trackItLocations: data.trackItLocations ?? null,
       trackItLink: data.trackItLink ?? null,

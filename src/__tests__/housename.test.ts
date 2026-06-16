@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  assignHousenameSlot,
   composeHousename,
   composeHousenameForDevice,
   computePositionIndex,
@@ -147,17 +148,82 @@ describe("housename", () => {
     expect(positionLetter(1)).toBe("B");
   });
 
-  it("composes MDF housename with pair label (TK05 MDA 1-29)", () => {
+  it("composes MDF housename with row-port label (TK05 MDA 1-5)", () => {
     const page = mockRackPage({ label: "TK05" });
     const nodes = [
       mockDevice("d1", {
         label: "MDF",
         deviceType: "mdf",
-        ports: [{ id: "p1", label: "1-29", signalType: "sdi", direction: "passthrough" }],
+        ports: [{ id: "p1", label: "1-5", signalType: "sdi", direction: "passthrough" }],
       }),
     ];
     expect(resolveLiveDeviceHousename("d1", nodes[0].data as DeviceData, { nodes, pages: [page] }).text).toBe(
-      "TK05 MDA 1-29",
+      "TK05 MDA 1-5",
     );
+  });
+
+  it("assigns MDA/MDB top-down by rack U for MDF panels", () => {
+    const page = mockRackPage({ label: "TD08" });
+    page.placements = [
+      { id: "p1", rackId: "rack-1", deviceNodeId: "d-top", uPosition: 30, face: "front" },
+      { id: "p2", rackId: "rack-1", deviceNodeId: "d-low", uPosition: 10, face: "front" },
+    ];
+    const nodes = [
+      mockDevice("d-top", {
+        label: "MDF top",
+        deviceType: "mdf",
+        ports: [{ id: "p1", label: "1-1", signalType: "sdi", direction: "passthrough" }],
+      }),
+      mockDevice("d-low", {
+        label: "MDF low",
+        deviceType: "mdf",
+        ports: [{ id: "p1", label: "2-14", signalType: "sdi", direction: "passthrough" }],
+      }),
+    ];
+    expect(resolveLiveDeviceHousename("d-top", nodes[0].data as DeviceData, { nodes, pages: [page] }).text).toBe(
+      "TD08 MDA 1-1",
+    );
+    expect(resolveLiveDeviceHousename("d-low", nodes[1].data as DeviceData, { nodes, pages: [page] }).text).toBe(
+      "TD08 MDB 2-14",
+    );
+  });
+
+  it("assigns ENC X when placed above existing ENC cluster", () => {
+    const page = mockRackPage();
+    page.placements = [
+      { id: "p1", rackId: "rack-1", deviceNodeId: "d1", uPosition: 32, face: "front" },
+      { id: "p2", rackId: "rack-1", deviceNodeId: "d2", uPosition: 34, face: "front" },
+      { id: "p3", rackId: "rack-1", deviceNodeId: "d3", uPosition: 36, face: "front" },
+    ];
+    const nodes = [
+      mockDevice("d1", { label: "E1", deviceType: "ndi-encoder", housenameSlot: "A" }),
+      mockDevice("d2", { label: "E2", deviceType: "ndi-encoder", housenameSlot: "C" }),
+      mockDevice("d3", { label: "E3", deviceType: "ndi-encoder" }),
+    ];
+    const map = new Map(nodes.map((n) => [n.id, n.data as DeviceData]));
+    const ctx = findDeviceRackContext("d3", [page])!;
+    const slot = assignHousenameSlot("d3", nodes[2].data as DeviceData, ctx, map);
+    expect(slot).toBe("X");
+    expect(
+      resolveLiveDeviceHousename("d3", { ...(nodes[2].data as DeviceData), housenameSlot: slot }, { nodes, pages: [page] }).text,
+    ).toBe("TD05 ENC X");
+  });
+
+  it("keeps stable housenameSlot on compose (ENC B stays B)", () => {
+    const page = mockRackPage();
+    page.placements = [
+      { id: "p2", rackId: "rack-1", deviceNodeId: "d2", uPosition: 34, face: "front" },
+    ];
+    const nodes = [
+      mockDevice("d2", { label: "E2", deviceType: "ndi-encoder", housenameSlot: "B" }),
+    ];
+    const patch = composeHousenameForDevice("d2", { nodes, pages: [page] });
+    expect(patch?.designation).toBe("TD05 ENC B");
+  });
+
+  it("composes housename with explicit positionSlot", () => {
+    expect(
+      composeHousename({ rackCode: "TD08", typeCode: "ENC", positionSlot: "A", expandTypeLabel: false }),
+    ).toBe("TD08 ENC A");
   });
 });

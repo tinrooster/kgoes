@@ -15,9 +15,10 @@ import { createDefaultLayout } from "./titleBlockLayout";
 import { DEFAULT_CONNECTOR } from "./connectorTypes";
 import { defaultStubPlacement } from "./stubPlacement";
 import { getPortAbsolutePositions } from "./snapUtils";
-import type { SchematicNode } from "./types";
+import { migrateMdfDevicePorts } from "./mdfPortLabels";
+import type { DeviceData, SchematicNode } from "./types";
 
-export const CURRENT_SCHEMA_VERSION = 43;
+export const CURRENT_SCHEMA_VERSION = 44;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Migration = (data: any) => any;
@@ -559,6 +560,27 @@ const migrations: Record<number, Migration> = {
     }
     data.pages = pages;
     data.version = 43;
+    return data;
+  },
+
+  43: (data) => {
+    // v43 → v44: MDF passthrough labels Pair N → row-port (e.g. 1-5, 2-14).
+    const nodes = Array.isArray(data.nodes) ? data.nodes : [];
+    for (const n of nodes) {
+      if (n?.type !== "device" || !n.data) continue;
+      n.data = migrateMdfDevicePorts(n.data as DeviceData);
+    }
+    const pages = Array.isArray(data.pages) ? data.pages : [];
+    for (const p of pages) {
+      if (!Array.isArray(p?.nodes)) continue;
+      for (const n of p.nodes) {
+        if (n?.type !== "device" || !n.data) continue;
+        n.data = migrateMdfDevicePorts(n.data as DeviceData);
+      }
+    }
+    data.nodes = nodes;
+    data.pages = pages;
+    data.version = 44;
     return data;
   },
 

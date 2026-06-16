@@ -399,10 +399,19 @@ export interface DeviceData {
   roomLocation?: string;
   /** MDF port-pair suffix override (e.g. 1-29). Defaults to passthrough port label. */
   mdfPairLabel?: string;
+  /** MDF panel layout — row × port grid for multi-pair panels. */
+  mdfRows?: number;
+  mdfPortsPerRow?: number;
+  /** Primary signal type for MDF layout rebuild (SDI, ethernet, audio, …). */
+  mdfSignalType?: SignalType;
+  /** Per-instance MDF view: full panel or inline cable-break. Omit to use schematic default. */
+  mdfDisplayMode?: MdfDisplayMode;
   /** Frame and slot text (e.g. FRAME 1 SLOT 3/4). */
   frameSlot?: string;
   /** Device type code for housename (DA, RSW, FS, …). */
   deviceTypeCode?: string;
+  /** Stable position suffix (A, B, X, …). When set, housename composer keeps this letter. */
+  housenameSlot?: string;
   /** Primary management IP when not inferred from ports. */
   managementIp?: string;
   /** VLAN summary for header display (e.g. "VLAN 10, 20"). */
@@ -459,6 +468,9 @@ export interface FacePlateLabel {
 }
 
 export type DeviceNode = Node<DeviceData, "device">;
+
+/** MDF on drawing: full panel (active pairs only) or inline cable-break per active pair. */
+export type MdfDisplayMode = "panel" | "inline";
 
 export interface RoomData {
   [key: string]: unknown;
@@ -643,6 +655,8 @@ export interface DeviceTemplate {
   version?: number;
   deviceType: string;
   category?: string;
+  /** Library presentation: rack device vs drawing element (MDF panels). */
+  libraryKind?: "device" | "element";
   label: string;
   /** Optional short name (e.g. model number without manufacturer prefix). When the
    *  schematic's "use short names" setting is on, this is shown instead of label. */
@@ -786,6 +800,10 @@ export interface RackData {
   linkedRoomId?: string;
   /** Short plant/cable code (e.g. RACK07, STR01); auto-filled from label when preset applies. */
   designation?: string;
+  /** Explicit facility row (1-based). When set, racks on different rows break to new canvas row. */
+  layoutRow?: number;
+  /** Manual order within a row (sidebar drag-and-drop). */
+  layoutOrder?: number;
 }
 
 export interface RackDevicePlacement {
@@ -889,6 +907,8 @@ export interface RackElevationPage {
   rackLayoutSerpentine?: boolean;
   /** Saved pan/zoom presets for quick rack-canvas navigation. */
   viewports?: RackElevationViewportPreset[];
+  /** `auto` = smart side-by-side layout; `manual` = preserve canvas positions only. */
+  rackLayoutMode?: "auto" | "manual";
 }
 
 /** Named saved view of a rack elevation canvas (overview, row, rack, or custom pan/zoom). */
@@ -1085,6 +1105,8 @@ export interface SchematicFile {
   showInstallationInfo?: boolean;
   /** When true, MDF/MDA devices render as compact inline cable-break symbols. */
   mdfDisplayInline?: boolean;
+  /** MDF drawing style: panel block (active pairs) or inline cable-break per active pair. */
+  mdfDisplayMode?: MdfDisplayMode;
   showPortCounts?: boolean;
   templateHiddenSignals?: Record<string, SignalType[]>;
   templatePresets?: Record<string, TemplatePreset>;
@@ -1147,6 +1169,8 @@ export interface SchematicFile {
   roomDistances?: Record<string, number>;
   /** Unit + slack settings for converting room distance → estimated cable length (#146). */
   distanceSettings?: DistanceSettings;
+  /** Default rack U when placing devices from schematic equipment rooms. */
+  rackElevationSettings?: RackElevationSettings;
   /** ISO 4217 currency code for cost display in reports (#158). Defaults to "USD". */
   currency?: string;
   /** Left-drag canvas behavior — select box (default) or pan viewport */
@@ -1301,6 +1325,18 @@ export const DEFAULT_DISTANCE_SETTINGS: DistanceSettings = {
   unit: "ft",
   slackPercent: 15,
   slackFixed: 0,
+};
+
+/** Default U for schematic room → linked rack placement (36 on a 42U rack). */
+export interface RackElevationSettings {
+  /** Absolute bottom-U when set; otherwise `defaultPlacementURatio` × rack height. */
+  defaultPlacementU?: number;
+  /** Fraction of rack height (default 36/42). */
+  defaultPlacementURatio?: number;
+}
+
+export const DEFAULT_RACK_ELEVATION_SETTINGS: RackElevationSettings = {
+  defaultPlacementURatio: 36 / 42,
 };
 
 export type ScrollAction = "zoom" | "pan-x" | "pan-y";

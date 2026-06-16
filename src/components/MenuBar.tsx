@@ -657,6 +657,13 @@ export default function MenuBar() {
     ? [
         {
           type: "item",
+          label: "Auto layout (side by side)",
+          title: "Smart sort by room, prefix, and row — place racks in horizontal rows",
+          disabled: (activeRackPage.racks?.length ?? 0) < 2,
+          onClick: () => layoutRacksOnPage(activeRackPage.id, { useAutoLayout: true }),
+        },
+        {
+          type: "item",
           label: "1 row",
           title: "Single horizontal row, aligned U tops",
           onClick: () => layoutRacksOnPage(activeRackPage.id, { mode: "row" }),

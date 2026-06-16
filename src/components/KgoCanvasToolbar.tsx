@@ -178,8 +178,8 @@ function KgoCanvasToolbar() {
 
   const hideUnconnectedPorts = useSchematicStore((s) => s.hideUnconnectedPorts);
   const setHideUnconnectedPorts = useSchematicStore((s) => s.setHideUnconnectedPorts);
-  const mdfDisplayInline = useSchematicStore((s) => s.mdfDisplayInline);
-  const setMdfDisplayInline = useSchematicStore((s) => s.setMdfDisplayInline);
+  const mdfDisplayMode = useSchematicStore((s) => s.mdfDisplayMode);
+  const setMdfDisplayMode = useSchematicStore((s) => s.setMdfDisplayMode);
   const canvasInteractive = useSchematicStore((s) => s.canvasInteractive);
   const toggleCanvasInteractive = useSchematicStore((s) => s.toggleCanvasInteractive);
   const autoRoute = useSchematicStore((s) => s.autoRoute);
@@ -329,14 +329,14 @@ function KgoCanvasToolbar() {
         />
         <Chip
           icon="link"
-          label="MDF inline"
+          label={mdfDisplayMode === "inline" ? "MDF inline" : "MDF panel"}
           compact={compact}
-          active={mdfDisplayInline}
-          onClick={() => setMdfDisplayInline(!mdfDisplayInline)}
+          active={mdfDisplayMode === "inline"}
+          onClick={() => setMdfDisplayMode(mdfDisplayMode === "inline" ? "panel" : "inline")}
           title={
-            mdfDisplayInline
-              ? "MDF inline on — compact cable-break symbols (CAD style)"
-              : "MDF inline off — full device blocks"
+            mdfDisplayMode === "inline"
+              ? "Default MDF view: inline. Per-MDF ⊞/⊟ on canvas overrides. Click for panel default."
+              : "Default MDF view: panel (all row-ports). Per-MDF ⊞/⊟ on canvas overrides. Click for inline default."
           }
         />
         <Chip

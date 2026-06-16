@@ -1,5 +1,6 @@
 import { resolveRackDesignation } from "./rackDesignation";
-import { isMdfDevice, resolveMdfPairLabel } from "./mdfDisplay";
+import { isMdfDevice, isMdfPanelTypeCode, resolveMdfPairLabel } from "./mdfDisplay";
+import { inferRackHeightU } from "./rackUtils";
 import type {
   DeviceData,
   RackData,
@@ -32,7 +33,12 @@ export const HOUSENAME_CODE_TO_LABEL: Record<string, string> = {
   ENC: "ENCODER",
   FS: "FRAME SYNC",
   DA: "VIDEO DISTRIBUTION AMPLIFIER",
-  MDA: "MAIN DISTRIBUTION ASSEMBLY",
+  MDA: "MAIN DISTRIBUTION PANEL A",
+  MDB: "MAIN DISTRIBUTION PANEL B",
+  MDC: "MAIN DISTRIBUTION PANEL C",
+  MDD: "MAIN DISTRIBUTION PANEL D",
+  MDE: "MAIN DISTRIBUTION PANEL E",
+  MDF: "MAIN DISTRIBUTION PANEL F",
   CONV: "SIGNAL CONVERTER",
   "D/A": "DIGITAL TO ANALOG CONVERTER",
   "A/D": "ANALOG TO DIGITAL CONVERTER",
@@ -73,7 +79,6 @@ export const DEVICE_TYPE_TO_HOUSENAME: Record<string, string> = {
   "audio-mixer": "MXR",
   "power-mixer": "MXR",
   "patch-panel": "VJF",
-  mdf: "MDA",
   "wall-plate": "EWJ",
   "audio-embedder": "A/D",
   "audio-interface": "A/D",
@@ -87,6 +92,13 @@ export const DEVICE_TYPE_TO_HOUSENAME: Record<string, string> = {
 /** Sorted CAD type codes for housename picker (Installation setup). */
 export const HOUSENAME_TYPE_CODES: string[] = Object.keys(HOUSENAME_CODE_TO_LABEL).sort();
 
+/** Position letters for devices placed above the main A–Z cluster. */
+export const ABOVE_CLUSTER_SLOTS = ["X", "Y", "Z"] as const;
+
+export function isAboveClusterSlot(slot: string): boolean {
+  return (ABOVE_CLUSTER_SLOTS as readonly string[]).includes(slot.trim().toUpperCase());
+}
+
 export interface HousenameComposeInput {
   rackCode?: string;
   /** Frame/slot text merged after rack code (e.g. FR1 SL9/10). */
@@ -94,6 +106,8 @@ export interface HousenameComposeInput {
   typeCode?: string;
   /** When undefined, position letter is omitted (schematic-only / no rack placement). */
   positionIndex?: number;
+  /** Stable slot letter (A, B, X, …) — takes precedence over positionIndex. */
+  positionSlot?: string;
   /** When true, expand type code to full CAD label. Default false (TD05 SWR A). */
   expandTypeLabel?: boolean;
 }
@@ -114,6 +128,7 @@ export interface HousenamePatch extends Partial<DeviceData> {
   designation?: string;
   deviceTypeCode?: string;
   rackLocation?: string;
+  housenameSlot?: string;
 }
 
 export interface RecomputeHousenameOpts {
@@ -176,7 +191,7 @@ export function resolveDeviceTypeCode(device: DeviceData): string | undefined {
   const explicit = device.deviceTypeCode?.trim();
   if (explicit) return explicit.toUpperCase();
   const slug = device.deviceType?.trim();
-  if (!slug) return undefined;
+  if (!slug || slug === "mdf") return undefined;
   return DEVICE_TYPE_TO_HOUSENAME[slug]?.toUpperCase();
 }
 
@@ -208,7 +223,9 @@ export function composeHousename(input: HousenameComposeInput): string {
     parts.push(expand ? (resolveHousenameTypeLabel(typeCode) ?? typeCode) : typeCode);
   }
   if (parts.length === 0) return "";
-  if (input.positionIndex != null && input.positionIndex >= 0) {
+  if (input.positionSlot?.trim()) {
+    parts.push(input.positionSlot.trim().toUpperCase());
+  } else if (input.positionIndex != null && input.positionIndex >= 0) {
     parts.push(positionLetter(input.positionIndex));
   }
   return parts.join(" ");
@@ -250,11 +267,11 @@ export function resolveLiveDeviceHousename(
   const deviceDataMap = buildDeviceDataMap(state.nodes);
 
   if (isMdfDevice(device)) {
-    const mdaCode = typeCode ?? "MDA";
+    const panelCode = resolveMdfPanelTypeCode(deviceNodeId, device, ctx, deviceDataMap);
     const base = composeHousename({
       rackCode,
       frameSlot: device.frameSlot,
-      typeCode: mdaCode,
+      typeCode: panelCode,
       expandTypeLabel: false,
     });
     const text =
@@ -264,14 +281,14 @@ export function resolveLiveDeviceHousename(
       "";
     return {
       text,
-      complete: !!(rackCode && mdaCode && resolveMdfPairLabel(device)),
-      needsTypeSetup: !mdaCode,
+      complete: !!(rackCode && panelCode && (!resolveMdfPairLabel(device) || resolveMdfPairLabel(device))),
+      needsTypeSetup: false,
     };
   }
 
-  const positionIndex =
+  const positionSlot =
     ctx && typeCode
-      ? computePositionIndex(ctx.rack.id, typeCode, deviceNodeId, ctx.page, deviceDataMap)
+      ? resolvePositionSlot(deviceNodeId, device, ctx, deviceDataMap)
       : undefined;
 
   const text =
@@ -279,14 +296,14 @@ export function resolveLiveDeviceHousename(
       rackCode,
       frameSlot: device.frameSlot,
       typeCode,
-      positionIndex,
+      positionSlot,
       expandTypeLabel: false,
     }) ||
     device.designation?.trim() ||
     device.rackLocation?.trim() ||
     "";
 
-  const complete = !!(rackCode && typeCode && (!ctx || positionIndex != null));
+  const complete = !!(rackCode && typeCode && (!ctx || positionSlot));
 
   return { text, complete, needsTypeSetup };
 }
@@ -358,6 +375,183 @@ export function computePositionIndex(
   return idx >= 0 ? idx : undefined;
 }
 
+function placementTopU(placement: RackDevicePlacement, device: DeviceData | undefined): number {
+  const hU = device ? inferRackHeightU(device) : 1;
+  return placement.uPosition + hU - 1;
+}
+
+/** Assign or return stable housename slot letter for a rack-placed device. */
+export function assignHousenameSlot(
+  deviceNodeId: string,
+  device: DeviceData,
+  ctx: DeviceRackContext,
+  deviceDataMap: Map<string, DeviceData>,
+): string | undefined {
+  const existing = device.housenameSlot?.trim().toUpperCase();
+  if (existing) return existing;
+
+  const typeCode = resolveDeviceTypeCode(device);
+  if (!typeCode) return undefined;
+
+  const page = ctx.page;
+  const rackId = ctx.rack.id;
+  const normalizedType = typeCode.trim().toUpperCase();
+  const myU = ctx.placement.uPosition;
+
+  const peers = page.placements
+    .filter((p) => {
+      if (p.rackId !== rackId) return false;
+      const data = deviceDataMap.get(p.deviceNodeId);
+      if (!data) return false;
+      return resolveDeviceTypeCode(data) === normalizedType;
+    })
+    .map((p) => {
+      const data = deviceDataMap.get(p.deviceNodeId)!;
+      return {
+        deviceNodeId: p.deviceNodeId,
+        uPosition: p.uPosition,
+        slot: data.housenameSlot?.trim().toUpperCase(),
+        topU: placementTopU(p, data),
+      };
+    });
+
+  const others = peers.filter((p) => p.deviceNodeId !== deviceNodeId);
+  const usedAZ = new Set(
+    others.filter((p) => p.slot && !isAboveClusterSlot(p.slot)).map((p) => p.slot!),
+  );
+  const usedXZ = new Set(
+    others.filter((p) => p.slot && isAboveClusterSlot(p.slot)).map((p) => p.slot!),
+  );
+
+  const clusterMaxU = others
+    .filter((p) => p.slot && !isAboveClusterSlot(p.slot))
+    .reduce((max, p) => Math.max(max, p.uPosition), 0);
+  const peerMaxU = others.reduce((max, p) => Math.max(max, p.uPosition), 0);
+  const effectiveClusterMaxU = clusterMaxU > 0 ? clusterMaxU : peerMaxU;
+
+  if (effectiveClusterMaxU > 0 && myU > effectiveClusterMaxU) {
+    for (const letter of ABOVE_CLUSTER_SLOTS) {
+      if (!usedXZ.has(letter)) return letter;
+    }
+    return ABOVE_CLUSTER_SLOTS[0];
+  }
+
+  for (let i = 0; i < 26; i++) {
+    const letter = positionLetter(i);
+    if (!usedAZ.has(letter)) return letter;
+  }
+  return positionLetter(usedAZ.size);
+}
+
+/** Resolve position suffix for housename (stable slot or newly assigned). */
+export function resolvePositionSlot(
+  deviceNodeId: string,
+  device: DeviceData,
+  ctx: DeviceRackContext,
+  deviceDataMap: Map<string, DeviceData>,
+): string | undefined {
+  const existing = device.housenameSlot?.trim().toUpperCase();
+  if (existing) return existing;
+
+  const typeCode = resolveDeviceTypeCode(device);
+  if (!typeCode) return undefined;
+
+  const normalizedType = typeCode.trim().toUpperCase();
+  const rackId = ctx.rack.id;
+  const hasPersistedSlot = ctx.page.placements.some((p) => {
+    if (p.rackId !== rackId) return false;
+    const data = deviceDataMap.get(p.deviceNodeId);
+    return data && resolveDeviceTypeCode(data) === normalizedType && data.housenameSlot?.trim();
+  });
+
+  if (!hasPersistedSlot) {
+    const idx = computePositionIndex(rackId, normalizedType, deviceNodeId, ctx.page, deviceDataMap);
+    return idx != null ? positionLetter(idx) : undefined;
+  }
+
+  return assignHousenameSlot(deviceNodeId, device, ctx, deviceDataMap);
+}
+
+/** True when same-type devices in a rack have non-contiguous A–Z slot letters (after a delete). */
+export function rackHasHousenameSlotGaps(
+  page: RackElevationPage,
+  rackId: string,
+  typeCode: string,
+  deviceDataMap: Map<string, DeviceData>,
+): boolean {
+  const normalizedType = typeCode.trim().toUpperCase();
+  const slots = page.placements
+    .filter((p) => {
+      if (p.rackId !== rackId) return false;
+      const data = deviceDataMap.get(p.deviceNodeId);
+      if (!data?.housenameSlot?.trim()) return false;
+      return resolveDeviceTypeCode(data) === normalizedType;
+    })
+    .map((p) => deviceDataMap.get(p.deviceNodeId)!.housenameSlot!.trim().toUpperCase())
+    .filter((s) => !isAboveClusterSlot(s));
+
+  if (slots.length < 2) return false;
+  const indices = slots
+    .map((s) => {
+      if (s.length === 1 && s >= "A" && s <= "Z") return s.charCodeAt(0) - 65;
+      return -1;
+    })
+    .filter((i) => i >= 0)
+    .sort((a, b) => a - b);
+  if (indices.length < 2) return false;
+  for (let i = 1; i < indices.length; i++) {
+    if (indices[i] - indices[i - 1] > 1) return true;
+  }
+  return false;
+}
+
+/** Rack ordinal → panel code: 0 → MDA, 1 → MDB, 2 → MDC (top-down in rack). */
+export function mdfPanelTypeCode(positionIndex: number): string {
+  return `MD${positionLetter(positionIndex)}`;
+}
+
+/**
+ * MDF panel ordinal in rack — top-down (highest U = MDA, next = MDB, …).
+ * Unlike switchers (bottom-up A/B/C), MD panels enumerate from the top of the rack.
+ */
+export function computeMdfPanelPositionIndex(
+  rackId: string,
+  deviceNodeId: string,
+  page: RackElevationPage,
+  deviceDataMap: Map<string, DeviceData>,
+): number | undefined {
+  const mdfPlacements = page.placements
+    .filter((p) => {
+      if (p.rackId !== rackId) return false;
+      const data = deviceDataMap.get(p.deviceNodeId);
+      return data && isMdfDevice(data);
+    })
+    .sort((a, b) => b.uPosition - a.uPosition || a.deviceNodeId.localeCompare(b.deviceNodeId));
+
+  const idx = mdfPlacements.findIndex((p) => p.deviceNodeId === deviceNodeId);
+  return idx >= 0 ? idx : undefined;
+}
+
+export function resolveMdfPanelTypeCode(
+  deviceNodeId: string,
+  device: DeviceData,
+  ctx: DeviceRackContext | undefined,
+  deviceDataMap: Map<string, DeviceData>,
+): string {
+  if (ctx) {
+    const idx = computeMdfPanelPositionIndex(
+      ctx.rack.id,
+      deviceNodeId,
+      ctx.page,
+      deviceDataMap,
+    );
+    if (idx != null) return mdfPanelTypeCode(idx);
+  }
+  const explicit = device.deviceTypeCode?.trim().toUpperCase();
+  if (explicit && isMdfPanelTypeCode(explicit)) return explicit;
+  return "MDA";
+}
+
 export function composeHousenameForDevice(
   deviceNodeId: string,
   state: HousenameState,
@@ -384,35 +578,44 @@ export function composeHousenameForDevice(
   }
 
   if (isMdfDevice(device)) {
+    const deviceDataMap = buildDeviceDataMap(state.nodes);
+    const panelCode = resolveMdfPanelTypeCode(deviceNodeId, device, ctx, deviceDataMap);
     const base = composeHousename({
       rackCode,
       frameSlot: device.frameSlot,
-      typeCode,
+      typeCode: panelCode,
       expandTypeLabel: false,
     });
     const designation = appendMdfPairLabel(base, device);
     if (designation) patch.designation = designation;
-    if (typeCode && !device.deviceTypeCode?.trim()) patch.deviceTypeCode = typeCode;
+    patch.deviceTypeCode = panelCode;
     return Object.keys(patch).length > 0 ? patch : null;
   }
 
   if (!rackCode && !typeCode) return null;
 
   const deviceDataMap = buildDeviceDataMap(state.nodes);
-  const positionIndex =
+  const positionSlot =
     ctx && typeCode
-      ? computePositionIndex(ctx.rack.id, typeCode, deviceNodeId, ctx.page, deviceDataMap)
+      ? resolvePositionSlot(deviceNodeId, device, ctx, deviceDataMap)
       : undefined;
 
   const designation = composeHousename({
     rackCode,
     frameSlot: device.frameSlot,
     typeCode,
-    positionIndex,
+    positionSlot,
     expandTypeLabel: false,
   });
 
   if (designation) patch.designation = designation;
+  const assignedSlot =
+    ctx && typeCode
+      ? assignHousenameSlot(deviceNodeId, device, ctx, deviceDataMap)
+      : undefined;
+  if (assignedSlot && assignedSlot !== device.housenameSlot?.trim().toUpperCase()) {
+    patch.housenameSlot = assignedSlot;
+  }
   if (typeCode && !device.deviceTypeCode?.trim()) patch.deviceTypeCode = typeCode;
 
   return Object.keys(patch).length > 0 ? patch : null;

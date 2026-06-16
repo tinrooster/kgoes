@@ -1,5 +1,6 @@
 import type { DeviceTemplate } from "./types";
 import fallbackData from "./deviceLibrary.fallback.json";
+import { MDF_ELEMENTS_CATEGORY } from "./mdfPortLabels";
 
 const UPSTREAM_API_DEFAULT = "https://api.easyschematic.live";
 
@@ -49,8 +50,19 @@ function normalizeBundledTemplate(t: DeviceTemplate): DeviceTemplate {
   };
 }
 
+/** Ensure MDF drawing elements always catalog under MDF Elements (not Infrastructure). */
+export function normalizeCatalogTemplate(t: DeviceTemplate): DeviceTemplate {
+  const base = normalizeBundledTemplate(t);
+  if (base.deviceType !== "mdf") return base;
+  return {
+    ...base,
+    category: MDF_ELEMENTS_CATEGORY,
+    libraryKind: "element",
+  };
+}
+
 export function getBundledTemplates(): DeviceTemplate[] {
-  return (fallbackData as DeviceTemplate[]).map(normalizeBundledTemplate);
+  return (fallbackData as DeviceTemplate[]).map(normalizeCatalogTemplate);
 }
 
 /** Bundled templates as a floor under whatever the API returned. Used so a freshly-added
@@ -61,7 +73,7 @@ function effectiveTemplates(): DeviceTemplate[] {
   if (!cached) return bundled;
   const cachedIds = new Set(cached.map((t) => t.id).filter((id): id is string => !!id));
   const bundledFloor = bundled.filter((t) => t.id && !cachedIds.has(t.id));
-  return [...cached.map(normalizeBundledTemplate), ...bundledFloor];
+  return [...cached.map(normalizeCatalogTemplate), ...bundledFloor];
 }
 
 /** Look up a card template by ID from cached API data, bundled fallback, or caller-supplied extras (user's custom templates). */
@@ -318,10 +330,11 @@ export async function createSubmission(
 
 export async function fetchTemplates(): Promise<DeviceTemplate[]> {
   if (cached) return effectiveTemplates();
+  if (!API_URL) return getBundledTemplates();
 
   const res = await fetch(`${API_URL}/templates`);
   if (!res.ok) throw new Error(`API ${res.status}`);
   const data = (await res.json()) as DeviceTemplate[];
-  cached = data;
+  cached = data.map(normalizeCatalogTemplate);
   return effectiveTemplates();
 }
