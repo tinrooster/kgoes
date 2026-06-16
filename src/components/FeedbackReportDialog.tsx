@@ -88,7 +88,7 @@ export default function FeedbackReportDialog({ onClose }: FeedbackReportDialogPr
         addToast("Feedback saved on this device", "info", 4000);
       } else if (result.via === "local") {
         addToast("Feedback saved locally — open from trackIT to sync", "info", 5000);
-      } else {
+      } else if (result.via === "launch" || result.via === "trackit") {
         addToast(
           reportType === "bug" ? "Bug report submitted" : "Feature request submitted",
           "success",

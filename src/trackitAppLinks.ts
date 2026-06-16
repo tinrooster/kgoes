@@ -1,28 +1,10 @@
 import type { TrackItLinkContext } from "./types";
 import { isTrackItPopupOpener } from "./trackitIntegration";
+import { resolveTrackItAppOrigin } from "./plantApiOrigin";
 
 /** trackIT web app origin for deep links from KGO-ES. */
 export function getTrackItAppOrigin(): string {
-  try {
-    if (window.opener && !window.opener.closed) {
-      return window.opener.location.origin;
-    }
-  } catch {
-    // cross-origin opener
-  }
-
-  const fromEnv = (import.meta.env.VITE_TRACKIT_URL as string | undefined)?.trim();
-  if (fromEnv) return fromEnv.replace(/\/$/, "");
-
-  if (window.location.pathname.startsWith("/schematic")) {
-    return window.location.origin;
-  }
-
-  if (import.meta.env.DEV) {
-    return `${window.location.protocol}//${window.location.hostname}:5173`;
-  }
-
-  return window.location.origin;
+  return resolveTrackItAppOrigin();
 }
 
 export function buildTrackItPlantDrawingsUrl(): string {

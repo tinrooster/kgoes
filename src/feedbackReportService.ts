@@ -7,8 +7,12 @@ import {
   submitFeedbackViaTrackItParent,
   type FeedbackReportType,
 } from "./feedbackReportBridge";
+import { isLaunchPlantApiEnabled } from "./plantApiOrigin";
+import { submitLaunchFeedbackReport } from "./launchFeedbackClient";
 
 export type { FeedbackReportType };
+
+export type FeedbackSubmitVia = "trackit" | "launch" | "local";
 
 const LOCAL_REPORTS_KEY = "kgo-es:feedback-reports-local";
 const MAX_SCREENSHOT_CHARS = 600_000;
@@ -110,7 +114,7 @@ export async function prepareFeedbackSnapshot(
 
 export async function submitFeedbackReport(
   payload: FeedbackReportPayload,
-): Promise<{ ok: boolean; error?: string; via?: "trackit" | "local" }> {
+): Promise<{ ok: boolean; error?: string; via?: FeedbackSubmitVia }> {
   persistLocalReport(payload);
 
   const trackItResult = await submitFeedbackViaTrackItParent({
@@ -123,6 +127,19 @@ export async function submitFeedbackReport(
 
   if (trackItResult !== null) {
     return { ...trackItResult, via: "trackit" };
+  }
+
+  if (isLaunchPlantApiEnabled()) {
+    const launchResult = await submitLaunchFeedbackReport({
+      reportType: payload.reportType,
+      notes: payload.notes,
+      pageUrl: payload.pageUrl,
+      screenshotDataUrl: payload.screenshotDataUrl,
+      appState: payload.appState,
+    });
+    return launchResult.ok
+      ? { ok: true, via: "launch" }
+      : { ok: false, error: launchResult.error, via: "launch" };
   }
 
   return { ok: true, via: "local" };

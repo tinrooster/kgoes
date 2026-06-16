@@ -1,7 +1,7 @@
 const TRUE_VALUES = new Set(["1", "true", "yes"]);
 const FALSE_VALUES = new Set(["0", "false", "no"]);
 
-function isStudioshareInternalHost(): boolean {
+export function isStudioshareInternalHost(): boolean {
   if (typeof window === "undefined") return false;
   const host = window.location.hostname.toLowerCase();
   return host.endsWith(".disneystudiostech.com") || host.endsWith(".launch.internal");

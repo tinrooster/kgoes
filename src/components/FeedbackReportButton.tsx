@@ -36,20 +36,21 @@ export default function FeedbackReportButton({ variant = "desktop" }: FeedbackRe
         title="Report a bug or request a feature"
         aria-label="Report a bug or request a feature"
         style={{
-          width: 30,
-          height: 30,
+          width: 34,
+          height: 34,
           display: "grid",
           placeItems: "center",
-          border: 0,
-          background: "transparent",
+          border: "1px solid var(--ti-border)",
+          background: "var(--ti-surface)",
           borderRadius: 7,
           cursor: "pointer",
-          color: "var(--ti-ink-2)",
-          transition: "background 100ms",
+          color: "var(--ti-ink)",
+          boxShadow: "0 1px 2px color-mix(in oklab, var(--ti-ink) 8%, transparent)",
+          transition: "background 100ms, border-color 100ms",
         }}
-        className="hover:bg-[var(--ti-surface-2,#f0eeea)]"
+        className="hover:bg-[var(--ti-surface-2,#f0eeea)] hover:border-[color-mix(in_oklab,var(--ti-accent)_35%,var(--ti-border))]"
       >
-        <TiIcon name="alert" size={16} color="var(--ti-ink-2)" />
+        <TiIcon name="alert" size={17} color="currentColor" />
       </button>
       {open && <FeedbackReportDialog onClose={() => setOpen(false)} />}
     </>
