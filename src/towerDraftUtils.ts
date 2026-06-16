@@ -117,23 +117,22 @@ export function towerDraftTowerCenterX(): number {
 
 export function createDefaultTowerDraftPage(
   label: string,
-  opts?: {
+  opts?: Partial<Omit<TowerDraftPage, "label" | "type" | "placements" | "polylines">> & {
     id?: string;
-    towerHeightFtAgl?: number;
-    towerType?: TowerDraftTowerType;
-    guideBandsFt?: TowerGuideBandFt[];
   },
 ): TowerDraftPage {
   const towerHeightFtAgl = opts?.towerHeightFtAgl ?? 150;
+  const { id, ...rest } = opts ?? {};
   return {
-    id: opts?.id ?? `towerdraft-1`,
+    id: id ?? `towerdraft-1`,
     label,
     type: "tower-draft",
     towerHeightFtAgl,
-    towerType: opts?.towerType ?? "self_support",
-    guideBandsFt: opts?.guideBandsFt ?? defaultGuideBands(towerHeightFtAgl),
+    towerType: rest.towerType ?? "self_support",
+    guideBandsFt: rest.guideBandsFt ?? defaultGuideBands(towerHeightFtAgl),
     placements: [],
     polylines: [],
+    ...rest,
   };
 }
 

@@ -1,16 +1,24 @@
 import { ftAglToY, TOWER_DRAFT_PX_PER_FT } from "./towerDraftUtils";
 import { computeFitViewport, type ContentBounds } from "./viewNavUtils";
-import type { TrackItTowerSiteContext } from "./types";
+import type { TrackItTowerSiteContext, TowerDraftPage } from "./types";
 
 export const TALL_TOWER_THRESHOLD_FT = 300;
+
+function elevationViewportHints(
+  page?: Pick<TowerDraftPage, "elevationViewport"> | null,
+  context?: TrackItTowerSiteContext | null,
+) {
+  return page?.elevationViewport ?? context?.elevationViewport;
+}
 /** 1 = fit full tower in view (~40% UI zoom on typical panels); >1 zooms into a band. */
 export const DEFAULT_WORKING_ZOOM_RATIO = 1;
 
 export function resolveTallTowerProfileMode(
   towerHeightFt: number,
   context?: TrackItTowerSiteContext | null,
+  page?: Pick<TowerDraftPage, "elevationViewport"> | null,
 ): boolean {
-  const hints = context?.elevationViewport;
+  const hints = elevationViewportHints(page, context);
   if (hints?.tallTowerMode != null) return hints.tallTowerMode;
   const threshold = hints?.tallTowerThresholdFt ?? TALL_TOWER_THRESHOLD_FT;
   return towerHeightFt > threshold;
@@ -19,8 +27,10 @@ export function resolveTallTowerProfileMode(
 export function resolveWorkingZoomRatio(
   context?: TrackItTowerSiteContext | null,
   contentScale = 1,
+  page?: Pick<TowerDraftPage, "elevationViewport"> | null,
 ): number {
-  const base = context?.elevationViewport?.workingZoomRatio ?? DEFAULT_WORKING_ZOOM_RATIO;
+  const hints = elevationViewportHints(page, context);
+  const base = hints?.workingZoomRatio ?? DEFAULT_WORKING_ZOOM_RATIO;
   if (contentScale <= 1) return base;
   return Math.max(1, base / contentScale);
 }
@@ -28,8 +38,10 @@ export function resolveWorkingZoomRatio(
 export function resolveInitialFocusFtAgl(
   towerHeightFt: number,
   context?: TrackItTowerSiteContext | null,
+  page?: Pick<TowerDraftPage, "elevationViewport"> | null,
 ): number {
-  const fromCtx = context?.elevationViewport?.initialFocusFtAgl;
+  const hints = elevationViewportHints(page, context);
+  const fromCtx = hints?.initialFocusFtAgl;
   if (fromCtx != null) return Math.max(0, Math.min(towerHeightFt, fromCtx));
   return Math.round(towerHeightFt * 0.6);
 }

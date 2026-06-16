@@ -12,9 +12,11 @@ export function resolveProfileVisual(
   context?: TrackItTowerSiteContext | null,
   hasReferenceImage?: boolean,
 ): TowerProfileVisual {
+  const fromPage = page.profileVisual;
+  if (fromPage && fromPage !== "reference_image") return fromPage;
   const fromContext = context?.profileVisual;
   if (fromContext && fromContext !== "reference_image") return fromContext;
-  if (hasReferenceImage) return "reference_image";
+  if (hasReferenceImage && !fromPage) return "reference_image";
   const towerType = page.towerType ?? context?.towerType ?? "self_support";
   if (towerType === "guyed") return "generated_guyed";
   if (towerType === "monopole") return "generated_monopole";

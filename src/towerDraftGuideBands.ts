@@ -30,7 +30,9 @@ export function resolveTowerDraftGuideBands(
 ): TowerGuideBandFt[] {
   const pageBands = page.guideBandsFt ?? [];
   const ctxBands =
-    (context?.elevationViewport?.guideBandsFt as TowerGuideBandFt[] | undefined) ?? [];
+    (page.elevationViewport?.guideBandsFt as TowerGuideBandFt[] | undefined) ??
+    (context?.elevationViewport?.guideBandsFt as TowerGuideBandFt[] | undefined) ??
+    [];
   if (ctxBands.length > 0 && guideBandsStaleVsContext(pageBands, ctxBands)) {
     return ctxBands;
   }

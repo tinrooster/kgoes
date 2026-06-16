@@ -39,6 +39,7 @@ import KgoEsModuleSplash, { isKgoEsSplashAcknowledged } from "./components/KgoEs
 import ToastContainer from "./components/ToastContainer";
 import AppDialogHost from "./components/AppDialogHost";
 import NewDrawingSetupDialog from "./components/NewDrawingSetupDialog";
+import TowerElevationSetupDialog from "./components/TowerElevationSetupDialog";
 import { usePendingInitialViewport } from "./hooks/usePendingInitialViewport";
 import BetaBanner from "./components/BetaBanner";
 import PwaInstallBanner from "./components/PwaInstallBanner";
@@ -1928,6 +1929,7 @@ export default function App() {
       <ToastContainer />
       <AppDialogHost />
       <NewDrawingSetupDialog />
+      <TowerElevationSetupDialog />
       <DrawingCaptureHost />
     </div>
   );

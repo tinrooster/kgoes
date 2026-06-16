@@ -5636,12 +5636,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const state = get();
     pushUndo({ nodes: state.nodes, edges: state.edges });
     const id = nextTowerDraftPageId();
-    const page = createDefaultTowerDraftPage(label, {
-      id,
-      towerHeightFtAgl: opts?.towerHeightFtAgl,
-      towerType: opts?.towerType,
-      guideBandsFt: opts?.guideBandsFt,
-    });
+    const page = createDefaultTowerDraftPage(label, { id, ...opts });
     set({ pages: [...state.pages, page], activePage: id, undoSize: schematicUndoSize(), redoSize: 0 });
     get().saveToLocalStorage();
     return id;

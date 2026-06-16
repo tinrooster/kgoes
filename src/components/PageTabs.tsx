@@ -9,6 +9,7 @@ import type { RackElevationPage, TowerDraftPage } from "../types";
 import { TiIcon } from "./ti/TiBase";
 import { confirmDialog } from "../appDialogStore";
 import { openNewDrawingSetup } from "../drawingSetupStore";
+import { openTowerElevationSetup } from "../towerElevationSetupStore";
 
 interface ContextMenuState {
   pageId: string;
@@ -21,7 +22,6 @@ export default function PageTabs() {
   const activePage = useSchematicStore((s) => s.activePage);
   const setActivePage = useSchematicStore((s) => s.setActivePage);
   const addRackPage = useSchematicStore((s) => s.addRackPage);
-  const addTowerDraftPage = useSchematicStore((s) => s.addTowerDraftPage);
   const removeRackPage = useSchematicStore((s) => s.removeRackPage);
   const removeTowerDraftPage = useSchematicStore((s) => s.removeTowerDraftPage);
   const renameRackPage = useSchematicStore((s) => s.renameRackPage);
@@ -219,7 +219,7 @@ export default function PageTabs() {
   const openTowerDraftPage = () => {
     const label =
       towerDraftCount === 0 ? "Tower Elevation" : `Tower Elevation ${towerDraftCount + 1}`;
-    addTowerDraftPage(label);
+    openTowerElevationSetup({ defaultLabel: label });
     setAddMenuOpen(false);
   };
 
@@ -398,17 +398,31 @@ export default function PageTabs() {
                   padding: 4,
                 }}
               >
-                {[
-                  ...(isDrawingCanvasActive(activePage, pages)
-                    ? [{ label: "New viewport…", icon: "maximize", onClick: openDrawingViewport }]
-                    : []),
-                  { label: "New drawing…", icon: "signal", onClick: openDrawingPage },
-                  { label: "Rack elevation…", icon: "rack", onClick: openRackPage },
-                  { label: "Tower Elevation…", icon: "pin", onClick: openTowerDraftPage },
-                  { label: "Print sheet…", icon: "print", onClick: openPrintSheetPage },
-                ].map((item) => (
+                {(
+                  [
+                    ...(isDrawingCanvasActive(activePage, pages)
+                      ? [{ kind: "item" as const, label: "New viewport…", icon: "maximize", onClick: openDrawingViewport }]
+                      : []),
+                    { kind: "item" as const, label: "New drawing…", icon: "signal", onClick: openDrawingPage },
+                    { kind: "item" as const, label: "Rack elevation…", icon: "rack", onClick: openRackPage },
+                    { kind: "item" as const, label: "Print sheet…", icon: "print", onClick: openPrintSheetPage },
+                    { kind: "separator" as const },
+                    { kind: "item" as const, label: "Tower Elevation…", icon: "pin", onClick: openTowerDraftPage },
+                  ] as const
+                ).map((entry, i) =>
+                  entry.kind === "separator" ? (
+                    <div
+                      key={`sep-${i}`}
+                      role="separator"
+                      style={{
+                        height: 1,
+                        margin: "4px 8px",
+                        background: "var(--ti-border)",
+                      }}
+                    />
+                  ) : (
                   <button
-                    key={item.label}
+                    key={entry.label}
                     type="button"
                     style={{
                       width: "100%",
@@ -428,12 +442,13 @@ export default function PageTabs() {
                     className="ti-row-hover"
                     role="menuitem"
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => item.onClick()}
+                    onClick={() => entry.onClick()}
                   >
-                    <TiIcon name={item.icon} size={14} color="var(--ti-muted)" />
-                    {item.label}
+                    <TiIcon name={entry.icon} size={14} color="var(--ti-muted)" />
+                    {entry.label}
                   </button>
-                ))}
+                  ),
+                )}
               </div>,
               document.body,
             )}

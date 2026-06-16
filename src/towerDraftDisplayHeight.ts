@@ -31,10 +31,10 @@ export function resolveCatalogTowerHeightFtAgl(
 }
 
 function resolveFaceLayoutCapFt(
-  _page: TowerDraftPage,
+  page: TowerDraftPage,
   context?: TrackItTowerSiteContext | null,
 ): number | undefined {
-  const cap = context?.faceLayoutHeightFtAgl;
+  const cap = page.faceLayoutHeightFtAgl ?? context?.faceLayoutHeightFtAgl;
   if (cap != null && cap > 0) return cap;
   return undefined;
 }

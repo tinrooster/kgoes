@@ -14,6 +14,7 @@ import {
 import { printPageTabLabel } from "../printPageLabels";
 import { useSchematicStore } from "../store";
 import { openNewDrawingSetup } from "../drawingSetupStore";
+import { openTowerElevationSetup } from "../towerElevationSetupStore";
 import { exportImage } from "../exportUtils";
 import { exportDxf } from "../dxfExport";
 import { exportPdf } from "../pdfExport";
@@ -177,7 +178,6 @@ export default function MenuBar() {
     activePage,
     setActivePage,
     addRackPage,
-    addTowerDraftPage,
     addPrintSheetPage,
     layoutRacksOnPage,
   } = useSchematicStore();
@@ -753,16 +753,18 @@ export default function MenuBar() {
     },
     {
       type: "item",
-      label: "New Tower Elevation page…",
-      onClick: () =>
-        addTowerDraftPage(
-          towerDraftCount === 0 ? "Tower Elevation" : `Tower Elevation ${towerDraftCount + 1}`,
-        ),
-    },
-    {
-      type: "item",
       label: "New print sheet page…",
       onClick: () => addPrintSheetPage(),
+    },
+    { type: "separator" },
+    {
+      type: "item",
+      label: "New Tower Elevation page…",
+      onClick: () =>
+        openTowerElevationSetup({
+          defaultLabel:
+            towerDraftCount === 0 ? "Tower Elevation" : `Tower Elevation ${towerDraftCount + 1}`,
+        }),
     },
   ];
 

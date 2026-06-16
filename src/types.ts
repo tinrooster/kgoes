@@ -988,6 +988,14 @@ export interface TowerDraftPolyline {
   feedlineEstFt?: number;
 }
 
+/** Site metadata captured when creating a standalone tower elevation page. */
+export interface TowerDraftSiteSetup {
+  latitude?: number;
+  longitude?: number;
+  accessNotes?: string;
+  details?: string;
+}
+
 /** Structured vertical tower elevation / section draft (ft-AGL axis). */
 export interface TowerDraftPage {
   id: string;
@@ -998,6 +1006,13 @@ export interface TowerDraftPage {
   guideBandsFt: TowerGuideBandFt[];
   placements: TowerDraftPlacement[];
   polylines: TowerDraftPolyline[];
+  /** Optional site metadata from tower elevation setup (standalone ES). */
+  siteSetup?: TowerDraftSiteSetup;
+  /** Per-page viewport hints when not linked to trackIT tower context. */
+  elevationViewport?: TrackItTowerSiteContext["elevationViewport"];
+  /** Cap face-column layout height (ft AGL) — e.g. Sutro L6 band on tall towers. */
+  faceLayoutHeightFtAgl?: number;
+  profileVisual?: TrackItTowerSiteContext["profileVisual"];
   /** Profile underlay — preferred over generated lattice polylines. */
   elevationReferenceImage?: TowerElevationReferenceImage;
   /** Profile toolbar: silhouette (`primary`) vs blueprint (`detailUrl`). */

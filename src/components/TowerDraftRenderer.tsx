@@ -221,7 +221,7 @@ export default function TowerDraftRenderer({
   );
   const tallTowerMode =
     isSectionElevation &&
-    resolveTallTowerProfileMode(catalogHeightFt, trackItTowerContext);
+    resolveTallTowerProfileMode(catalogHeightFt, trackItTowerContext, page);
   const pxPerFt = useMemo(() => {
     if (!isProfile) return TOWER_DRAFT_PX_PER_FT;
     return resolveProfilePxPerFt(elevationRef, tallTowerMode);
@@ -325,7 +325,7 @@ export default function TowerDraftRenderer({
   const applyTallTowerViewport = useCallback(() => {
     const el = panContainerRef.current;
     if (!el || !tallTowerMode) return;
-    const focusFt = resolveInitialFocusFtAgl(catalogHeightFt, trackItTowerContext);
+    const focusFt = resolveInitialFocusFtAgl(catalogHeightFt, trackItTowerContext, page);
     const { zoom, pan } = computeTallTowerInitialViewport({
       containerWidth: el.clientWidth,
       containerHeight: el.clientHeight,
@@ -334,7 +334,7 @@ export default function TowerDraftRenderer({
       focusFtAgl: focusFt,
       contentOffsetY,
       centerXContent: panCenterX,
-      workingZoomRatio: resolveWorkingZoomRatio(trackItTowerContext, 1),
+      workingZoomRatio: resolveWorkingZoomRatio(trackItTowerContext, 1, page),
       pxPerFt,
       maxZoom: 6,
     });
@@ -346,6 +346,7 @@ export default function TowerDraftRenderer({
     catalogHeightFt,
     layoutHeightFt,
     trackItTowerContext,
+    page,
     viewBounds,
     contentOffsetY,
     panCenterX,
