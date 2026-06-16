@@ -15,6 +15,13 @@ import {
 import type { AuxRow } from "../types";
 import { useDisplayLabel } from "../labelCaseUtils";
 import { resolveDeviceLabel } from "../displayName";
+import {
+  deviceShowsInstallationBlock,
+  installationBlockExtraPx,
+  resolveDeviceHeaderIp,
+  resolveLiveDeviceHousename,
+} from "../housename";
+import { MdfInlineDevice, shouldRenderMdfInline } from "./MdfInlineDevice";
 
 type ColumnItem =
   | { type: "port"; port: Port }
@@ -40,6 +47,9 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
   const useShortNames = useSchematicStore((s) => s.useShortNames);
   const wrapDeviceLabels = useSchematicStore((s) => s.wrapDeviceLabels);
   const showInstallationInfo = useSchematicStore((s) => s.showInstallationInfo);
+  const mdfDisplayInline = useSchematicStore((s) => s.mdfDisplayInline);
+  const pages = useSchematicStore((s) => s.pages);
+  const nodes = useSchematicStore((s) => s.nodes);
   const resolvedLabel = useMemo(
     () => resolveDeviceLabel(data, { useShortNames, wrapDeviceLabels }),
     [data, useShortNames, wrapDeviceLabels],
@@ -47,13 +57,18 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
   const showInstallBlock =
     showInstallationInfo &&
     data.showInstallationBlock !== false &&
-    !!(data.designation || data.rackLocation || data.frameSlot || data.modelNumber || data.managementIp || data.vlanSummary);
+    deviceShowsInstallationBlock(data);
+  const headerIp = useMemo(() => resolveDeviceHeaderIp(data), [data]);
+  const liveHousename = useMemo(
+    () => resolveLiveDeviceHousename(id, data, { nodes, pages }),
+    [id, data, nodes, pages],
+  );
   const headerTitle = useMemo(() => {
-    if (showInstallBlock && data.designation?.trim()) {
-      return displayLabel(data.designation.trim());
+    if (showInstallBlock && liveHousename.text) {
+      return displayLabel(liveHousename.text);
     }
     return displayLabel(resolvedLabel.text);
-  }, [showInstallBlock, data.designation, resolvedLabel.text, displayLabel]);
+  }, [showInstallBlock, liveHousename.text, resolvedLabel.text, displayLabel]);
   const labelZone = resolvedLabel.wrap ? HEADER_LABEL_ZONE_2_PX : HEADER_LABEL_ZONE_PX;
   const hiddenPinSignalTypesStr = useSchematicStore((s) => s.hiddenPinSignalTypes);
   const isHiddenAdapter = useSchematicStore((s) => s.hiddenAdapterNodeIds.has(id));
@@ -402,6 +417,20 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
     );
   }
 
+  if (shouldRenderMdfInline(data, mdfDisplayInline)) {
+    return (
+      <MdfInlineDevice
+        id={id}
+        data={data}
+        selected={!!selected}
+        isOverlapping={isOverlapping}
+        housenameState={{ nodes, pages }}
+        connectedHandles={connectedHandles}
+        onEdit={() => setEditingNodeId(id)}
+      />
+    );
+  }
+
   /** Footer aux block — rows below the port area. Grid-rounded (20-multiple) so device
    *  bottom stays on the snap grid. Blank rows render as 6-px separator gaps. */
   function renderFooterAuxBlock(rows: AuxRow[]) {
@@ -470,12 +499,7 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
    *  Keep the band-height formula in sync with `headerBandHeight()` in auxiliaryData.ts —
    *  snapUtils uses it to estimate device height before React Flow measures it. */
   function renderHeaderBand(rows: AuxRow[]) {
-    const installExtra =
-      showInstallBlock
-        ? 12 +
-          (data.modelNumber || data.rackLocation || data.frameSlot ? 12 : 0) +
-          (data.managementIp || data.vlanSummary ? 12 : 0)
-        : 0;
+    const installExtra = showInstallBlock ? installationBlockExtraPx(data) : 0;
     const bandH = headerBandHeight(data.auxiliaryData, labelZone) + installExtra;
     const content = labelZone + installExtra + rows.reduce((sum, r) => sum + auxRowHeight(r), 0);
     const totalPad = bandH - content;
@@ -502,34 +526,54 @@ function DeviceNodeComponent({ id, data, selected }: NodeProps<DeviceNodeType>) 
         }}
       >
         <div
-          className="flex items-center justify-center"
+          className="flex items-center justify-center gap-1"
           style={{ height: labelZone }}
         >
+          {showInstallBlock && liveHousename.needsTypeSetup ? (
+            <span
+              className="text-amber-500 text-[10px] shrink-0"
+              title="Set a CAD device type code in Installation setup (e.g. SWR, ENC)"
+            >
+              ⚠
+            </span>
+          ) : null}
           <span
             className={
-              resolvedLabel.wrap
+              (resolvedLabel.wrap
                 ? "text-xs font-semibold text-[var(--color-text-heading)]"
-                : "text-xs font-semibold text-[var(--color-text-heading)] truncate leading-tight"
+                : "text-xs font-semibold text-[var(--color-text-heading)] truncate leading-tight") +
+              (showInstallBlock && liveHousename.text ? " es-housename" : "")
             }
             style={labelStyle}
-            title={headerTitle}
+            title={
+              liveHousename.needsTypeSetup
+                ? `${headerTitle} — set type code in Installation setup`
+                : headerTitle
+            }
           >
             {headerTitle}
           </span>
         </div>
         {showInstallBlock ? (
           <>
-            {(data.modelNumber || data.rackLocation || data.frameSlot) ? (
-              <div className="flex justify-between gap-1 px-0.5 text-[9px] text-[var(--color-text-muted)] leading-3">
-                <span className="truncate">{data.modelNumber ? displayLabel(data.modelNumber) : ""}</span>
-                <span className="truncate text-right">
-                  {[data.rackLocation, data.frameSlot].filter(Boolean).join(" · ")}
-                </span>
+            {data.manufacturer?.trim() ? (
+              <div className="text-[9px] text-[var(--color-text-muted)] leading-3 truncate text-center">
+                {displayLabel(data.manufacturer.trim())}
               </div>
             ) : null}
-            {(data.managementIp || data.vlanSummary) ? (
+            {data.modelNumber?.trim() ? (
               <div className="text-[9px] text-[var(--color-text-muted)] leading-3 truncate text-center">
-                {[data.managementIp, data.vlanSummary].filter(Boolean).join(" · ")}
+                {displayLabel(data.modelNumber.trim())}
+              </div>
+            ) : null}
+            {headerIp ? (
+              <div className="text-[9px] text-[var(--color-text-muted)] leading-3 truncate text-center font-mono">
+                {headerIp}
+              </div>
+            ) : null}
+            {data.vlanSummary?.trim() && !headerIp ? (
+              <div className="text-[9px] text-[var(--color-text-muted)] leading-3 truncate text-center">
+                {displayLabel(data.vlanSummary.trim())}
               </div>
             ) : null}
           </>

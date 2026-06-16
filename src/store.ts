@@ -79,6 +79,17 @@ import type {
 } from "./types";
 import { applyRfPathDefaults } from "./rfPath";
 import { defaultFlyEndpointData, defaultFlyPlacement } from "./flyFormat";
+import {
+  affectedDeviceIdsForRack,
+  composeHousenameForDevice,
+  findDeviceRackContext,
+  findDuplicateDesignations,
+  resolveDeviceTypeCode,
+} from "./housename";
+import {
+  affectedDeviceIdsForRoom,
+  composeDeviceRoomPatch,
+} from "./roomContext";
 import { defaultStubPlacement } from "./stubPlacement";
 import { getPortAbsolutePositions } from "./snapUtils";
 import { DEFAULT_SCROLL_CONFIG, DEFAULT_LABEL_CASE, DEFAULT_DISTANCE_SETTINGS, DEFAULT_PAN_MODE, DEFAULT_STUB_LABEL_SHOW_PORT, DEFAULT_STUB_LABEL_SHOW_ROOM, DEFAULT_STUB_LABEL_PAGE_MODE } from "./types";
@@ -500,6 +511,16 @@ interface SchematicState {
   patchDeviceData: (nodeId: string, patch: Partial<DeviceData>) => void;
   /** Patch multiple devices in one undo step. */
   batchPatchDeviceData: (patches: { nodeId: string; patch: Partial<DeviceData> }[]) => void;
+  /** Recompute auto housenames from rack placement / device type. Skips locked devices. */
+  recomputeHousenames: (
+    opts?: { pageId?: string; rackId?: string; deviceNodeIds?: string[] },
+    options?: { skipUndo?: boolean },
+  ) => void;
+  /** Sync roomId / roomLocation from schematic parent chain (not part of housename). */
+  recomputeDeviceRooms: (
+    opts?: { roomId?: string; deviceNodeIds?: string[] },
+    options?: { skipUndo?: boolean },
+  ) => void;
   /** Persist face-plate layout on device(s) and definition key for reload / new placements. */
   facePlateDefinitionLayouts: Record<string, import("./types").FacePlateLayout>;
   saveFacePlateLayout: (
@@ -746,6 +767,8 @@ interface SchematicState {
   toggleRfPathRoleVisibility: (role: RfPathRole) => void;
   setHideUnconnectedPorts: (hide: boolean) => void;
   setShowInstallationInfo: (show: boolean) => void;
+  mdfDisplayInline: boolean;
+  setMdfDisplayInline: (inline: boolean) => void;
   showPortCounts: boolean;
   setShowPortCounts: (show: boolean) => void;
   setTemplateHiddenSignals: (templateId: string, hidden: SignalType[]) => void;
@@ -1771,6 +1794,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   hiddenRfPathRoles: "",
   hideUnconnectedPorts: false,
   showInstallationInfo: true,
+  mdfDisplayInline: false,
   showPortCounts: false,
   templateHiddenSignals: {},
   showContainers: true,
@@ -2051,6 +2075,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...(template.version ? { templateVersion: template.version } : {}),
         ...(template.manufacturer ? { manufacturer: template.manufacturer } : {}),
         ...(template.modelNumber ? { modelNumber: template.modelNumber } : {}),
+        ...(template.deviceTypeCode ? { deviceTypeCode: template.deviceTypeCode } : {}),
         ...(template.referenceUrl ? { referenceUrl: template.referenceUrl } : {}),
         ...(template.category ? { category: template.category } : {}),
         ...(template.powerDrawW != null ? { powerDrawW: template.powerDrawW } : {}),
@@ -2102,6 +2127,17 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     if (defKey && state.deviceDefinitionRackMetadata[defKey] && newNode.data.rackMetadataSource !== "explicit") {
       Object.assign(newNode.data, state.deviceDefinitionRackMetadata[defKey]);
     }
+    const typeCode = resolveDeviceTypeCode(newNode.data);
+    if (typeCode && !newNode.data.deviceTypeCode) {
+      newNode.data.deviceTypeCode = typeCode;
+    }
+    const housenamePatch = composeHousenameForDevice(newNode.id, {
+      nodes: [...state.nodes, newNode],
+      pages: state.pages,
+    });
+    if (housenamePatch) Object.assign(newNode.data, housenamePatch);
+    const roomPatch = composeDeviceRoomPatch(newNode.id, [...state.nodes, newNode], newNode.data);
+    if (roomPatch) Object.assign(newNode.data, roomPatch);
     set({ nodes: renumberNodes([...get().nodes, newNode]) });
     get().saveToLocalStorage();
     return newNode.id;
@@ -2837,8 +2873,126 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         if (!patch || n.type !== "device") return n;
         return { ...n, data: { ...n.data, ...patch } } as DeviceNode;
       }),
+      undoSize: schematicUndoSize(),
+      redoSize: 0,
     });
     get().saveToLocalStorage();
+  },
+
+  recomputeHousenames: (opts, options) => {
+    const state = get();
+    const deviceIds = new Set<string>();
+
+    if (opts?.deviceNodeIds?.length) {
+      for (const id of opts.deviceNodeIds) {
+        deviceIds.add(id);
+        const ctx = findDeviceRackContext(id, state.pages);
+        if (ctx && (!opts.pageId || ctx.pageId === opts.pageId)) {
+          for (const peerId of affectedDeviceIdsForRack(ctx.page, ctx.rack.id)) {
+            deviceIds.add(peerId);
+          }
+        }
+      }
+    } else if (opts?.pageId && opts?.rackId) {
+      const page = state.pages.find(
+        (p) => p.id === opts.pageId && p.type === "rack-elevation",
+      ) as RackElevationPage | undefined;
+      if (page) {
+        for (const id of affectedDeviceIdsForRack(page, opts.rackId)) deviceIds.add(id);
+      }
+    } else {
+      for (const n of state.nodes) {
+        if (n.type === "device") deviceIds.add(n.id);
+      }
+    }
+
+    const patches: { nodeId: string; patch: Partial<DeviceData> }[] = [];
+    const warnedDesignations = new Set<string>();
+
+    for (const nodeId of deviceIds) {
+      const patch = composeHousenameForDevice(nodeId, { nodes: state.nodes, pages: state.pages });
+      if (!patch) continue;
+      patches.push({ nodeId, patch });
+      if (patch.designation) {
+        const key = patch.designation.trim().toUpperCase();
+        if (!warnedDesignations.has(key)) {
+          const dupes = findDuplicateDesignations(state.nodes, patch.designation, nodeId);
+          if (dupes.length > 0) {
+            warnedDesignations.add(key);
+            get().addToast(`Duplicate housename "${patch.designation}" on drawing`, "info");
+          }
+        }
+      }
+    }
+
+    if (patches.length === 0) return;
+
+    const patchById = new Map(patches.map((p) => [p.nodeId, p.patch]));
+    const apply = () => {
+      set({
+        nodes: get().nodes.map((n) => {
+          const patch = patchById.get(n.id);
+          if (!patch || n.type !== "device") return n;
+          return { ...n, data: { ...n.data, ...patch } } as DeviceNode;
+        }),
+      });
+      get().saveToLocalStorage();
+    };
+
+    if (options?.skipUndo) {
+      apply();
+      return;
+    }
+
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    apply();
+    set({ undoSize: schematicUndoSize(), redoSize: 0 });
+  },
+
+  recomputeDeviceRooms: (opts, options) => {
+    const state = get();
+    const deviceIds = new Set<string>();
+
+    if (opts?.deviceNodeIds?.length) {
+      for (const id of opts.deviceNodeIds) deviceIds.add(id);
+    } else if (opts?.roomId) {
+      for (const id of affectedDeviceIdsForRoom(opts.roomId, state.nodes)) deviceIds.add(id);
+    } else {
+      for (const n of state.nodes) {
+        if (n.type === "device") deviceIds.add(n.id);
+      }
+    }
+
+    const patches: { nodeId: string; patch: Partial<DeviceData> }[] = [];
+    for (const nodeId of deviceIds) {
+      const node = state.nodes.find((n) => n.id === nodeId && n.type === "device");
+      if (!node) continue;
+      const patch = composeDeviceRoomPatch(nodeId, state.nodes, node.data as DeviceData);
+      if (patch) patches.push({ nodeId, patch });
+    }
+
+    if (patches.length === 0) return;
+
+    const patchById = new Map(patches.map((p) => [p.nodeId, p.patch]));
+    const apply = () => {
+      set({
+        nodes: get().nodes.map((n) => {
+          const patch = patchById.get(n.id);
+          if (!patch || n.type !== "device") return n;
+          return { ...n, data: { ...n.data, ...patch } } as DeviceNode;
+        }),
+      });
+      get().saveToLocalStorage();
+    };
+
+    if (options?.skipUndo) {
+      apply();
+      return;
+    }
+
+    pushUndo({ nodes: state.nodes, edges: state.edges });
+    apply();
+    set({ undoSize: schematicUndoSize(), redoSize: 0 });
   },
 
   convertPortsToPassthrough: (nodeId, inputPortId, outputPortId, newPort) => {
@@ -3431,6 +3585,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         return { ...n, data: { ...n.data, label } } as SchematicNode;
       }),
     });
+    get().recomputeDeviceRooms({ roomId: nodeId }, { skipUndo: true });
     get().saveToLocalStorage();
   },
 
@@ -3677,6 +3832,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     set({ nodes: updated });
     get().saveToLocalStorage();
     get().autoFitUnlockedRooms({ skipUndo: true });
+    get().recomputeDeviceRooms(
+      { deviceNodeIds: [...updates.keys()] },
+      { skipUndo: true },
+    );
   },
 
   onRoomResizeEnd: (_nodeId) => {
@@ -4114,6 +4273,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         ...(template.version ? { templateVersion: template.version } : {}),
         ...(template.manufacturer ? { manufacturer: template.manufacturer } : {}),
         ...(template.modelNumber ? { modelNumber: template.modelNumber } : {}),
+        ...(template.deviceTypeCode ? { deviceTypeCode: template.deviceTypeCode } : {}),
         ...(template.referenceUrl ? { referenceUrl: template.referenceUrl } : {}),
         ...(template.category ? { category: template.category } : {}),
         ...(hiddenPorts && hiddenPorts.length > 0 ? { hiddenPorts } : {}),
@@ -4312,6 +4472,11 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
 
   setShowInstallationInfo: (show) => {
     set({ showInstallationInfo: show });
+    get().saveToLocalStorage();
+  },
+
+  setMdfDisplayInline: (inline) => {
+    set({ mdfDisplayInline: inline });
     get().saveToLocalStorage();
   },
 
@@ -4737,6 +4902,9 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       })),
     });
     get().saveToLocalStorage();
+    if ("designation" in patch || "label" in patch) {
+      get().recomputeHousenames({ pageId, rackId }, { skipUndo: true });
+    }
   },
 
   addRackPlacement: (pageId, placementData) => {
@@ -4749,6 +4917,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       undoSize: schematicUndoSize(), redoSize: 0,
     });
     get().saveToLocalStorage();
+    get().recomputeHousenames({ pageId, rackId: placementData.rackId }, { skipUndo: true });
     return id;
   },
 
@@ -4804,6 +4973,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         undoSize: schematicUndoSize(), redoSize: 0,
       });
       get().saveToLocalStorage();
+      get().recomputeHousenames({ pageId, rackId }, { skipUndo: true });
       return { ok: true, placementId, shelfId };
     }
 
@@ -4826,6 +4996,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
         undoSize: schematicUndoSize(), redoSize: 0,
       });
       get().saveToLocalStorage();
+      get().recomputeHousenames({ pageId, rackId }, { skipUndo: true });
       return { ok: true, placementId: id };
     }
 
@@ -4838,21 +5009,31 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       undoSize: schematicUndoSize(), redoSize: 0,
     });
     get().saveToLocalStorage();
+    get().recomputeHousenames({ pageId, rackId }, { skipUndo: true });
     return { ok: true, placementId: id };
   },
 
   removeRackPlacement: (pageId, placementId) => {
     const state = get();
+    const page = state.pages.find((p) => p.id === pageId && p.type === "rack-elevation") as RackElevationPage | undefined;
+    const placement = page?.placements.find((pl) => pl.id === placementId);
+    const rackId = placement?.rackId;
     pushUndo({ nodes: state.nodes, edges: state.edges });
     set({
       pages: mapElevationPage(state.pages, pageId, (p) => ({ ...p, placements: p.placements.filter((pl) => pl.id !== placementId) })),
       undoSize: schematicUndoSize(), redoSize: 0,
     });
     get().saveToLocalStorage();
+    if (rackId) {
+      get().recomputeHousenames({ pageId, rackId }, { skipUndo: true });
+    }
   },
 
   updateRackPlacement: (pageId, placementId, patch) => {
     const state = get();
+    const page = state.pages.find((p) => p.id === pageId && p.type === "rack-elevation") as RackElevationPage | undefined;
+    const placement = page?.placements.find((pl) => pl.id === placementId);
+    const rackId = patch.rackId ?? placement?.rackId;
     set({
       pages: mapElevationPage(state.pages, pageId, (p) => ({
         ...p,
@@ -4860,6 +5041,12 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       })),
     });
     get().saveToLocalStorage();
+    if (rackId) {
+      get().recomputeHousenames({ pageId, rackId }, { skipUndo: true });
+    }
+    if (patch.rackId && placement?.rackId && patch.rackId !== placement.rackId) {
+      get().recomputeHousenames({ pageId, rackId: placement.rackId }, { skipUndo: true });
+    }
   },
 
   addRackAccessory: (pageId, accessoryData) => {
@@ -6283,6 +6470,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       roomLayerOpacity: Object.keys(state.roomLayerOpacity).length > 0 ? state.roomLayerOpacity : undefined,
       hideUnconnectedPorts: state.hideUnconnectedPorts || undefined,
       showInstallationInfo: state.showInstallationInfo === false ? false : undefined,
+      mdfDisplayInline: state.mdfDisplayInline ? true : undefined,
       showPortCounts: state.showPortCounts || undefined,
       templateHiddenSignals: Object.keys(state.templateHiddenSignals).length > 0 ? state.templateHiddenSignals : undefined,
       templatePresets: Object.keys(state.templatePresets).length > 0 ? state.templatePresets : undefined,
@@ -6476,6 +6664,8 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       setSchematicUndoScope(resolveSchematicUndoScope(get()));
       restoreSchematicUndoFromSession();
       syncUndoCounters();
+      get().recomputeHousenames(undefined, { skipUndo: true });
+      get().recomputeDeviceRooms(undefined, { skipUndo: true });
       return true;
     } catch {
       hydrated = true;
@@ -6517,6 +6707,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       roomLayerOpacity: Object.keys(state.roomLayerOpacity).length > 0 ? state.roomLayerOpacity : undefined,
       hideUnconnectedPorts: state.hideUnconnectedPorts || undefined,
       showInstallationInfo: state.showInstallationInfo === false ? false : undefined,
+      mdfDisplayInline: state.mdfDisplayInline ? true : undefined,
       showPortCounts: state.showPortCounts || undefined,
       templateHiddenSignals: Object.keys(state.templateHiddenSignals).length > 0 ? state.templateHiddenSignals : undefined,
       templatePresets: Object.keys(state.templatePresets).length > 0 ? state.templatePresets : undefined,
@@ -6909,6 +7100,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
       roomLayerOpacity: data.roomLayerOpacity ?? {},
       hideUnconnectedPorts: data.hideUnconnectedPorts ?? false,
       showInstallationInfo: data.showInstallationInfo ?? true,
+      mdfDisplayInline: data.mdfDisplayInline ?? false,
       showPortCounts: data.showPortCounts ?? false,
       templateHiddenSignals: data.templateHiddenSignals ?? {},
       templatePresets: data.templatePresets ?? {},
@@ -7311,7 +7503,10 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     const flyData = defaultFlyEndpointData({
       direction,
       signalType: port.signalType,
-      device: data,
+      device: {
+        ...data,
+        ...(composeHousenameForDevice(nodeId, { nodes: state.nodes, pages: state.pages }) ?? {}),
+      },
       port,
       trackItDwgNumber: state.trackItLink?.dwgNumber,
     });

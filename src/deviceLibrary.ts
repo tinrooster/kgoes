@@ -26,6 +26,7 @@ import { templates as cableAccessories } from "./devices/cable-accessories";
 import { templates as cloudServices } from "./devices/cloud-services";
 import { templates as codecs } from "./devices/codecs";
 import { templates as vjf } from "./devices/vjf";
+import { templates as mdf } from "./devices/mdf";
 import { templates as rfTransmission } from "./devices/rf-transmission";
 import { templates as expansionCards } from "./devices/expansion-cards";
 import { templates as storageMedia } from "./devices/storage-media";
@@ -82,6 +83,7 @@ export const DEVICE_TEMPLATES: DeviceTemplate[] = [
   ...cloudServices,
   ...codecs,
   ...vjf,
+  ...mdf,
   ...rfTransmission,
   ...kgoBroadcast.filter(t => t.deviceType !== "expansion-card"),
   ...kgoDaletBrio,

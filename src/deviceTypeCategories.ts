@@ -75,6 +75,7 @@ export const DEVICE_TYPE_TO_CATEGORY: Record<string, string> = {
   "frame": "Infrastructure",
   "power-distribution": "Infrastructure",
   "patch-panel": "Infrastructure",
+  mdf: "Infrastructure",
   "wall-plate": "Infrastructure",
   "presentation-system": "Switching",
   "wireless-presentation": "Switching",

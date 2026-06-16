@@ -15,6 +15,7 @@ export const templates: DeviceTemplate[] = [
   {
     id: "kgo-da-0001-0000-4000-8000-000000000001",
     deviceType: "media-server",
+    deviceTypeCode: "ENC",
     label: "Dalet Brio 4",
     shortName: "Brio 4",
     manufacturer: "Dalet",
@@ -58,6 +59,7 @@ export const templates: DeviceTemplate[] = [
   {
     id: "kgo-da-0002-0000-4000-8000-000000000002",
     deviceType: "media-server",
+    deviceTypeCode: "ENC",
     label: "Dalet Brio 6",
     shortName: "Brio 6",
     manufacturer: "Dalet",
@@ -101,6 +103,7 @@ export const templates: DeviceTemplate[] = [
   {
     id: "kgo-da-0003-0000-4000-8000-000000000003",
     deviceType: "media-server",
+    deviceTypeCode: "ENC",
     label: "Dalet Brio 8",
     shortName: "Brio 8",
     manufacturer: "Dalet",
@@ -144,6 +147,7 @@ export const templates: DeviceTemplate[] = [
   {
     id: "kgo-da-0004-0000-4000-8000-000000000004",
     deviceType: "media-server",
+    deviceTypeCode: "ENC",
     label: "Dalet Brio 12",
     shortName: "Brio 12",
     manufacturer: "Dalet",
@@ -186,6 +190,7 @@ export const templates: DeviceTemplate[] = [
   {
     id: "kgo-da-0005-0000-4000-8000-000000000005",
     deviceType: "media-server",
+    deviceTypeCode: "ENC",
     label: "Dalet Brio IP 8+8",
     shortName: "Brio IP 8",
     manufacturer: "Dalet",
@@ -231,6 +236,7 @@ export const templates: DeviceTemplate[] = [
   {
     id: "kgo-da-0006-0000-4000-8000-000000000006",
     deviceType: "media-server",
+    deviceTypeCode: "ENC",
     label: "Dalet Brio IP 4+4",
     shortName: "Brio IP 4",
     manufacturer: "Dalet",
@@ -275,6 +281,7 @@ export const templates: DeviceTemplate[] = [
   {
     id: "kgo-da-0007-0000-4000-8000-000000000007",
     deviceType: "media-server",
+    deviceTypeCode: "ENC",
     label: "Dalet Brio IP Flex",
     shortName: "Brio IP Flex",
     manufacturer: "Dalet",

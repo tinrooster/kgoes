@@ -8,6 +8,7 @@ export const templates: DeviceTemplate[] = [
     id: "c0a80101-0002-4000-8000-000000000002",
     deviceType: "switcher",
     label: "Video Switcher",
+    deviceTypeCode: "SWR",
     powerDrawW: 50, // typical
     ...fullRackMeta(2),
     ports: [

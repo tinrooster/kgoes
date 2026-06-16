@@ -1,4 +1,5 @@
 import type { DeviceData, FlyDirection, FlyEndpointData, Port, SignalType } from "./types";
+import { composeHousename, resolveDeviceTypeCode } from "./housename";
 
 export const FLY_W_EST = 280;
 export const FLY_H_EST = 22;
@@ -6,8 +7,11 @@ export const FLY_GAP = 64;
 
 export function composeFlyDesignation(device: DeviceData): string {
   if (device.designation?.trim()) return device.designation.trim();
-  const parts = [device.rackLocation, device.deviceTypeCode].filter(Boolean);
-  if (parts.length > 0) return parts.join(" ");
+  const typeCode = resolveDeviceTypeCode(device);
+  const rackCode = device.rackLocation?.trim();
+  if (rackCode || typeCode) {
+    return composeHousename({ rackCode, typeCode });
+  }
   return device.label?.trim() || "DEVICE";
 }
 

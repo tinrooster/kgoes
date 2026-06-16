@@ -3,6 +3,13 @@
 @import "./theme.css";
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap');
 
+/** CAD plant drawing housename — IBM Plex Mono per drawing standards. */
+.es-housename {
+  font-family: var(--ti-font-mono, 'IBM Plex Mono'), ui-monospace, monospace;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
 /* Enable class-based dark mode for Tailwind dark: utilities */
 @variant dark (&:where(.dark, .dark *));
 

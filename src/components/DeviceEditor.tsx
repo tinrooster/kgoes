@@ -34,6 +34,18 @@ import IpInput from "./IpInput";
 import FacePlateEditor from "./FacePlateEditor";
 import ApplyRackMetadataDialog, { type ApplyRackMetadataPrompt } from "./ApplyRackMetadataDialog";
 import {
+  composeHousename,
+  computePositionIndex,
+  findDeviceRackContext,
+  HOUSENAME_CODE_TO_LABEL,
+  HOUSENAME_TYPE_CODES,
+  housenameNeedsTypeSetup,
+  resolveDeviceTypeCode,
+  resolveRackCodeForDevice,
+} from "../housename";
+import { resolveDeviceRoomContext } from "../roomContext";
+import { isMdfDevice } from "../mdfDisplay";
+import {
   DB_PINOUT_CONNECTORS,
   DbPinoutEditor,
   RF_METADATA_SIGNAL_TYPES,
@@ -213,7 +225,73 @@ export default function DeviceEditor() {
     [locationOptions, rackLocation],
   );
   const [frameSlot, setFrameSlot] = useState("");
+  const [mdfPairLabel, setMdfPairLabel] = useState("");
   const [deviceTypeCode, setDeviceTypeCode] = useState("");
+  const [designationLocked, setDesignationLocked] = useState(false);
+  const recomputeHousenames = useSchematicStore((s) => s.recomputeHousenames);
+  const roomContext = useMemo(() => {
+    if (!editingNodeId) return { roomId: undefined, roomLabel: "" };
+    return resolveDeviceRoomContext(editingNodeId, nodes);
+  }, [editingNodeId, nodes]);
+  const housenamePreview = useMemo(() => {
+    if (!editingNodeId || designationLocked) return "";
+    const ctx = findDeviceRackContext(editingNodeId, pages);
+    const draftDevice: DeviceData = {
+      label: label.trim() || "Device",
+      deviceType: deviceType.trim() || node?.data.deviceType || "custom",
+      ports: [],
+      deviceTypeCode: deviceTypeCode.trim() || undefined,
+      rackLocation: rackLocation.trim() || undefined,
+      mdfPairLabel: mdfPairLabel.trim() || undefined,
+    };
+    const rackCode = resolveRackCodeForDevice(ctx, draftDevice);
+    const typeCode = deviceTypeCode.trim() || resolveDeviceTypeCode(draftDevice);
+    if (!rackCode && !typeCode) return "";
+    if (isMdfDevice(draftDevice)) {
+      return composeHousename({
+        rackCode,
+        frameSlot,
+        typeCode: typeCode ?? "MDA",
+        expandTypeLabel: false,
+      }) + (mdfPairLabel.trim() ? ` ${mdfPairLabel.trim()}` : "");
+    }
+    const deviceDataMap = new Map<string, DeviceData>();
+    for (const n of nodes) {
+      if (n.type === "device") deviceDataMap.set(n.id, n.data as DeviceData);
+    }
+    const positionIndex =
+      ctx && typeCode
+        ? computePositionIndex(ctx.rack.id, typeCode, editingNodeId, ctx.page, deviceDataMap)
+        : undefined;
+    return composeHousename({
+      rackCode,
+      frameSlot,
+      typeCode,
+      positionIndex,
+      expandTypeLabel: false,
+    });
+  }, [
+    editingNodeId,
+    designationLocked,
+    pages,
+    nodes,
+    label,
+    deviceType,
+    node?.data.deviceType,
+    deviceTypeCode,
+    rackLocation,
+    frameSlot,
+    mdfPairLabel,
+  ]);
+  const typeSetupNeeded = useMemo(
+    () => housenameNeedsTypeSetup({
+      label: label.trim() || "Device",
+      deviceType: deviceType.trim() || node?.data.deviceType || "custom",
+      ports: [],
+      deviceTypeCode: deviceTypeCode.trim() || undefined,
+    }),
+    [label, deviceType, node?.data.deviceType, deviceTypeCode],
+  );
   const [managementIp, setManagementIp] = useState("");
   const [vlanSummary, setVlanSummary] = useState("");
   const [showInstallationBlock, setShowInstallationBlock] = useState<boolean | undefined>(undefined);
@@ -308,9 +386,11 @@ export default function DeviceEditor() {
     setManufacturer(node.data.manufacturer ?? "");
     setModelNumber(node.data.modelNumber ?? "");
     setDesignation(node.data.designation ?? "");
+    setDesignationLocked(node.data.designationLocked ?? false);
     setRackLocation(node.data.rackLocation ?? "");
     setFrameSlot(node.data.frameSlot ?? "");
-    setDeviceTypeCode(node.data.deviceTypeCode ?? "");
+    setMdfPairLabel(node.data.mdfPairLabel ?? "");
+    setDeviceTypeCode(node.data.deviceTypeCode ?? resolveDeviceTypeCode(node.data) ?? "");
     setManagementIp(node.data.managementIp ?? "");
     setVlanSummary(node.data.vlanSummary ?? "");
     setShowInstallationBlock(node.data.showInstallationBlock);
@@ -412,6 +492,9 @@ export default function DeviceEditor() {
       });
     }
     store.syncRackPlacementsForDevice(editingNodeId);
+    if (!data.designationLocked) {
+      store.recomputeHousenames({ deviceNodeIds: [editingNodeId] }, { skipUndo: true });
+    }
     setCreatingNodeId(null);
     pendingSaveRef.current = null;
     pendingApplyMetaRef.current = null;
@@ -466,8 +549,10 @@ export default function DeviceEditor() {
       ...(manufacturer.trim() ? { manufacturer: manufacturer.trim() } : {}),
       ...(modelNumber.trim() ? { modelNumber: modelNumber.trim() } : {}),
       ...(designation.trim() ? { designation: designation.trim() } : {}),
+      ...(designationLocked ? { designationLocked: true } : { designationLocked: false }),
       ...(rackLocation.trim() ? { rackLocation: rackLocation.trim() } : {}),
       ...(frameSlot.trim() ? { frameSlot: frameSlot.trim() } : {}),
+      ...(mdfPairLabel.trim() ? { mdfPairLabel: mdfPairLabel.trim() } : {}),
       ...(deviceTypeCode.trim() ? { deviceTypeCode: deviceTypeCode.trim() } : {}),
       ...(managementIp.trim() ? { managementIp: managementIp.trim() } : {}),
       ...(vlanSummary.trim() ? { vlanSummary: vlanSummary.trim() } : {}),
@@ -542,7 +627,7 @@ export default function DeviceEditor() {
 
     pendingApplyMetaRef.current = null;
     finishSave(false);
-  }, [editingNodeId, ports, label, shortName, useShortName, wrapLabel, hostname, deviceType, manufacturer, modelNumber, designation, rackLocation, frameSlot, deviceTypeCode, managementIp, vlanSummary, showInstallationBlock, referenceUrl, category, color, headerColor, node, finishSave, showAllPorts, hiddenPorts, dhcpServer, powerDrawW, powerCapacityW, voltage, thermalBtuh, poeBudgetW, poeDrawW, unitCost, heightMm, widthMm, depthMm, weightKg, rackHeightU, mountingClass, isCableAccessory, integratedWithCable, isVenueProvided, adapterVisibility, auxiliaryData, searchTermsRaw, rfInstallation]);
+  }, [editingNodeId, ports, label, shortName, useShortName, wrapLabel, hostname, deviceType, manufacturer, modelNumber, designation, designationLocked, rackLocation, frameSlot, deviceTypeCode, managementIp, vlanSummary, showInstallationBlock, referenceUrl, category, color, headerColor, node, finishSave, showAllPorts, hiddenPorts, dhcpServer, powerDrawW, powerCapacityW, voltage, thermalBtuh, poeBudgetW, poeDrawW, unitCost, heightMm, widthMm, depthMm, weightKg, rackHeightU, mountingClass, isCableAccessory, integratedWithCable, isVenueProvided, adapterVisibility, auxiliaryData, searchTermsRaw, rfInstallation]);
 
   // Ctrl+Enter anywhere in the editor → Apply & Close
   const onCtrlEnter = useCallback((e: React.KeyboardEvent) => {
@@ -1186,17 +1271,60 @@ export default function DeviceEditor() {
                 <input
                   className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs outline-none focus:border-blue-500"
                   value={designation}
-                  onChange={(e) => setDesignation(e.target.value)}
+                  onChange={(e) => {
+                    setDesignation(e.target.value);
+                    setDesignationLocked(true);
+                  }}
                   placeholder="e.g. DSK-01B, TC-03 DA C"
                 />
+                {!designationLocked && housenamePreview ? (
+                  <p className="mt-1 text-[10px] text-emerald-600">
+                    Auto housename: {housenamePreview}
+                  </p>
+                ) : null}
+                {designationLocked ? (
+                  <div className="mt-1 flex items-center gap-2">
+                    <p className="text-[10px] text-amber-600">Manual housename — auto updates paused</p>
+                    <button
+                      type="button"
+                      className="text-[10px] text-blue-500 hover:underline cursor-pointer"
+                      onClick={() => {
+                        if (!editingNodeId) return;
+                        setDesignationLocked(false);
+                        recomputeHousenames({ deviceNodeIds: [editingNodeId] });
+                        const updated = useSchematicStore.getState().nodes.find(
+                          (n) => n.id === editingNodeId && n.type === "device",
+                        );
+                        if (updated) {
+                          setDesignation((updated.data as DeviceData).designation ?? "");
+                        }
+                      }}
+                    >
+                      Reset to auto
+                    </button>
+                  </div>
+                ) : null}
               </Field>
-              <Field label="Type code">
+              <Field label="Type code (housename)">
                 <input
-                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs outline-none focus:border-blue-500"
+                  list="housename-type-codes"
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs outline-none focus:border-blue-500 es-housename"
                   value={deviceTypeCode}
-                  onChange={(e) => setDeviceTypeCode(e.target.value)}
-                  placeholder="DA, RSW, FS…"
+                  onChange={(e) => setDeviceTypeCode(e.target.value.toUpperCase())}
+                  placeholder="SWR, ENC, DA…"
                 />
+                <datalist id="housename-type-codes">
+                  {HOUSENAME_TYPE_CODES.map((code) => (
+                    <option key={code} value={code}>
+                      {HOUSENAME_CODE_TO_LABEL[code]}
+                    </option>
+                  ))}
+                </datalist>
+                {typeSetupNeeded ? (
+                  <p className="mt-1 text-[10px] text-amber-600">
+                    Select a CAD device type for housename (e.g. SWR for video switcher, ENC for encoder).
+                  </p>
+                ) : null}
               </Field>
               <Field label="Rack location">
                 <input
@@ -1233,6 +1361,33 @@ export default function DeviceEditor() {
                   placeholder="FRAME 1 SLOT 3/4"
                 />
               </Field>
+              <Field label="Room (linked)">
+                <input
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-[var(--color-text-muted)] outline-none"
+                  value={roomContext.roomLabel || "—"}
+                  readOnly
+                  title={roomContext.roomId ? `Room node: ${roomContext.roomId}` : "Place device inside a room frame"}
+                />
+                {roomContext.roomLabel ? (
+                  <p className="mt-1 text-[10px] text-emerald-600">
+                    Referrable via {"{{room}}"} — not part of housename
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">
+                    Drag into a room container to link
+                  </p>
+                )}
+              </Field>
+              {isMdfDevice({ ...node?.data, deviceType, deviceTypeCode } as DeviceData) ? (
+                <Field label="MDF pair label">
+                  <input
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs outline-none focus:border-blue-500 es-housename"
+                    value={mdfPairLabel}
+                    onChange={(e) => setMdfPairLabel(e.target.value)}
+                    placeholder="e.g. 1-29"
+                  />
+                </Field>
+              ) : null}
               <Field label="Management IP">
                 <input
                   className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs outline-none focus:border-blue-500"

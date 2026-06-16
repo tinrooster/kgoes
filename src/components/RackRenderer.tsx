@@ -7,6 +7,7 @@ import RackElevationViewportBar from "./RackElevationViewportBar";
 import type { RackData, RackDevicePlacement, RackAccessory, RackDepthConflict, DeviceData, RackElevationPage, RackCrossLink } from "../types";
 import { getConnectedPortIds, isShelfThrowdownInSlot, resolveHalfRackSide } from "../rackMount";
 import { resolveDeviceLabel, type SchematicDisplayDefaults } from "../displayName";
+import { resolveLiveDeviceHousename } from "../housename";
 import { RACK_ACCESSORY_LABELS, RACK_TYPE_LABELS } from "../types";
 import { rackFacePlatePortCenters, resolveFacePlatePorts } from "../facePlateUtils";
 import {
@@ -298,8 +299,14 @@ function DeviceBlock({
   page, placement, rack, deviceData, deviceDataMap, isSelected, isDragging, zoom, showFacePlateDetail, schematicDefaults,
   connectedPortIds, selectedPortId, onSelect, onDragStart, onContextMenu, onPortClick,
 }: DeviceBlockProps) {
+  const pages = useSchematicStore((s) => s.pages);
+  const nodes = useSchematicStore((s) => s.nodes);
   const resolved = resolveDeviceLabel(deviceData, schematicDefaults);
-  const label = resolved.text;
+  const liveHousename = useMemo(
+    () => resolveLiveDeviceHousename(placement.deviceNodeId, deviceData, { nodes, pages }),
+    [placement.deviceNodeId, deviceData, nodes, pages],
+  );
+  const label = liveHousename.text || deviceData.designation?.trim() || resolved.text;
   const heightU = inferRackHeightU(deviceData);
   const color = deviceData.headerColor ?? deviceData.color;
   const slotY = uToY(placement.uPosition + heightU - 1, rack.heightU);
@@ -398,7 +405,9 @@ function DeviceBlock({
           const lbl = label.length > maxC ? label.slice(0, maxC - 1) + "…" : label;
           return (
             <text x={cx} y={ly} textAnchor="middle" dominantBaseline="central"
-              fontSize={fs} fill="#fff" fontWeight={600} style={{ pointerEvents: "none" }}>
+              fontSize={fs} fill="#fff" fontWeight={500}
+              fontFamily="'IBM Plex Mono', ui-monospace, monospace"
+              style={{ pointerEvents: "none" }}>
               {lbl}
             </text>
           );
@@ -413,7 +422,9 @@ function DeviceBlock({
           : y + h / 2 - ((lines.length - 1) * lineH) / 2;
         return (
           <text x={cx} textAnchor="middle" fontSize={fs} fill="#fff"
-            fontWeight={600} style={{ pointerEvents: "none" }}>
+            fontWeight={500}
+            fontFamily="'IBM Plex Mono', ui-monospace, monospace"
+            style={{ pointerEvents: "none" }}>
             {lines.map((line, i) => (
               <tspan key={i} x={cx} y={baseY + i * lineH}
                 dominantBaseline={showConn ? "hanging" : "central"}>

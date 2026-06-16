@@ -175,6 +175,8 @@ function KgoCanvasToolbar() {
 
   const hideUnconnectedPorts = useSchematicStore((s) => s.hideUnconnectedPorts);
   const setHideUnconnectedPorts = useSchematicStore((s) => s.setHideUnconnectedPorts);
+  const mdfDisplayInline = useSchematicStore((s) => s.mdfDisplayInline);
+  const setMdfDisplayInline = useSchematicStore((s) => s.setMdfDisplayInline);
   const canvasInteractive = useSchematicStore((s) => s.canvasInteractive);
   const toggleCanvasInteractive = useSchematicStore((s) => s.toggleCanvasInteractive);
   const autoRoute = useSchematicStore((s) => s.autoRoute);
@@ -321,6 +323,18 @@ function KgoCanvasToolbar() {
           compact={compact}
           active={hideUnconnectedPorts}
           onClick={() => setHideUnconnectedPorts(!hideUnconnectedPorts)}
+        />
+        <Chip
+          icon="link"
+          label="MDF inline"
+          compact={compact}
+          active={mdfDisplayInline}
+          onClick={() => setMdfDisplayInline(!mdfDisplayInline)}
+          title={
+            mdfDisplayInline
+              ? "MDF inline on — compact cable-break symbols (CAD style)"
+              : "MDF inline off — full device blocks"
+          }
         />
         <Chip
           icon="lock"

@@ -389,8 +389,16 @@ export interface DeviceData {
   rackForm?: "full" | "half" | "shelf-only";
   /** Facility designation on drawing (e.g. DSK-01B, TC-03 DA C) — distinct from marketing `label`. */
   designation?: string;
+  /** When true, housename composer must not overwrite designation. Set on manual Designation edit. */
+  designationLocked?: boolean;
   /** Rack / location code (e.g. RK CB03, TH-03). */
   rackLocation?: string;
+  /** Linked schematic room node id — referrable, not shown in housename. */
+  roomId?: string;
+  /** Room label path for reports and aux tokens (e.g. MDF / Datacom). */
+  roomLocation?: string;
+  /** MDF port-pair suffix override (e.g. 1-29). Defaults to passthrough port label. */
+  mdfPairLabel?: string;
   /** Frame and slot text (e.g. FRAME 1 SLOT 3/4). */
   frameSlot?: string;
   /** Device type code for housename (DA, RSW, FS, …). */
@@ -645,6 +653,8 @@ export interface DeviceTemplate {
   searchTerms?: string[];
   manufacturer?: string;
   modelNumber?: string;
+  /** CAD plant drawing housename type code (DA, SWR, ENC, …). Seeded on device placement. */
+  deviceTypeCode?: string;
   imageUrl?: string;
   referenceUrl?: string;
   slots?: SlotDefinition[];
@@ -1073,6 +1083,8 @@ export interface SchematicFile {
   hideUnconnectedPorts?: boolean;
   /** Show designation, rack, model block on device headers (default true for new files). */
   showInstallationInfo?: boolean;
+  /** When true, MDF/MDA devices render as compact inline cable-break symbols. */
+  mdfDisplayInline?: boolean;
   showPortCounts?: boolean;
   templateHiddenSignals?: Record<string, SignalType[]>;
   templatePresets?: Record<string, TemplatePreset>;

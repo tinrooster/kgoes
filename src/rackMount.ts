@@ -133,7 +133,7 @@ function inferHeightUHeuristic(device: DeviceData): number {
   const portCount = device.ports?.length ?? 0;
   const dt = device.deviceType?.toLowerCase() ?? "";
 
-  if (dt.includes("patch-panel") || dt === "vjf") {
+  if (dt.includes("patch-panel") || dt === "vjf" || dt === "mdf") {
     if (portCount > 48) return 3;
     if (portCount > 32) return 2;
     return 1;
