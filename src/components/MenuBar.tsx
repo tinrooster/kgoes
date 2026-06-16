@@ -23,6 +23,7 @@ import type { SchematicFile, SchematicNode, AnnotationData } from "../types";
 import ReportsDialog, { type ReportsTab } from "./ReportsDialog";
 import TitleBlockDialog from "./TitleBlockDialog";
 import AboutDialog from "./AboutDialog";
+import FeedbackReportDialog from "./FeedbackReportDialog";
 import PreferencesDialog from "./PreferencesDialog";
 import RoomDistancesDialog from "./RoomDistancesDialog";
 import UndoHistoryControls from "./UndoHistoryControls";
@@ -42,6 +43,7 @@ import {
 } from "../cadConfigurableInsert";
 import { insertCadDiagonalLine, insertCadNorthArrow } from "../towerSiteCadInsert";
 import TrackItModeBadge from "./TrackItModeBadge";
+import FeedbackReportButton from "./FeedbackReportButton";
 import AlignmentMenu from "./AlignmentMenu";
 import DrawingProjectDropdown from "./DrawingProjectDropdown";
 import ToolbarSidebarMenu from "./ToolbarSidebarMenu";
@@ -234,6 +236,7 @@ export default function MenuBar() {
   const [showPreferences, setShowPreferences] = useState(false);
   const [showRoomDistances, setShowRoomDistances] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
+  const [showFeedbackReport, setShowFeedbackReport] = useState(false);
 
   const isOnline = useSchematicStore((s) => s.isOnline);
   const trackItLink = useSchematicStore((s) => s.trackItLink);
@@ -952,7 +955,12 @@ export default function MenuBar() {
       },
       {
         type: "item",
-        label: "Report a bug \u2197",
+        label: "Report bug or feature\u2026",
+        onClick: () => setShowFeedbackReport(true),
+      },
+      {
+        type: "item",
+        label: "Report on GitHub \u2197",
         onClick: () => window.open(KGO_ES_ISSUES_URL, "_blank", "noopener,noreferrer"),
       },
       {
@@ -1238,6 +1246,7 @@ export default function MenuBar() {
           <div style={{ width: 1, height: 20, background: "var(--ti-divider)", margin: "0 4px" }} />
           <UndoHistoryControls variant="desktop" />
           <div style={{ width: 1, height: 20, background: "var(--ti-divider)", margin: "0 4px" }} />
+          <FeedbackReportButton />
           <button
             type="button"
             onClick={toggleTheme}
@@ -1285,6 +1294,7 @@ export default function MenuBar() {
             <UndoHistoryControls variant="mobile" />
             <span className="text-sm font-semibold text-[var(--color-text-heading)]">Menu</span>
             <div className="flex items-center gap-1">
+              <FeedbackReportButton variant="mobile" />
               <button
                 onClick={toggleTheme}
                 title={isDark ? "Switch to light mode" : "Switch to dark mode"}
@@ -1400,6 +1410,9 @@ export default function MenuBar() {
       )}
       {showCsvImport && (
         <CsvImportWizard onClose={() => setShowCsvImport(false)} />
+      )}
+      {showFeedbackReport && (
+        <FeedbackReportDialog onClose={() => setShowFeedbackReport(false)} />
       )}
       <DeviceLibraryAdminPanel />
     </div>

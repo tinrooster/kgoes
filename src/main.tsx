@@ -6,6 +6,7 @@ import ErrorBoundary from "./components/ErrorBoundary.tsx";
 import App from "./App.tsx";
 import { refreshDevBuildHash } from "./buildVersion";
 import { startTrackItBridge } from "./trackitBridge";
+import { startFeedbackReportBridgeListener } from "./feedbackReportBridge";
 import { setSchematicUndoStateListener } from "./schematicUndo";
 import { notifyTrackItParentUndoState } from "./trackitIntegration";
 import { applyPwaStandaloneShell, initPwaInstallCapture } from "./pwaInstall";
@@ -22,6 +23,7 @@ void ensureLatestProductionBuild();
 watchForProductionBuildUpdates();
 
 startTrackItBridge();
+startFeedbackReportBridgeListener();
 setSchematicUndoStateListener(() => notifyTrackItParentUndoState());
 notifyTrackItParentUndoState();
 
