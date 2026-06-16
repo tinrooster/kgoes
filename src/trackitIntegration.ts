@@ -14,6 +14,7 @@ import { useSidebarStore } from "./sidebarStore";
 import { LEGACY_SCHEMATIC_PAGE_ID } from "./drawingPageUtils";
 import { listSchematicUndoHistory } from "./schematicUndo";
 import type { SchematicFile, TrackItLinkContext } from "./types";
+import { openNewDrawingSetup } from "./drawingSetupStore";
 
 /** Mirrors trackIT `TrackItFocusPagePayload` (Pack tab sheet deep links). */
 export type TrackItFocusPagePayload = {
@@ -316,14 +317,13 @@ export function beginBlankTrackItDrawing(link: TrackItLinkContext): void {
   ) {
     return;
   }
-  trackItBlankInitializedForDrawingId = link.drawingId;
-  const store = useSchematicStore.getState();
-  store.newSchematic();
-  store.setTrackItLink(link);
-  const drawingName = link.drawingName?.trim();
-  if (drawingName) {
-    store.setSchematicName(drawingName);
-  }
+  openNewDrawingSetup({
+    mode: "trackit-blank",
+    trackItLink: link,
+    onComplete: () => {
+      trackItBlankInitializedForDrawingId = link.drawingId;
+    },
+  });
 }
 
 export function applyTrackItLink(link: TrackItLinkContext): void {

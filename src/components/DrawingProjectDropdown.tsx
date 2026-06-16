@@ -20,6 +20,7 @@ import {
 import type { DrawingPage } from "../types";
 import { TiIcon } from "./ti/TiBase";
 import { confirmDialog, promptDialog } from "../appDialogStore";
+import { openNewDrawingSetup } from "../drawingSetupStore";
 
 interface DrawingProjectDropdownProps {
   anchorRef: React.RefObject<HTMLButtonElement | null>;
@@ -124,7 +125,6 @@ export default function DrawingProjectDropdown({
   const nodes = useSchematicStore((s) => s.nodes);
   const activePage = useSchematicStore((s) => s.activePage);
   const setActivePage = useSchematicStore((s) => s.setActivePage);
-  const addDrawingPage = useSchematicStore((s) => s.addDrawingPage);
   const renameDrawingPage = useSchematicStore((s) => s.renameDrawingPage);
   const duplicateDrawingPage = useSchematicStore((s) => s.duplicateDrawingPage);
   const updateDrawingViewport = useSchematicStore((s) => s.updateDrawingViewport);
@@ -249,7 +249,10 @@ export default function DrawingProjectDropdown({
         label="New drawing sheet…"
         onClick={() => {
           const n = drawingPages.length;
-          addDrawingPage(n === 0 ? "Drawing" : `Drawing ${n + 1}`);
+          openNewDrawingSetup({
+            mode: "new-sheet",
+            defaultSheetName: n === 0 ? "Drawing" : `Drawing ${n + 1}`,
+          });
           onClose();
         }}
       />

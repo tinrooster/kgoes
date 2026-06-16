@@ -13,6 +13,7 @@ import {
 } from "../branding";
 import { printPageTabLabel } from "../printPageLabels";
 import { useSchematicStore } from "../store";
+import { openNewDrawingSetup } from "../drawingSetupStore";
 import { exportImage } from "../exportUtils";
 import { exportDxf } from "../dxfExport";
 import { exportPdf } from "../pdfExport";
@@ -168,7 +169,6 @@ export default function MenuBar() {
     exportToJSON,
     importFromJSON,
     importDrawingIntoActivePage,
-    newSchematic,
     undo,
     redo,
     pages,
@@ -641,8 +641,8 @@ export default function MenuBar() {
   }, [reactFlowInstance]);
 
   const handleNew = useCallback(() => {
-    newSchematic();
-  }, [newSchematic]);
+    openNewDrawingSetup({ mode: "new-project" });
+  }, []);
 
   const closeMenu = () => setOpenMenu(null);
 

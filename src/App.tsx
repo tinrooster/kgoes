@@ -38,6 +38,8 @@ import MobileGate from "./components/MobileGate";
 import KgoEsModuleSplash, { isKgoEsSplashAcknowledged } from "./components/KgoEsModuleSplash";
 import ToastContainer from "./components/ToastContainer";
 import AppDialogHost from "./components/AppDialogHost";
+import NewDrawingSetupDialog from "./components/NewDrawingSetupDialog";
+import { usePendingInitialViewport } from "./hooks/usePendingInitialViewport";
 import BetaBanner from "./components/BetaBanner";
 import PwaInstallBanner from "./components/PwaInstallBanner";
 import PortContextMenu from "./components/PortContextMenu";
@@ -199,6 +201,7 @@ function AutoRouteConfirmDialog() {
 }
 
 function SchematicCanvas() {
+  usePendingInitialViewport();
   const {
     nodes,
     edges,
@@ -1924,6 +1927,7 @@ export default function App() {
       <MobileGate />
       <ToastContainer />
       <AppDialogHost />
+      <NewDrawingSetupDialog />
       <DrawingCaptureHost />
     </div>
   );

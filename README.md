@@ -205,6 +205,8 @@ npm run dev
 
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
+**New drawing setup** — **File → New** or **Add page → New drawing…** opens a setup dialog: sheet name, starting template (blank, bundled starters, saved user templates, or JSON import), optional print page size/scale, print grid origin, and initial viewport. When embedded from trackIT Plant, DWG metadata and classification are shown read-only.
+
 ## Build
 
 ```bash

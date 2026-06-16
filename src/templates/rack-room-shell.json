@@ -1,0 +1,20 @@
+{
+  "version": 44,
+  "name": "Rack room shell",
+  "nodes": [
+    {
+      "id": "room-rack-shell",
+      "type": "room",
+      "position": { "x": 0, "y": 0 },
+      "width": 420,
+      "height": 520,
+      "data": {
+        "label": "Equipment Room",
+        "isEquipmentRack": true,
+        "borderStyle": "solid"
+      }
+    }
+  ],
+  "edges": [],
+  "pages": []
+}

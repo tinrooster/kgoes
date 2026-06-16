@@ -1,3 +1,7 @@
+/**
+ * Print paper presets for page tiling. The signal-flow canvas itself is unbounded —
+ * see canvasLimits.ts for editing vs print vs cloud save limits.
+ */
 export interface PaperSize {
   id: string;
   label: string;

@@ -8,6 +8,7 @@ import { SIGNAL_LABELS, SIGNAL_COLORS, type SignalType } from "../types";
 import type { RackElevationPage, TowerDraftPage } from "../types";
 import { TiIcon } from "./ti/TiBase";
 import { confirmDialog } from "../appDialogStore";
+import { openNewDrawingSetup } from "../drawingSetupStore";
 
 interface ContextMenuState {
   pageId: string;
@@ -30,7 +31,6 @@ export default function PageTabs() {
   const duplicateRackPage = useSchematicStore((s) => s.duplicateRackPage);
   const duplicateTowerDraftPage = useSchematicStore((s) => s.duplicateTowerDraftPage);
   const duplicatePrintSheetPage = useSchematicStore((s) => s.duplicatePrintSheetPage);
-  const addDrawingPage = useSchematicStore((s) => s.addDrawingPage);
   const addToast = useSchematicStore((s) => s.addToast);
   const removeDrawingPage = useSchematicStore((s) => s.removeDrawingPage);
   const renameDrawingPage = useSchematicStore((s) => s.renameDrawingPage);
@@ -230,7 +230,7 @@ export default function PageTabs() {
 
   const openDrawingPage = () => {
     const label = drawingPageCount === 0 ? "Drawing" : `Drawing ${drawingPageCount + 1}`;
-    addDrawingPage(label);
+    openNewDrawingSetup({ mode: "new-sheet", defaultSheetName: label });
     setAddMenuOpen(false);
   };
 

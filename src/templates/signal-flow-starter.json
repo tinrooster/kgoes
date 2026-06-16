@@ -1,0 +1,24 @@
+{
+  "version": 44,
+  "name": "Signal flow starter",
+  "nodes": [
+    {
+      "id": "room-starter-a",
+      "type": "room",
+      "position": { "x": 0, "y": 0 },
+      "width": 560,
+      "height": 380,
+      "data": { "label": "Room A", "borderStyle": "dashed" }
+    },
+    {
+      "id": "room-starter-b",
+      "type": "room",
+      "position": { "x": 640, "y": 0 },
+      "width": 560,
+      "height": 380,
+      "data": { "label": "Room B", "borderStyle": "dashed" }
+    }
+  ],
+  "edges": [],
+  "pages": []
+}

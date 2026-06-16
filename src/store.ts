@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { extractGraphForNewSheet, applyTrackItDrawingMetadata, annotateSetupOnActiveDrawingPage } from "./applyDrawingSetup";
+import type { DrawingSetupOptions, InitialViewportMode } from "./drawingSetupDefaults";
 import { layoutAutoRackPositions, layoutRackPositions, rackLayoutReverseOrder } from "./rackLayout";
 import { defaultRackElevationViewports } from "./rackElevationViewportUtils";
 import {
@@ -951,7 +953,7 @@ interface SchematicState {
   removePrintSheetPage: (pageId: string) => void;
   renamePrintSheetPage: (pageId: string, label: string) => void;
   duplicateRackPage: (pageId: string) => string;
-  addDrawingPage: (label: string) => string;
+  addDrawingPage: (label: string, setup?: DrawingSetupOptions, templateData?: SchematicFile) => string;
   removeDrawingPage: (pageId: string) => void;
   renameDrawingPage: (pageId: string, label: string) => void;
   duplicateDrawingPage: (pageId: string) => string;
@@ -1090,6 +1092,14 @@ interface SchematicState {
   importDrawingIntoActivePage: (data: SchematicFile) => void;
   importCsvData: (newNodes: SchematicNode[], newEdges: ConnectionEdge[]) => void;
   newSchematic: (templateData?: SchematicFile) => void;
+  newSchematicWithSetup: (
+    setup: DrawingSetupOptions,
+    templateData?: SchematicFile,
+    trackItLink?: TrackItLinkContext | null,
+  ) => void;
+  pendingInitialViewport: InitialViewportMode | null;
+  setPendingInitialViewport: (mode: InitialViewportMode | null) => void;
+  clearPendingInitialViewport: () => void;
   setSchematicName: (name: string) => void;
 
   /** trackIT numbering write-back (reserved / allocated blocks). */
@@ -1746,6 +1756,7 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
   trackItUnsavedChanges: false,
   loadSeq: 0,
   schematicCanvasReady: false,
+  pendingInitialViewport: null,
   editingNodeId: null,
   creatingNodeId: null,
   customTemplates: _initCustomTemplates,
@@ -5477,17 +5488,33 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     return newPageId;
   },
 
-  addDrawingPage: (label) => {
+  addDrawingPage: (label, setup, templateData) => {
     const state = get();
     pushUndo({ nodes: state.nodes, edges: state.edges });
     const pages = persistActiveDrawingGraph(state.pages, state.activePage, state.nodes, state.edges);
     const id = nextDrawingPageId();
-    const page = createDrawingPage(label.trim() || "Drawing", id);
+    const graph = templateData ? extractGraphForNewSheet(templateData) : { nodes: [], edges: [] };
+    let page = createDrawingPage(label.trim() || "Drawing", id, graph);
+    if (setup) {
+      page = {
+        ...page,
+        printOriginOffsetX: setup.printOriginOffsetX,
+        printOriginOffsetY: setup.printOriginOffsetY,
+        setupTemplateId: setup.setupTemplateId ?? setup.templateId,
+      };
+    }
+    const runtimeNodes = structuredClone(page.nodes);
+    const runtimeEdges = structuredClone(page.edges);
+    if (runtimeNodes.length > 0) {
+      snapNodesToGrid(runtimeNodes);
+      syncCounters(runtimeNodes, runtimeEdges);
+    }
+    page = { ...page, nodes: runtimeNodes, edges: runtimeEdges };
     set({
       pages: [...pages, page],
       activePage: id,
-      nodes: [],
-      edges: [],
+      nodes: structuredClone(page.nodes),
+      edges: structuredClone(page.edges),
       loadSeq: state.loadSeq + 1,
       undoSize: schematicUndoSize(),
       redoSize: 0,
@@ -7596,6 +7623,96 @@ export const useSchematicStore = create<SchematicState>((set, get) => ({
     }
     get().saveToLocalStorage();
   },
+
+  newSchematicWithSetup: (setup, templateData, trackItLink) => {
+    clearSchematicUndoHistory();
+    if (templateData) {
+      get().importFromJSON(templateData);
+      set({
+        schematicName: trackItLink?.drawingName?.trim() || "Untitled Drawing",
+        cloudSchematicId: null,
+        cloudSavedAt: null,
+        fileHandle: null,
+        undoSize: 0,
+        redoSize: 0,
+        printOriginOffsetX: setup.printOriginOffsetX,
+        printOriginOffsetY: setup.printOriginOffsetY,
+        pendingInitialViewport: setup.initialViewport,
+      });
+      annotateSetupOnActiveDrawingPage(setup);
+    } else {
+      const initialDrawingId = nextDrawingPageId();
+      const initialDrawingPage: DrawingPage = {
+        ...createDrawingPage(setup.sheetName.trim() || "Drawing", initialDrawingId),
+        printOriginOffsetX: setup.printOriginOffsetX,
+        printOriginOffsetY: setup.printOriginOffsetY,
+        setupTemplateId: setup.setupTemplateId ?? setup.templateId,
+      };
+      set({
+        nodes: [],
+        edges: [],
+        schematicName: trackItLink?.drawingName?.trim() || "Untitled Drawing",
+        ownedGear: [],
+        cloudSchematicId: null,
+        cloudSavedAt: null,
+        fileHandle: null,
+        titleBlock: { showName: "", venue: "", designer: "", engineer: "", date: "", drawingTitle: "", company: "", revision: "", logo: "", customFields: [] },
+        titleBlockLayout: createDefaultLayout(),
+        hiddenSignalTypes: "",
+        hiddenPinSignalTypes: "",
+        hiddenRfPathRoles: "",
+        showContainers: true,
+        sigSolo: "",
+        roomSolo: "",
+        hiddenRoomIds: "",
+        roomLayerOrder: "",
+        roomLayerOpacity: {},
+        hideUnconnectedPorts: false,
+        showPortCounts: false,
+        templateHiddenSignals: {},
+        templatePresets: {},
+        favoriteTemplates: [],
+        reportLayouts: {},
+        globalReportHeaderLayout: null,
+        globalReportFooterLayout: null,
+        scrollConfig: { ...DEFAULT_SCROLL_CONFIG },
+        cableNamingScheme: "type-prefix",
+        showLineJumps: true,
+        showConnectionLabels: true,
+        showCableIdLabels: true,
+        showCustomLabels: true,
+        cableIdGap: 4,
+        cableIdMidOffset: 0,
+        cableIdLabelMode: "endpoint" as "endpoint" | "midpoint",
+        stubLabelShowPort: DEFAULT_STUB_LABEL_SHOW_PORT,
+        stubLabelShowRoom: DEFAULT_STUB_LABEL_SHOW_ROOM,
+        stubLabelPageMode: DEFAULT_STUB_LABEL_PAGE_MODE,
+        useShortNames: false,
+        wrapDeviceLabels: true,
+        autoRoute: true,
+        edgeHitboxSize: 10,
+        panMode: DEFAULT_PAN_MODE,
+        showOwnedGearPane: false,
+        libraryActiveTab: "devices" as "devices" | "owned",
+        undoSize: 0,
+        redoSize: 0,
+        pages: [initialDrawingPage],
+        activePage: initialDrawingId,
+        loadSeq: get().loadSeq + 1,
+        printOriginOffsetX: setup.printOriginOffsetX,
+        printOriginOffsetY: setup.printOriginOffsetY,
+        pendingInitialViewport: setup.initialViewport,
+      });
+    }
+    if (trackItLink) {
+      applyTrackItDrawingMetadata(trackItLink);
+    }
+    get().saveToLocalStorage();
+  },
+
+  setPendingInitialViewport: (mode) => set({ pendingInitialViewport: mode }),
+
+  clearPendingInitialViewport: () => set({ pendingInitialViewport: null }),
 
   setSchematicName: (name) => {
     set({ schematicName: name });

@@ -1059,6 +1059,11 @@ export interface DrawingPage {
   viewports: DrawingViewportPreset[];
   nodes: SchematicNode[];
   edges: ConnectionEdge[];
+  /** Optional per-sheet print grid origin (flow coords). */
+  printOriginOffsetX?: number;
+  printOriginOffsetY?: number;
+  /** Bundled or import template id used at creation (audit). */
+  setupTemplateId?: string;
 }
 
 export type SchematicPage = RackElevationPage | PrintSheetPage | TowerDraftPage | DrawingPage;
@@ -1213,6 +1218,8 @@ export type TrackItLinkContext = {
   drawingType?: string;
   /** Display preference pushed from trackIT settings. */
   measurementSystem?: MeasurementSystem;
+  /** Data classification from plant_drawings (read-only in ES). */
+  classification?: "public" | "internal";
 };
 
 export type TrackItTowerSiteContext = {
