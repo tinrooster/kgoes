@@ -14,6 +14,8 @@ import { buildTrackItPlantDrawingUrl, openTrackItUrl } from "../trackitAppLinks"
 import { countUnnumberedEdges } from "../kgoCableState";
 import { openNumberingForEdge, openNumberingPanel } from "../kgoInspectorUtils";
 import { computeTrackItSyncStatus } from "../trackitSyncStatus";
+import { useKgoSaveFeedbackStore, clearKgoSaveFeedback } from "../kgoSaveFeedbackStore";
+import { KgoDialogFormFeedback } from "./KgoDialogFormFeedback";
 
 interface KgoSyncDrawerProps {
   open: boolean;
@@ -41,6 +43,7 @@ function KgoSyncDrawer({ open, onClose }: KgoSyncDrawerProps) {
   const nodes = useSchematicStore((s) => s.nodes);
   const edges = useSchematicStore((s) => s.edges);
   const assignAll = useSchematicStore((s) => s.assignAllUnnumberedTrackItNumbers);
+  const saveFeedback = useKgoSaveFeedbackStore((s) => s.feedback);
 
   const nodeCount = nodes.filter((n) => n.type === "device").length;
   const edgeCount = edges.filter((e) => !e.data?.directAttach).length;
@@ -129,8 +132,7 @@ function KgoSyncDrawer({ open, onClose }: KgoSyncDrawerProps) {
 
   const resolveItem = (item: SyncFeedItem) => {
     if (item.id === "unsaved") {
-      saveToTrackItParent();
-      onClose();
+      saveNow();
       return;
     }
     if (item.kind === "cables" && item.edgeId) {
@@ -155,7 +157,9 @@ function KgoSyncDrawer({ open, onClose }: KgoSyncDrawerProps) {
   const pendingCount = syncStatus.pendingCount;
 
   const saveNow = () => {
-    saveToTrackItParent();
+    const ok = saveToTrackItParent();
+    if (!ok) return;
+    clearKgoSaveFeedback();
     onClose();
   };
 
@@ -243,6 +247,13 @@ function KgoSyncDrawer({ open, onClose }: KgoSyncDrawerProps) {
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+          {saveFeedback?.variant === "error" ? (
+            <KgoDialogFormFeedback
+              variant="error"
+              title={saveFeedback.title}
+              message={saveFeedback.message}
+            />
+          ) : null}
           <div style={{
             borderRadius: 10, border: "1px solid var(--ti-border)",
             background: "var(--ti-surface)", overflow: "hidden",

@@ -34,6 +34,7 @@ import CsvImportWizard from "./CsvImportWizard";
 import SignalColorPanel from "./SignalColorPanel";
 import { useTheme } from "../hooks/useTheme";
 import { isTrackItDrawingLinked, saveToTrackItParent } from "../trackitIntegration";
+import { clearKgoSaveFeedback, publishKgoSaveFeedback } from "../kgoSaveFeedbackStore";
 import { isCloudPortalEnabled } from "../deployMode";
 import { computeTrackItSyncStatus } from "../trackitSyncStatus";
 import {
@@ -206,7 +207,14 @@ export default function MenuBar() {
       return;
     }
     if (syncStatus.needsSchematicSave) {
-      saveToTrackItParent();
+      const ok = saveToTrackItParent();
+      if (!ok) {
+        publishKgoSaveFeedback(
+          "Save did not reach trackIT. Confirm the drawing is linked from Plant → Drawings, then try again.",
+          "error",
+          { title: "Save to trackIT failed" },
+        );
+      }
       return;
     }
     toggleSyncDrawer();
@@ -342,8 +350,12 @@ export default function MenuBar() {
         try {
           await writeToFileHandle(store.fileHandle);
           store.addToast("Also saved to prior file picker location", "info", 2000);
+          clearKgoSaveFeedback();
         } catch {
           store.setFileHandle(null);
+          const msg = "Could not write to the previously chosen file. Use File → Save As… to pick a new location.";
+          publishKgoSaveFeedback(msg, "error", { title: "Local file save failed" });
+          store.addToast(msg, "error", 8000);
         }
       }
       return;
@@ -354,6 +366,7 @@ export default function MenuBar() {
       try {
         await writeToFileHandle(store.fileHandle);
         store.addToast("Saved", "success", 1500);
+        clearKgoSaveFeedback();
         return;
       } catch {
         // Handle went stale (file moved/deleted) — fall through to picker
@@ -372,11 +385,15 @@ export default function MenuBar() {
       try {
         await writeToFileHandle(handle);
         store.addToast("Saved", "success", 1500);
+        clearKgoSaveFeedback();
       } catch (e: unknown) {
-        store.addToast(e instanceof Error ? e.message : "Save failed", "error");
+        const msg = e instanceof Error ? e.message : "Save failed";
+        publishKgoSaveFeedback(msg, "error", { title: "File save failed" });
+        store.addToast(msg, "error", 8000);
       }
     } else {
       downloadFile();
+      clearKgoSaveFeedback();
     }
   }, [writeToFileHandle, downloadFile, pickFileHandle]);
 
@@ -397,8 +414,11 @@ export default function MenuBar() {
       try {
         await writeToFileHandle(handle);
         store.addToast("Saved", "success", 1500);
+        clearKgoSaveFeedback();
       } catch (e: unknown) {
-        store.addToast(e instanceof Error ? e.message : "Save failed", "error");
+        const msg = e instanceof Error ? e.message : "Save failed";
+        publishKgoSaveFeedback(msg, "error", { title: "Save As failed" });
+        store.addToast(msg, "error", 8000);
       }
     } else {
       downloadFile();

@@ -30,6 +30,7 @@ import KgoSyncDrawer from "./components/KgoSyncDrawer";
 import { useSyncDrawerStore } from "./sidebarStore";
 import { KGO_ES_NAME, kgoEsDocumentTitle } from "./branding";
 import { isDrawingCanvasActive } from "./drawingPageUtils";
+import KgoSaveFeedbackBanner from "./components/KgoSaveFeedbackBanner";
 import MenuBar from "./components/MenuBar";
 import EdgeContextMenu from "./components/EdgeContextMenu";
 import IncompatibleConnectionDialog from "./components/IncompatibleConnectionDialog";
@@ -1888,6 +1889,7 @@ export default function App() {
     <div className="flex flex-col h-full">
       <div data-print-hide>
         <MenuBar />
+        <KgoSaveFeedbackBanner />
       </div>
       <BetaBanner />
       <PwaInstallBanner />
