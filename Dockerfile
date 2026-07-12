@@ -28,7 +28,7 @@ RUN apk update \
   && apk add --no-cache nginx socat \
   && apk info -v -e libcrypto3 | grep -q 'libcrypto3-3.5.7-r0' \
   && apk info -v -e libssl3 | grep -q 'libssl3-3.5.7-r0' \
-  && apk info -v -e nginx | grep -Eq 'nginx-1\.28\.3-r[4-9]|nginx-1\.28\.[4-9]|nginx-1\.29\.' \
+  && apk info -v -e nginx | grep -Eq 'nginx-1\.(28\.3-r[4-9]|28\.[4-9]|29\.|30\.|[3-9][0-9])' \
   && apk info -v -e socat | grep -Eq 'socat-1\.8\.1\.[2-9]|socat-1\.8\.[2-9]' \
   && rm -rf /var/cache/apk/* \
   && mkdir -p /tmp/nginx/client_body /tmp/nginx/proxy /tmp/nginx/fastcgi \
