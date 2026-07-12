@@ -10,7 +10,7 @@ ARG GIT_COMMIT=unknown
 ARG CI_COMMIT_SHORT_SHA=
 ARG SOURCE_VERSION=
 # Bust studioshare-cache:kgoes when Launch omits commit build-args (remote cache can skip npm run build).
-ARG BUILD_CACHE_REV=20260616c
+ARG BUILD_CACHE_REV=20260711a
 RUN BUILD_COMMIT="$GIT_COMMIT"; \
     [ "$BUILD_COMMIT" = "unknown" ] && [ -n "$CI_COMMIT_SHORT_SHA" ] && BUILD_COMMIT="$CI_COMMIT_SHORT_SHA" || true; \
     [ "$BUILD_COMMIT" = "unknown" ] && [ -n "$SOURCE_VERSION" ] && BUILD_COMMIT="$SOURCE_VERSION" || true; \
@@ -21,13 +21,15 @@ RUN BUILD_COMMIT="$GIT_COMMIT"; \
 FROM alpine:3.22 AS runtime
 
 # Bust Docker layer cache when Alpine security fixes ship (Wiz cicd-policy-vuln-critical).
-ARG ALPINE_SECURITY_REVISION=20260616b
+ARG ALPINE_SECURITY_REVISION=20260711a
 
 RUN apk update \
-  && apk upgrade --no-cache libcrypto3 libssl3 libxml2 \
+  && apk upgrade --no-cache libcrypto3 libssl3 libxml2 nginx socat \
   && apk add --no-cache nginx socat \
   && apk info -v -e libcrypto3 | grep -q 'libcrypto3-3.5.7-r0' \
   && apk info -v -e libssl3 | grep -q 'libssl3-3.5.7-r0' \
+  && apk info -v -e nginx | grep -Eq 'nginx-1\.28\.3-r[4-9]|nginx-1\.28\.[4-9]|nginx-1\.29\.' \
+  && apk info -v -e socat | grep -Eq 'socat-1\.8\.1\.[2-9]|socat-1\.8\.[2-9]' \
   && rm -rf /var/cache/apk/* \
   && mkdir -p /tmp/nginx/client_body /tmp/nginx/proxy /tmp/nginx/fastcgi \
        /tmp/nginx/uwsgi /tmp/nginx/scgi /run/nginx /usr/share/nginx/html \
